@@ -1,0 +1,169 @@
+/* Shadow-DOM-Styles für <gramet-panel> -- vollständig gekapselt, keine
+   Abhängigkeit von der globalen css/style.css. Look bewusst identisch zum
+   bisherigen #gramet/.mg-head/.gm-* aus droneforecast (bei der Umwandlung in
+   die Web Component dupliziert statt geteilt, s. Feedback/Entscheidung beim
+   Umbau) -- Akzentfarbe/Panel-Hintergrund als Custom Properties, damit
+   Host-Apps mit eigenem Farbschema sie überschreiben können.
+*/
+
+:host {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  /* Bezugsrahmen für den absolut positionierten Ladehinweis (.busy). */
+  position: relative;
+  font: 13px/1.4 system-ui, sans-serif;
+  color: #0b0b0b;
+  --gramet-accent: #2f6cb6;
+  --gramet-panel-bg: #fcfcfb;
+}
+
+.head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 8px 12px;
+  font-weight: 600;
+  border-bottom: 1px solid #eceae4;
+  flex: none;
+}
+
+.title { flex: none; }
+.subtitle { font-weight: 400; color: #52514e; font-size: 12px; }
+.subtitle:empty { display: none; }
+
+.layers {
+  display: inline-flex;
+  gap: 12px;
+  font-size: 11px;
+  font-weight: 400;
+  color: #52514e;
+}
+.layers label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.layers input[type="checkbox"] { margin: 0; cursor: pointer; }
+/* Gelände-Overlay gibt es nur im Path-Modus (`path`-Attribut setzt die
+   Komponente selbst anhand von `grid.meta.mode`, s. gramet-panel.js). */
+.layers label.terrain { display: none; }
+:host([path]) .layers label.terrain { display: inline-flex; }
+
+.range-toggle {
+  display: inline-flex;
+  margin-left: auto;
+  border: 1px solid #c9c8c2;
+  border-radius: 6px;
+  overflow: hidden;
+}
+.range-toggle button {
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 400;
+  color: #52514e;
+  padding: 3px 9px;
+  cursor: pointer;
+}
+.range-toggle button + button { border-left: 1px solid #c9c8c2; }
+.range-toggle button.active {
+  background: var(--gramet-accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+.export-btn, .close-btn {
+  margin-left: 0;
+  border: none;
+  background: none;
+  font-size: 13px;
+  color: #52514e;
+  cursor: pointer;
+  padding: 0 4px;
+}
+.close-btn { font-size: 20px; margin-left: 4px; }
+.range-toggle + .export-btn { margin-left: 8px; }
+.export-btn:hover, .close-btn:hover { color: #0b0b0b; }
+
+/* Body/Canvas -- Klassennamen (.gm-plot/.gm-canvas/.gm-axis/.gm-tip) werden
+   von render.js dynamisch vergeben, nicht hier im Markup; gelten aber ganz
+   normal innerhalb desselben Shadow Roots. Kein horizontales Padding: die
+   `position: sticky`-Achse bezieht sich auf die Padding-Box des
+   Scrollcontainers -- mit Padding würde die Beschriftung beim Andocken um
+   genau diesen Betrag springen (übernommen aus der bisherigen #gm-body-Regel).
+*/
+/* Bezugsrahmen für den schwebenden Ladehinweis: `.plot` beginnt exakt unter
+   Kopf und (optionalem) Warnband, wie hoch die auch immer geraten -- der Kopf
+   bricht bei schmalem Panel um. Ein fester Pixelversatz vom Panelrand traf
+   das nicht zuverlässig und ließ Hinweis und Warnband überlappen. */
+.plot { flex: 1; min-height: 0; position: relative; display: flex; flex-direction: column; }
+
+.body { flex: 1; min-height: 0; overflow: auto; padding: 4px 0 8px; position: relative; }
+.body-message { padding: 12px; color: #52514e; }
+
+/* Ladehinweis über dem weiterhin sichtbaren Chart (s. `busy` in
+   gramet-panel.js) -- am oberen Rand der Tafel statt mittig, damit er wenig
+   verdeckt, und ohne Pointer-Events, damit Hover darunter weiterläuft. */
+.busy {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 6;
+  pointer-events: none;
+  background: rgba(11, 11, 11, 0.82);
+  color: #fff;
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+}
+.busy[hidden] { display: none; }
+
+/* Dauerhafter Warnhinweis (s. `notice`). Anders als `.busy` liegt er IM FLUSS
+   direkt unter dem Kopf: `.busy` meldet einen Vorgang, der gleich vorbei ist
+   und deshalb nichts verdrängen soll -- `.notice` beschreibt einen Zustand,
+   der bleibt, bis die Host-App ihn aufhebt, und darf dafür Platz bekommen,
+   statt dauerhaft Chartinhalt zu überdecken. */
+.notice {
+  flex: none;
+  background: #fdf1d6;
+  color: #6b4a00;
+  border-bottom: 1px solid #e0be6d;
+  font-size: 11px;
+  font-weight: 600;
+  text-align: center;
+  padding: 5px 10px;
+}
+.notice[hidden] { display: none; }
+
+.gm-plot { display: flex; align-items: flex-start; width: max-content; }
+.gm-canvas { display: block; cursor: crosshair; flex: none; position: relative; z-index: 1; }
+.gm-axis { display: block; flex: none; position: sticky; left: 0; z-index: 2; }
+.gm-tip {
+  position: absolute;
+  pointer-events: none;
+  background: rgba(252, 252, 251, 0.97);
+  border: 1px solid #c9c8c2;
+  border-radius: 5px;
+  padding: 6px 8px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: #0b0b0b;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+  white-space: nowrap;
+  z-index: 5;
+}
+
+/* Gleicher Breakpoint wie die übrige App (css/style.css), unabhängig
+   nachgezogen, da das Overlay-Kopf-Umbruch-Verhalten jetzt komponentenintern
+   ist. */
+@media (max-width: 700px), (max-height: 500px) {
+  .head { flex-wrap: wrap; row-gap: 6px; position: relative; padding-right: 40px; }
+  .close-btn { position: absolute; top: 8px; right: 12px; margin-left: 0; }
+  .layers { flex-wrap: wrap; row-gap: 4px; }
+}

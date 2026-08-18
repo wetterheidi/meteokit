@@ -1,0 +1,29 @@
+{
+  "name": "meteokit",
+  "version": "0.1.0",
+  "type": "module",
+  "license": "UNLICENSED",
+  "description": "Wiederverwendbare Wetter-Webkomponenten und -Kernmodule (ICON-Modelllevel, Open-Meteo)",
+  "files": [
+    "src"
+  ],
+  "sideEffects": [
+    "./src/components/**"
+  ],
+  "exports": {
+    "./components/gramet-panel": "./src/components/gramet-panel/gramet-panel.js",
+    "./gramet": "./src/gramet/index.js",
+    "./gramet/hazards": "./src/gramet/hazards/index.js",
+    "./gramet/render": "./src/gramet/render.js",
+    "./config": "./src/config.js",
+    "./units": "./src/units.js",
+    "./column": "./src/column.js",
+    "./weather": "./src/weather.js",
+    "./clouds": "./src/clouds.js",
+    "./briefing": "./src/briefing.js",
+    "./crosssection": "./src/crosssection.js",
+    "./astro": "./src/astro.js",
+    "./windbarb": "./src/windbarb.js",
+    "./package.json": "./package.json"
+  }
+}
