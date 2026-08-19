@@ -43,6 +43,32 @@ const INK = "#0b0b0b", MUTED = "#52514e", GRID = "#d9d8d3";
 // auf `x.right`) -- mit dem alten 16 px wurden sie abgeschnitten.
 const TOPAX = 22, GAP = 16, BOT = 22, M = { l: 50, r: 52 };
 
+// Untergrenze der Hauptfläche. Ist im Container weniger Platz, wächst der
+// Chart NICHT weiter nach unten zusammen, sondern der Rest wird gescrollt
+// (`.body { overflow: auto }` in gramet-panel.css). Der Default passt zu einem
+// bildschirmfüllenden Panel; eine Host-App, die das GRAMET in einen flachen
+// Ausschnitt hängt (z. B. als angedocktes Fenster neben einer Karte), gibt
+// über `state.minMainH` bzw. die Property `minMainHeight` der Komponente eine
+// komfortablere Höhe vor und nimmt dafür vertikales Scrollen in Kauf --
+// stauchen würde die Wetterdarstellung unlesbar machen.
+const MIN_MAIN_H = 240;
+
+// Positionscursor (s. `makeCursor`): Farbe für die Linie und für den Punkt,
+// solange die Host-App keine eigene mitgibt; `*_REVEAL_PAD` ist der Rand, ab
+// dem beim Nachscrollen neu zentriert wird.
+const CURSOR_COLOR = "#0b0b0b";
+const CURSOR_REVEAL_PAD = 48;
+
+// Die einzigen beiden Maße, die von der Containergröße abhängen. Als eigene
+// Funktion, weil der ResizeObserver sie ohne Redraw auswerten können muss.
+function dimsFor(host, { hours, rowsH, stripH, minMainH }) {
+  const containerPw = Math.max(host.clientWidth || 0, 360) - M.l - M.r;
+  return {
+    pw: Math.max(hours * CHART_PX_PER_HOUR, containerPw),
+    mainH: Math.max(minMainH, (host.clientHeight || 560) - TOPAX - stripH - rowsH - GAP * 2 - BOT),
+  };
+}
+
 // Füllfarbe des mitscrollenden Achsenstreifens: deckend, damit der Chart beim
 // horizontalen Scrollen darunter verschwindet (Panel-Hintergrund von #gramet).
 const PANEL_BG = "#fcfcfb";
@@ -192,6 +218,12 @@ const RESIZE_DEBOUNCE_MS = 150;
 export function renderGramet(host, grid, view, state = {}) {
   host.__gmObserver?.disconnect();
 
+  // Zuletzt gezeichnete container-abhängige Maße und die Konstanten, aus
+  // denen sie folgen -- vom ResizeObserver gelesen (s. dort).
+  let lastFixed = null, lastDims = null;
+  // Positionscursor: der Wert überlebt Redraws, das DOM dazu nicht (s. u.).
+  let cursorPos = null, setCursor = null;
+
   function draw() {
     host.innerHTML = "";
     const { times, pos, nk } = grid;
@@ -246,11 +278,12 @@ export function renderGramet(host, grid, view, state = {}) {
     // Path-Modus: verstrichene Sekunden seit Pfadbeginn) -- `CHART_PX_PER_HOUR`
     // bleibt der gemeinsame Dichte-Maßstab für beide Modi.
     const hours = Math.max(1, (pos[pos.length - 1] - pos[0]) / 3600);
-    const containerPw = Math.max(host.clientWidth || 0, 360) - M.l - M.r;
-    const pw = Math.max(hours * CHART_PX_PER_HOUR, containerPw);
-
     const rowsH = activeRows.reduce((s, id) => s + ROW_DEFS[id].height, 0);
-    const mainH = Math.max(240, (host.clientHeight || 560) - TOPAX - stripH - rowsH - GAP * 2 - BOT);
+    // Ab hier hängen nur noch zwei Größen am Container -- gebündelt in
+    // `dimsFor`, damit der ResizeObserver unten prüfen kann, ob sich
+    // überhaupt etwas ändert, ohne den ganzen Chart neu zu zeichnen.
+    lastFixed = { hours, rowsH, stripH, minMainH: state.minMainH ?? MIN_MAIN_H };
+    const { pw, mainH } = (lastDims = dimsFor(host, lastFixed));
 
     const W = M.l + pw + M.r;
     const H = TOPAX + mainH + stripH + GAP + rowsH + GAP + BOT;
@@ -366,6 +399,9 @@ export function renderGramet(host, grid, view, state = {}) {
       drawRowLabel(ctx, typeof def.label === "function" ? def.label() : def.label, x.left - 4, rowTop, def.height);
       rowTop += def.height;
     }
+    // Unterkante der letzten Bodenzeile -- bis hierhin ist die X-Position
+    // sinnvoll (Hover-Meldung und Cursorlinie), darunter steht nur die Achse.
+    const chartBot = rowTop;
 
     if (grid.meta.mode === "path") drawPathAxis(ctx, grid, x, mainTop, rowTop);
     else drawTimeAxis(ctx, times, x, mainTop, rowTop);
@@ -391,15 +427,40 @@ export function renderGramet(host, grid, view, state = {}) {
       attribution.style.cssText = "display:block;font:10px system-ui,sans-serif;color:#8a8a86;text-decoration:none;padding:2px 4px;";
       host.append(attribution);
     }
-    setupHover(host, canvas, axis, grid, { x, y, mainTop, mainBot, view, isPath });
+    setupHover(host, canvas, axis, grid, { x, y, mainTop, mainBot, chartBot, view, isPath });
+    // Cursor-Overlay neu aufbauen und den zuletzt gesetzten Wert wieder
+    // anwenden: ein Redraw (Resize, Ebenenwechsel) wirft das ganze DOM weg,
+    // die von der Host-App gesetzte Position soll das aber überleben.
+    setCursor = makeCursor(plot, host, {
+      x, y, grid, isPath, top: mainTop, bot: chartBot, zMin, zMax,
+      profile: isPath ? state.profile : null,
+    });
+    setCursor(cursorPos);
     state.onRedraw?.(canvas);
     return canvas;
   }
 
   const canvas = draw();
 
+  // Einstieg für die Komponente (s. gramet-panel.js `cursor`): Position setzen,
+  // ohne neu zu zeichnen. `null` blendet den Cursor aus.
+  host.__gmSetCursor = (pos, reveal = false) => {
+    cursorPos = pos == null || !Number.isFinite(pos) ? null : pos;
+    setCursor?.(cursorPos, reveal);
+  };
+
   let resizeTimer = null;
   const ro = new ResizeObserver(() => {
+    // Eine Größenänderung des Containers heißt nicht, dass der Chart anders
+    // aussieht: sobald die Hauptfläche auf `minMainH` steht, lässt eine
+    // weitere Höhenänderung alle Canvas-Maße unverändert (der Rest wird
+    // gescrollt, s. `.body { overflow: auto }`). Genau der Fall tritt beim
+    // Ziehen an einer Dock-Trennlinie im Sekundentakt ein -- ein voller
+    // Redraw je Schritt wäre die teuerste Art, nichts zu tun.
+    if (lastFixed && lastDims) {
+      const d = dimsFor(host, lastFixed);
+      if (d.pw === lastDims.pw && d.mainH === lastDims.mainH) return;
+    }
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(draw, RESIZE_DEBOUNCE_MS);
   });
@@ -1712,21 +1773,36 @@ function drawPathStopMarker(ctx, x, top, bot, reason) {
 // --- Hover (DOM-Overlay) -------------------------------------------------------
 
 function setupHover(host, canvas, axis, grid, info) {
-  const { x, y, mainTop, mainBot, view, isPath } = info;
+  const { x, y, mainTop, mainBot, chartBot, view, isPath } = info;
   host.style.position = host.style.position || "relative";
   const tip = document.createElement("div");
   tip.className = "gm-tip";
   tip.style.display = "none";
   host.append(tip);
+
+  // Die gehoverte Pfadposition nach außen melden (`poshover`, detail
+  // `{ pos, index }` bzw. `{ pos: null }` beim Verlassen). `pos` ist dieselbe
+  // Größe wie `grid.pos` -- genau das, was eine Host-App in der Gegenrichtung
+  // als `cursor` hereinreicht. Damit kann sie dieselbe Stelle anderswo zeigen
+  // (etwa auf einer Karte), ohne die Chart-Geometrie zu kennen.
+  // `composed`, damit das Event die Shadow-DOM-Grenze der Komponente verlässt.
+  let lastEmitted;
+  const emitPos = (pos, index) => {
+    if (pos === null && lastEmitted === null) return; // kein Null-Dauerfeuer
+    lastEmitted = pos;
+    host.dispatchEvent(new CustomEvent("poshover", {
+      bubbles: true, composed: true, detail: { pos, index: pos === null ? null : index },
+    }));
+  };
+
   // Über dem festen Achsenstreifen liegt kein sichtbarer Chart -- Tooltip aus,
   // sonst bliebe der letzte Wert stehen, sobald der Zeiger den Streifen
   // erreicht (der Streifen fängt die Pointer-Events ab).
-  axis.addEventListener("pointerenter", () => { tip.style.display = "none"; });
+  axis.addEventListener("pointerenter", () => { tip.style.display = "none"; emitPos(null); });
 
   canvas.addEventListener("pointermove", (e) => {
     const r = canvas.getBoundingClientRect();
     const px = e.clientX - r.left, py = e.clientY - r.top;
-    if (py < mainTop || py > mainBot || px < x.left || px > x.right) { tip.style.display = "none"; return; }
     const p0 = grid.pos[0], p1 = grid.pos[grid.pos.length - 1];
     const frac = (px - x.left) / (x.right - x.left);
     const pGuess = p0 + frac * (p1 - p0);
@@ -1735,6 +1811,11 @@ function setupHover(host, canvas, axis, grid, info) {
       const d = Math.abs(grid.pos[j] - pGuess);
       if (d < best) { best = d; i = j; }
     }
+    const inX = px >= x.left && px <= x.right;
+    // Position auch über den Bodenzeilen melden: dort ist die Zeit genauso
+    // eindeutig, nur der Höhen-Tooltip hätte nichts zu sagen.
+    emitPos(inX && py >= mainTop && py <= chartBot ? clamp(pGuess, p0, p1) : null, i);
+    if (py < mainTop || py > mainBot || !inX) { tip.style.display = "none"; return; }
     // Achsenwert ist im Path-Modus AMSL (s. `amslGrid`); gesampelt wird auf
     // dem AGL-Grid, also vorher die Modell-Orographie der Spalte abziehen.
     const h = y.inv(py);
@@ -1786,7 +1867,77 @@ function setupHover(host, canvas, axis, grid, info) {
       `Nd (Vorstunde) ${amount}${snow}`,
     ].join("<br>");
   });
-  canvas.addEventListener("pointerleave", () => { tip.style.display = "none"; });
+  canvas.addEventListener("pointerleave", () => { tip.style.display = "none"; emitPos(null); });
+}
+
+// --- Positionscursor ----------------------------------------------------------
+//
+// Gegenstück zu `poshover`: eine Host-App, die dieselbe Strecke noch anderswo
+// zeigt (eine Karte, einen Zeitregler), reicht eine Position herein und
+// bekommt sie hier als Linie -- im Path-Modus zusätzlich als Punkt AUF der
+// Profilkurve, denn die Höhe gehört zur Trajektorie, nicht zum Mauszeiger.
+//
+// Bewusst als DOM-Overlay statt als Zeichenbefehl auf dem Canvas: ein Redraw
+// zieht die komplette Renderkette nach (Wolkentextur, Hazards, Gelände) und
+// wäre für eine Mauszeigerbewegung grotesk teuer.
+function makeCursor(plot, scroller, { x, y, grid, isPath, top, bot, zMin, zMax, profile }) {
+  const p0 = grid.pos[0], p1 = grid.pos[grid.pos.length - 1];
+  const root = document.createElement("div");
+  root.className = "gm-cursor";
+  root.hidden = true;
+  const dot = document.createElement("div");
+  dot.className = "gm-cursor-dot";
+  const label = document.createElement("div");
+  label.className = "gm-cursor-label";
+  root.append(dot, label);
+  // In `.gm-plot` statt in den Scrollcontainer: dessen Inhaltsursprung ist
+  // dank des negativen Randes am Canvas (s. `makeStickyAxis`) deckungsgleich
+  // mit dem Canvas-Ursprung -- Chartpixel sind hier direkt CSS-Pixel.
+  plot.append(root);
+  root.style.top = `${top}px`;
+  root.style.height = `${bot - top}px`;
+
+  return function setCursor(pos, reveal = false) {
+    if (pos == null || !Number.isFinite(pos) || pos < p0 || pos > p1) { root.hidden = true; return; }
+    const px = x(pos);
+    root.hidden = false;
+    root.style.left = `${px}px`;
+
+    // Punkt auf der Profilkurve. Liegt sie an dieser Stelle außerhalb des
+    // gezeigten Höhenausschnitts, lieber keinen Punkt als einen, der am Rand
+    // klebt und eine Höhe behauptet, die man nicht sieht.
+    let z = NaN;
+    if (profile?.pos?.length) z = interpAt(profile.pos, profile.z, pos);
+    const showDot = Number.isFinite(z) && z >= zMin && z <= zMax;
+    dot.hidden = !showDot;
+    if (showDot) {
+      dot.style.top = `${y(z) - top}px`;
+      dot.style.background = profile.color || CURSOR_COLOR;
+    }
+
+    // Beschriftung: im Path-Modus verstrichene Zeit UND Uhrzeit -- die
+    // X-Achse steht ganz unten und ist beim vertikalen Scrollen oft außer
+    // Sicht (s. `MIN_MAIN_H`), deshalb trägt der Cursor sie mit sich.
+    const t = interpAt(grid.pos, grid.times, pos);
+    const clock = Number.isFinite(t)
+      ? new Date(t * 1000).toLocaleString("de-DE", { weekday: "short", hour: "2-digit", minute: "2-digit" })
+      : "";
+    label.textContent = isPath ? `${fmtElapsed(pos - p0)} · ${clock}` : clock;
+
+    // Waagerecht nachscrollen, wenn die Position außerhalb des sichtbaren
+    // Ausschnitts liegt -- nur auf Wunsch (`reveal`), denn beim eigenen Hovern
+    // wäre ein Scrollen unter dem Zeiger eine Zumutung. Links zusätzlich um
+    // den Achsenstreifen eingerückt, der dort alles verdeckt.
+    if (reveal && scroller) {
+      const lo = scroller.scrollLeft + M.l + CURSOR_REVEAL_PAD;
+      const hi = scroller.scrollLeft + scroller.clientWidth - CURSOR_REVEAL_PAD;
+      if (px < lo || px > hi) {
+        scroller.scrollLeft = clamp(
+          px - scroller.clientWidth / 2, 0, scroller.scrollWidth - scroller.clientWidth,
+        );
+      }
+    }
+  };
 }
 
 // --- Helfer --------------------------------------------------------------------

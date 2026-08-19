@@ -26,6 +26,12 @@
  * (`setUnits`) -- alles andere ist intern und darf sich ohne Rücksicht auf
  * Einbettungen ändern.
  *
+ * EINBETTUNG IN FLACHE AUSSCHNITTE: `minMainHeight` (px) setzt die Untergrenze
+ * der Hauptfläche. Ohne sie füllt der Chart den Container und wird in einem
+ * niedrigen Ausschnitt gequetscht; mit ihr behält er seine Höhe und der
+ * Panel-Body scrollt vertikal. Für ein angedocktes Fenster neben einer Karte
+ * ist das der Unterschied zwischen lesbar und unbrauchbar.
+ *
  * Darstellungs-Zustand (Höhenbereich, Ebenen-Sichtbarkeit, Flughöhe) lebt
  * ausschließlich in der Komponente; Persistenz (z. B. in
  * `localStorage`) ist Sache der Host-App -- dafür das `settingschange`-Event
@@ -34,7 +40,12 @@
  *
  * Events: `settingschange` (detail: `{ range, layers }`, bei Klick auf
  * Höhenbereich-Umschalter oder Ebenen-Checkbox), `close` (Klick auf ×,
- * Host entscheidet, ob/wie das Panel verschwindet -- z. B. `hidden`).
+ * Host entscheidet, ob/wie das Panel verschwindet -- z. B. `hidden`),
+ * `poshover` (detail: `{ pos, index }` bzw. `{ pos: null }` beim Verlassen --
+ * die gehoverte Stelle der X-Achse). Zusammen mit der `cursor`-Property ist
+ * das die Synchronisierung in beide Richtungen: `poshover` meldet, wo der
+ * Zeiger im Chart steht, `cursor` zeigt, wo er anderswo steht. Beide sprechen
+ * dieselbe Größe (s. `cursor`).
  */
 
 import css from "./gramet-panel.css?inline";
@@ -66,6 +77,9 @@ export class GrametPanelElement extends HTMLElement {
   #terrain = null;
   #pathStop = null;
   #profile = null;
+  // `null` = Renderer-Default (s. `MIN_MAIN_H` in render.js).
+  #minMainHeight = null;
+  #cursor = null;
 
   constructor() {
     super();
@@ -162,6 +176,22 @@ export class GrametPanelElement extends HTMLElement {
   get zoomLabel() { return this._zoomBtn.textContent; }
   set zoomLabel(v) { this._zoomBtn.textContent = v || "bis Flughöhe"; }
 
+  /** Mindesthöhe der Hauptfläche in px. Der Chart füllt den Container, solange
+   *  darin mehr Platz ist; darunter behält er diese Höhe und der Rest wird
+   *  gescrollt, statt die Wetterdarstellung zusammenzuquetschen. Für ein
+   *  bildschirmfüllendes Panel genügt der Renderer-Default -- zu setzen ist
+   *  das hier von Host-Apps, die das GRAMET in einen flachen Ausschnitt
+   *  hängen (angedocktes Fenster neben einer Karte o. Ä.). `null` gibt an den
+   *  Default zurück. */
+  get minMainHeight() { return this.#minMainHeight; }
+  set minMainHeight(v) {
+    const n = Number(v);
+    const next = v == null || !Number.isFinite(n) || n <= 0 ? null : n;
+    if (next === this.#minMainHeight) return; // kein Redraw ohne Änderung
+    this.#minMainHeight = next;
+    this._render();
+  }
+
   /** Meldetext STATT Chart -- für den Erstaufbau und für Fehler, wo es nichts
    *  Sinnvolles zu zeigen gibt. Beim Nachladen über einem bereits stehenden
    *  Chart stattdessen `busy` setzen (s. dort), sonst blinkt die Tafel bei
@@ -206,6 +236,26 @@ export class GrametPanelElement extends HTMLElement {
     this._render();
   }
 
+  /** Positionscursor: eine Stelle auf der X-Achse, die von AUSSEN kommt --
+   *  gedacht für Host-Apps, die dieselbe Strecke noch anderswo zeigen (eine
+   *  Karte, einen Zeitregler) und beide Ansichten aufeinander zeigen lassen
+   *  wollen. Der Wert hat dieselbe Einheit wie die X-Achse, also genau die,
+   *  die das `poshover`-Event in der Gegenrichtung meldet: im Punkt-Modus
+   *  Epochensekunden, im Path-Modus verstrichene Sekunden seit Pfadbeginn.
+   *  `null` blendet ihn aus. Kostet keinen Redraw (DOM-Overlay). */
+  get cursor() { return this.#cursor; }
+  set cursor(v) { this.setCursor(v); }
+
+  /** Wie die `cursor`-Property, aber mit `reveal: true` scrollt der Chart
+   *  waagerecht nach, bis die Stelle im Blick ist. Für Positionen, die von
+   *  außen kommen -- beim Hovern im Chart selbst wäre Scrollen unter dem
+   *  Zeiger eine Zumutung. */
+  setCursor(pos, { reveal = false } = {}) {
+    const n = Number(pos);
+    this.#cursor = pos == null || !Number.isFinite(n) ? null : n;
+    this._bodyEl.__gmSetCursor?.(this.#cursor, reveal);
+  }
+
   /** Dateiname-Bausteine für den PNG-Export, s. `render.js` `exportPng()`. */
   get exportNameParts() { return this.#exportNameParts; }
   set exportNameParts(parts) { this.#exportNameParts = Array.isArray(parts) ? parts : ["gramet"]; }
@@ -217,10 +267,14 @@ export class GrametPanelElement extends HTMLElement {
   /** Mehrere Properties in einem Rutsch setzen -- ein einziger Redraw statt
    *  einem pro Einzel-Setter (relevant beim Öffnen/bei Datenwechsel, wo
    *  Grid, Flughöhe, Höhenbereich und Ebenen zusammen aktualisiert werden). */
-  update({ grid, maxHeight, range, layers, subtitle, exportNameParts, terrain, pathStop, profile, zoomLabel } = {}) {
+  update({ grid, maxHeight, range, layers, subtitle, exportNameParts, terrain, pathStop, profile, zoomLabel, minMainHeight } = {}) {
     this.#loading = null;
     this.busy = null;
     if (zoomLabel !== undefined) this.zoomLabel = zoomLabel;
+    if (minMainHeight !== undefined) {
+      const n = Number(minMainHeight);
+      this.#minMainHeight = minMainHeight == null || !Number.isFinite(n) || n <= 0 ? null : n;
+    }
     if (grid !== undefined) {
       this.#grid = grid ?? null;
       this.#view = this.#grid ? deriveView(this.#grid) : null;
@@ -305,8 +359,13 @@ export class GrametPanelElement extends HTMLElement {
       pathStop: isPath ? this.#pathStop ?? undefined : undefined,
       profile: isPath ? this.#profile ?? undefined : undefined,
       layerToggles: this.layers,
+      minMainH: this.#minMainHeight ?? undefined,
       onRedraw: (canvas) => { this.#canvas = canvas; },
     });
+    // Ein vor dem ersten Chart gesetzter Cursor (Host-App synchronisiert schon,
+    // während die Daten noch laden) hat noch kein Overlay gefunden -- jetzt
+    // nachziehen. Spätere Redraws erledigt der Renderer selbst.
+    if (this.#cursor != null) this._bodyEl.__gmSetCursor?.(this.#cursor);
   }
 
   /** Zoombereich ("bis Flughöhe") im Path-Modus: AMSL-Spanne vom tiefsten

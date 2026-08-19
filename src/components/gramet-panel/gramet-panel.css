@@ -141,9 +141,53 @@
 }
 .notice[hidden] { display: none; }
 
-.gm-plot { display: flex; align-items: flex-start; width: max-content; }
+/* `position: relative` als Bezugsrahmen für den Positionscursor: dessen
+   Koordinaten sind dank des negativen Randes am Canvas (s. `makeStickyAxis`)
+   deckungsgleich mit den Chartpixeln. */
+.gm-plot { display: flex; align-items: flex-start; width: max-content; position: relative; }
 .gm-canvas { display: block; cursor: crosshair; flex: none; position: relative; z-index: 1; }
 .gm-axis { display: block; flex: none; position: sticky; left: 0; z-index: 2; }
+/* Positionscursor (s. render.js `makeCursor`) -- die Linie ist das Element
+   selbst (Breite 0 plus linker Rand), damit Punkt und Beschriftung ohne
+   weitere Rechnerei daran hängen. Unter dem Achsenstreifen (z-index 2) läuft
+   er durch, nicht darüber. */
+.gm-cursor {
+  position: absolute;
+  width: 0;
+  border-left: 1px solid #0b0b0b;
+  pointer-events: none;
+  z-index: 1;
+}
+.gm-cursor[hidden] { display: none; }
+.gm-cursor-dot {
+  position: absolute;
+  left: 0;
+  width: 9px;
+  height: 9px;
+  margin: -5px 0 0 -5px;
+  border: 1.5px solid #fff;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+}
+.gm-cursor-dot[hidden] { display: none; }
+/* `sticky` innerhalb der Cursorlinie: bleibt beim vertikalen Scrollen am
+   oberen Rand sichtbar. Die X-Achse steht ganz unten und ist in einem flachen
+   Ausschnitt oft weggescrollt -- die Zeit steht dann hier.
+   `width: max-content`, weil das Elternelement 0 breit ist. */
+.gm-cursor-label {
+  position: sticky;
+  top: 2px;
+  width: max-content;
+  transform: translateX(-50%);
+  background: rgba(252, 252, 251, 0.95);
+  border: 1px solid #c9c8c2;
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: #0b0b0b;
+}
 .gm-tip {
   position: absolute;
   pointer-events: none;
