@@ -59,6 +59,11 @@ const MIN_MAIN_H = 240;
 const CURSOR_COLOR = "#0b0b0b";
 const CURSOR_REVEAL_PAD = 48;
 
+// `posclick` (s. `setupHover`): bis hierhin darf sich der Zeiger zwischen
+// Drücken und Loslassen bewegen und gilt noch als Klick. Der Chart scrollt
+// waagerecht -- eine Wischgeste darf nicht als Ortsangabe durchgehen.
+const CLICK_SLOP_PX = 4;
+
 // Die einzigen beiden Maße, die von der Containergröße abhängen. Als eigene
 // Funktion, weil der ResizeObserver sie ohne Redraw auswerten können muss.
 function dimsFor(host, { hours, rowsH, stripH, minMainH }) {
@@ -1800,21 +1805,49 @@ function setupHover(host, canvas, axis, grid, info) {
   // erreicht (der Streifen fängt die Pointer-Events ab).
   axis.addEventListener("pointerenter", () => { tip.style.display = "none"; emitPos(null); });
 
+  // Chartpixel -> Position auf der X-Achse plus nächstliegende Datenspalte.
+  const p0 = grid.pos[0], p1 = grid.pos[grid.pos.length - 1];
+  function posAt(px) {
+    const pos = clamp(p0 + (px - x.left) / (x.right - x.left) * (p1 - p0), p0, p1);
+    let index = 0, best = Infinity;
+    for (let j = 0; j < grid.pos.length; j++) {
+      const d = Math.abs(grid.pos[j] - pos);
+      if (d < best) { best = d; index = j; }
+    }
+    return { pos, index };
+  }
+
+  // Klick meldet dieselbe Stelle als `posclick`. Bewusst ein eigenes Event und
+  // nicht `poshover` mit Zusatzflag: eine Host-App hängt daran etwas
+  // Verbindliches (droneforecast setzt die Masterzeit, an der Radar/Satellit
+  // und die Flächenlayer hängen), und das darf eine Zeigerbewegung niemals
+  // auslösen -- ein Klick ist eine Ansage, ein Hover eine Frage.
+  let downAt = null;
+  canvas.addEventListener("pointerdown", (e) => { downAt = { x: e.clientX, y: e.clientY }; });
+  // Übernimmt der Browser den Zeiger fürs Scrollen (Wischen auf Touch), ist die
+  // Geste keine Ortsangabe mehr -- Startpunkt verwerfen.
+  canvas.addEventListener("pointercancel", () => { downAt = null; });
+  canvas.addEventListener("click", (e) => {
+    const from = downAt;
+    downAt = null;
+    // Gewischt statt geklickt (der Chart scrollt waagerecht) -> keine Ansage.
+    if (from && Math.hypot(e.clientX - from.x, e.clientY - from.y) > CLICK_SLOP_PX) return;
+    const r = canvas.getBoundingClientRect();
+    const px = e.clientX - r.left, py = e.clientY - r.top;
+    if (px < x.left || px > x.right || py < mainTop || py > chartBot) return;
+    host.dispatchEvent(new CustomEvent("posclick", {
+      bubbles: true, composed: true, detail: posAt(px),
+    }));
+  });
+
   canvas.addEventListener("pointermove", (e) => {
     const r = canvas.getBoundingClientRect();
     const px = e.clientX - r.left, py = e.clientY - r.top;
-    const p0 = grid.pos[0], p1 = grid.pos[grid.pos.length - 1];
-    const frac = (px - x.left) / (x.right - x.left);
-    const pGuess = p0 + frac * (p1 - p0);
-    let i = 0, best = Infinity;
-    for (let j = 0; j < grid.pos.length; j++) {
-      const d = Math.abs(grid.pos[j] - pGuess);
-      if (d < best) { best = d; i = j; }
-    }
+    const { pos: pGuess, index: i } = posAt(px);
     const inX = px >= x.left && px <= x.right;
     // Position auch über den Bodenzeilen melden: dort ist die Zeit genauso
     // eindeutig, nur der Höhen-Tooltip hätte nichts zu sagen.
-    emitPos(inX && py >= mainTop && py <= chartBot ? clamp(pGuess, p0, p1) : null, i);
+    emitPos(inX && py >= mainTop && py <= chartBot ? pGuess : null, i);
     if (py < mainTop || py > mainBot || !inX) { tip.style.display = "none"; return; }
     // Achsenwert ist im Path-Modus AMSL (s. `amslGrid`); gesampelt wird auf
     // dem AGL-Grid, also vorher die Modell-Orographie der Spalte abziehen.

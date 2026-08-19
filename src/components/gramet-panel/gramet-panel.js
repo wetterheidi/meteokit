@@ -42,10 +42,17 @@
  * Höhenbereich-Umschalter oder Ebenen-Checkbox), `close` (Klick auf ×,
  * Host entscheidet, ob/wie das Panel verschwindet -- z. B. `hidden`),
  * `poshover` (detail: `{ pos, index }` bzw. `{ pos: null }` beim Verlassen --
- * die gehoverte Stelle der X-Achse). Zusammen mit der `cursor`-Property ist
- * das die Synchronisierung in beide Richtungen: `poshover` meldet, wo der
- * Zeiger im Chart steht, `cursor` zeigt, wo er anderswo steht. Beide sprechen
- * dieselbe Größe (s. `cursor`).
+ * die gehoverte Stelle der X-Achse) und `posclick` (detail: `{ pos, index }`,
+ * dieselbe Stelle bei einem Klick; ein Zeigerzug im waagerecht scrollenden
+ * Chart löst es nicht aus). Zusammen mit der `cursor`-Property ist das die
+ * Synchronisierung in beide Richtungen: `poshover`/`posclick` melden, wo der
+ * Zeiger im Chart steht, `cursor` zeigt, wo er anderswo steht. Alle drei
+ * sprechen dieselbe Größe (s. `cursor`).
+ *
+ * `poshover` und `posclick` sind mit Absicht getrennt: Hover ist eine Frage
+ * (flüchtig, beliebig oft), Klick eine Ansage. Wo an der Position der
+ * Host-App etwas Teures hängt -- neu geladene Kartenlayer etwa --, gehört sie
+ * an den Klick, nie an den Hover.
  */
 
 import css from "./gramet-panel.css?inline";
