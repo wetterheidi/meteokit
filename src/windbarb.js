@@ -33,10 +33,17 @@ export function windBarbMarkup(spdKt, dirFromDeg, { size = 44, side = 1, color =
   const SW = Math.max(1, size * 0.045), HALO = SW + size * 0.08;
 
   if (spdKt < 2.5) {
-    const r1 = size * 0.091, r2 = size * 0.182;
-    const ring = (stroke, sw) => `<circle cx="0" cy="0" r="${r1}" fill="none" stroke="${stroke}" stroke-width="${sw}"/>`
-      + `<circle cx="0" cy="0" r="${r2}" fill="none" stroke="${stroke}" stroke-width="${sw}"/>`;
-    return `<g>${ring(halo, HALO)}${ring(color, SW)}</g>`;
+    // Dezenter als die Sturmfieder-Linien: kleinerer Radius, dünnerer Stroke
+    // und reduzierte Deckkraft, damit der Kalmenkreis nicht als Bullseye über
+    // den Fiedern dominiert (Feedback: Kreis stach zu stark hervor). Statt
+    // Halo (dickerer Stroke hinter dem Ring) ein einzelner dünner weißer Ring
+    // mittig zwischen r1/r2 für Kontrast gegen die Kartenfarben.
+    const r1 = size * 0.075, r2 = size * 0.145, r3 = (r1 + r2) / 2;
+    const csw = Math.max(0.75, size * 0.032);
+    const inkRings = `<circle cx="0" cy="0" r="${r1}" fill="none" stroke="${color}" stroke-width="${csw}" stroke-opacity="0.55"/>`
+      + `<circle cx="0" cy="0" r="${r2}" fill="none" stroke="${color}" stroke-width="${csw}" stroke-opacity="0.55"/>`;
+    const middleRing = `<circle cx="0" cy="0" r="${r3}" fill="none" stroke="${halo}" stroke-width="${csw}" stroke-opacity="0.85"/>`;
+    return `<g>${inkRings}${middleRing}</g>`;
   }
 
   let rem = Math.round(spdKt / 5) * 5;

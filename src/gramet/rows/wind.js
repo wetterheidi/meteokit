@@ -73,8 +73,12 @@ function drawBarb(ctx, cx, cy, spdKt, dirDeg, { size = 22, color = "#0b1220" } =
   ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = SW; ctx.lineCap = "round";
 
   if (spdKt < 2.5) {
-    ctx.beginPath(); ctx.arc(0, 0, size * 0.091, 0, Math.PI * 2); ctx.stroke();
-    ctx.beginPath(); ctx.arc(0, 0, size * 0.182, 0, Math.PI * 2); ctx.stroke();
+    // Dezenter als windbarb.js's r1/r2 (Feedback: Kalmenkreis dominierte über
+    // den Fiedern): kleinerer Radius, dünnerer Stroke, reduzierte Deckkraft.
+    ctx.lineWidth = Math.max(0.75, size * 0.032);
+    ctx.globalAlpha = 0.55;
+    ctx.beginPath(); ctx.arc(0, 0, size * 0.075, 0, Math.PI * 2); ctx.stroke();
+    ctx.beginPath(); ctx.arc(0, 0, size * 0.145, 0, Math.PI * 2); ctx.stroke();
     ctx.restore();
     return;
   }
