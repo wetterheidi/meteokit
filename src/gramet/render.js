@@ -1335,8 +1335,11 @@ function turbulenceModeratePath(cx, cy, size) {
 // Symbol danach, sie sollen oben liegen.
 //
 // `kind` aus derive.js bestimmt das Symbol:
-//   "cb"  -> C_L 9 (Cumulonimbus capillatus, mit Amboss)
-//   "tcu" -> C_L 3 (Cumulonimbus calvus, noch ohne Amboss)
+//   "cb"   -> C_L 9 (Cumulonimbus capillatus, mit Amboss)
+//   "tcu"  -> C_L 3 (Cumulonimbus calvus, noch ohne Amboss)
+//   "none" -> kein Symbol, nur der Schaft (Parcel-Rechnung deckt laut
+//             Towering-Hürde nicht mal eine TCU -- ein per weather_code
+//             erzwungener Schaft bleibt sichtbar, aber ohne unbelegtes Symbol)
 // Streng nach Schlüssel wäre eine Cumulus congestus C_L 2; C_L 3 ist hier
 // bewusst gesetzt (so vorgegeben) und passt zur Klassifikation in derive.js
 // insofern, als eine ausgelöste, mächtige Zelle ohne vergletscherten Oberrand
@@ -1351,6 +1354,7 @@ const GLYPH_MIN_GAP = 1.4; // Vielfaches der Symbolgröße zwischen zwei Mitten
 function drawCbGlyphs(ctx, cells) {
   let lastX = -Infinity;
   for (const c of cells) {
+    if (c.kind === "none") continue;
     // Größer als der alte Glyph: die Kartensymbole sind reine Strichzeichnung,
     // unter ~22 px läuft der Halo in die Binnenform und der Umriss verklumpt.
     const size = Math.min(24, c.hw * 1.9);

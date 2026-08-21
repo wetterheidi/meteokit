@@ -449,8 +449,8 @@ function precipEntries(grid, cloudBase, fogCols) {
 
 /**
  * Konvektions-Spalten (TCU/Cumulonimbus). Liefert pro Stunde `null` oder
- * `{ base, top, kind }` mit `kind = "tcu" | "cb"` (m AGL) für Schaft und Glyph
- * im Renderer.
+ * `{ base, top, kind }` mit `kind = "cb" | "tcu" | "none"` (m AGL) für Schaft
+ * und Glyph im Renderer. `"none"` heißt: Schaft ja, Symbol nein (s. u.).
  *
  * OB eine Spalte entsteht, entscheiden drei Wege:
  *   1. `weather_code` — TS (Gewitter) oder SH/+SH (Schauer) sind direkte
@@ -466,16 +466,23 @@ function precipEntries(grid, cloudBase, fogCols) {
  * `CB_FALLBACK_TOP_M` — bewusst nie der Modelldeckel (s. `precipEntries`).
  * Basis: CCL, ersatzweise die allgemeine Wolkenbasis.
  *
- * Über allen drei Wegen liegt die Towering-Hürde: der Oberrand muss
- * `TCU_MIN_ABOVE_FREEZING_M` über der 0-°C-Grenze stehen. Sie ist ein hartes
- * Veto — eine Stunde, die daran scheitert, bekommt gar keinen Eintrag, also
- * auch keinen Schaft. Ihr Schauer bleibt trotzdem sichtbar: er läuft über die
- * normale Wolkendarstellung und `precipEntries`.
+ * WELCHES SYMBOL (falls überhaupt eins): ausschließlich die Parcel-Rechnung
+ * entscheidet, nie `weather_code` allein — ein TS-Report ohne physikalische
+ * Deckung soll nie ein Amboss- oder TCU-Symbol erzwingen (s. Feedback, führte
+ * zu einem Amboss weit unterhalb der Vereisungsschicht).
+ *   - Erreicht der Oberrand nicht `TCU_MIN_ABOVE_FREEZING_M` über der
+ *     0-°C-Grenze ("Towering"-Hürde), gibt es KEIN Symbol (`kind: "none"`) —
+ *     laut Parcel-Rechnung ein gewöhnlicher, unkritischer Cumulus. Ein per
+ *     `weather_code` erzwungener Schaft bleibt trotzdem stehen (s. u.).
+ *   - Sonst: Cb nur wenn der Oberrand vergletschert (T <= CB_GLACIATION_C)
+ *     UND tropopausennah ist — also dort, wo sich tatsächlich ein Amboss
+ *     ausbreiten kann. +SH zählt bewusst NICHT als Cb-Signal: Schauer-
+ *     intensität allein belegt keinen vergletscherten Oberrand. Sonst TCU.
  *
- * TCU vs. Cb: Cb nur bei TS im weather_code oder wenn der Oberrand
- * vergletschert (T <= CB_GLACIATION_C) UND tropopausennah ist — also dort, wo
- * sich tatsächlich ein Amboss ausbreiten kann. +SH zählt bewusst NICHT als
- * Cb-Signal: Schauerintensität allein belegt keinen vergletscherten Oberrand.
+ * OB überhaupt ein Schaft steht, ist davon unabhängig: `wxThunder` hebelt die
+ * Towering-Hürde für die EXISTENZ der Spalte aus (ein gemeldetes Gewitter,
+ * dem die Rechnung nicht mal Towering zugesteht, unterschlagen wäre der
+ * größere Fehler) — aber eben ohne Symbol, wenn die Physik es nicht deckt.
  */
 function cbColumns(grid, cloudFrac, cloudBase, tropopauseLine, fogCols) {
   const { nk, times, pos, surface } = grid;
@@ -520,21 +527,29 @@ function cbColumns(grid, cloudFrac, cloudBase, tropopauseLine, fogCols) {
     }
 
     // Towering-Hürde (s. TCU_MIN_ABOVE_FREEZING_M). TS im weather_code hebelt
-    // sie aus: ein gemeldetes Gewitter ohne vereisten Oberrand ist ein
-    // Widerspruch, in dem unsere Oberrand-Schätzung (Fallback-Kette bis hinab
-    // zu CB_FALLBACK_TOP_M) die unsicherere Größe ist -- die Zelle ganz zu
-    // unterschlagen wäre der größere Fehler.
+    // nur die Existenz der Spalte aus: ein gemeldetes Gewitter, dem unsere
+    // Parcel-Rechnung nicht mal eine Towering-Wolke zugesteht, unterschlagen
+    // wäre der größere Fehler -- aber die Rechnung bleibt die Quelle für
+    // Amboss/Symbol (s. u.), TS allein erzwingt kein Symbol mehr.
     const freezingZ = convectiveFreezingHeightAt(grid, i);
     const towering = Number.isFinite(freezingZ) && top - freezingZ >= TCU_MIN_ABOVE_FREEZING_M;
     if (!towering && !wxThunder) {
       out.push(null); continue;
     }
 
-    const topTC = tempAtHeight(grid, i, top);
-    const glaciated = Number.isFinite(topTC) && topTC <= CB_GLACIATION_C;
-    const tropZ = tropAt(tropopauseLine, pos[i]);
-    const nearTropopause = Number.isFinite(tropZ) && tropZ - top < CB_TROPOPAUSE_GAP_M;
-    const kind = wxThunder || (glaciated && nearTropopause) ? "cb" : "tcu";
+    // Kein Symbol (nur Schaft) unterhalb der Towering-Hürde: ohne die
+    // Mindesthöhe über der Frostgrenze ist es laut Parcel-Rechnung ein
+    // gewöhnlicher, unkritischer Cumulus -- weder TCU- noch Cb-Symbol wären
+    // gedeckt, auch wenn TS im weather_code die Spalte selbst erzwungen hat
+    // (s. Feedback: Amboss/TCU-Symbol nie widersprüchlich zur Physik zeigen).
+    let kind = "none";
+    if (towering) {
+      const topTC = tempAtHeight(grid, i, top);
+      const glaciated = Number.isFinite(topTC) && topTC <= CB_GLACIATION_C;
+      const tropZ = tropAt(tropopauseLine, pos[i]);
+      const nearTropopause = Number.isFinite(tropZ) && tropZ - top < CB_TROPOPAUSE_GAP_M;
+      kind = glaciated && nearTropopause ? "cb" : "tcu";
+    }
     out.push({ base, top, kind });
   }
   return out;
