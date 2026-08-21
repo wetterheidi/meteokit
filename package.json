@@ -24,6 +24,7 @@
     "./crosssection": "./src/crosssection.js",
     "./astro": "./src/astro.js",
     "./windbarb": "./src/windbarb.js",
+    "./wwsymbols": "./src/wwsymbols.js",
     "./package.json": "./package.json"
   }
 }
