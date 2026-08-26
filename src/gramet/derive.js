@@ -71,7 +71,12 @@ const TRIGGER_EXCESS_K = 1;
 const PRECIP_FALLBACK_TOP_M = 2000;
 // Unterhalb dieser Menge (mm/h) gilt Niederschlag als nicht mehr relevant für
 // den Vorhang, selbst wenn weather_code noch "-RA" o.ä. meldet (Rundungsreste).
-const PRECIP_MIN_RATE = 0.05;
+// War 0.05: zu niedrig, um Modell-Rauschen von echtem Niesel zu trennen --
+// löste in precipEntries() über `hasAmount` allein (ODER mit `hasWx`) Vorhänge
+// aus, obwohl weather_code "NSW" meldete und die Sicht bei >10 km blieb (s.
+// Feedback: Vorhänge ohne Wolke und ohne WW-Code gegen Ende langer
+// Trajektorien). 0.1 mm/h reichte noch nicht aus (s. Feedback); 0.2 mm/h.
+const PRECIP_MIN_RATE = 0.2;
 
 export function deriveView(grid) {
   const d = deriveGrid(grid);
