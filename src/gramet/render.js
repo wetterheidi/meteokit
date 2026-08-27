@@ -41,7 +41,11 @@ const INK = "#0b0b0b", MUTED = "#52514e", GRID = "#d9d8d3";
 // Rechter Rand: Platz für die Beschriftungskästchen der Isothermen/Isotachen/
 // Tropopause, die am rechten Ende ihrer Polylinie sitzen (also i. d. R. exakt
 // auf `x.right`) -- mit dem alten 16 px wurden sie abgeschnitten.
-const TOPAX = 22, GAP = 16, BOT = 22, M = { l: 50, r: 52 };
+// BOT auf 32 (statt 22) fuer die Path-Achse: die zeigt seit der Uhrzeit-
+// Zeile (s. `drawPathAxis`) zwei Textzeilen statt einer, sonst wuerde die
+// untere abgeschnitten. Im Punkt-Modus (eine Zeile, `drawTimeAxis`) bleibt
+// dadurch nur etwas mehr Luft am unteren Rand -- kein separater Wert noetig.
+const TOPAX = 22, GAP = 16, BOT = 32, M = { l: 50, r: 52 };
 
 // Untergrenze der Hauptfläche. Ist im Container weniger Platz, wächst der
 // Chart NICHT weiter nach unten zusammen, sondern der Rest wird gescrollt
@@ -1744,13 +1748,36 @@ function pathGridLines(ctx, grid, x, top, bot) {
   ctx.setLineDash([]);
 }
 
+// Zweizeilig: oben verstrichene Zeit (wie bisher), darunter die absolute
+// Uhrzeit -- dieselbe Umrechnung wie im Hover-Cursor (s. `makeCursor`,
+// "verstrichene Zeit UND Uhrzeit"), nur fest auf der Achse statt nur beim
+// Zeigen. Ohne das ließ sich ein Tick nur relativ zum Pfadstart lesen; bei
+// einem um Mitternacht startenden oder mehrere Stunden langen Pfad musste
+// man den Bezug zur echten Uhrzeit erst im Kopf nachrechnen (s. Feedback).
+// "loc" markiert explizit Ortszeit -- die App zeigt Start-/Zielzeiten sonst
+// in UTC (s. `app.js` `timeheadlabel`), ohne den Zusatz wäre die Achse hier
+// leicht mit UTC zu verwechseln.
 function drawPathAxis(ctx, grid, x, yTop, yBot) {
-  const { pos } = grid;
+  const { pos, times } = grid;
   const ticks = niceTicks(pos[0], pos[pos.length - 1], PATH_TICK_COUNT);
-  ctx.textBaseline = "alphabetic";
-  ctx.fillStyle = INK; ctx.font = "600 10px system-ui, sans-serif"; ctx.textAlign = "center";
+  ctx.textBaseline = "alphabetic"; ctx.textAlign = "center";
+  let lastDay = null;
   for (const t of ticks) {
-    ctx.fillText(fmtElapsed(t), x(t), yBot + 12);
+    ctx.fillStyle = INK; ctx.font = "600 10px system-ui, sans-serif";
+    ctx.fillText(fmtElapsed(t), x(t), yBot + 11);
+
+    const abs = interpAt(pos, times, t);
+    if (!Number.isFinite(abs)) continue;
+    const d = new Date(abs * 1000);
+    const dayKey = d.toDateString();
+    const hhmm = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+    const changed = dayKey !== lastDay;
+    lastDay = dayKey;
+    ctx.fillStyle = MUTED; ctx.font = "9px system-ui, sans-serif";
+    ctx.fillText(
+      changed ? `${d.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit" })} ${hhmm} loc` : `${hhmm} loc`,
+      x(t), yBot + 23,
+    );
   }
 }
 
