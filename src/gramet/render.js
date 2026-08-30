@@ -1727,6 +1727,13 @@ function drawTimeAxis(ctx, times, x, yTop, yBot) {
       ctx.fillText(String(h).padStart(2, "0"), x(times[i]), yBot + 11);
     }
   }
+  // Punkt-Modus zeigt Ortszeit (Ausnahme -- die App zeigt Zeiten sonst
+  // durchgehend in UTC, s. `app.js` `timeheadlabel`, und Path-Modus unten in
+  // `drawPathAxis`). An einem festen Ort ist das eindeutig, deshalb hier
+  // erlaubt; sticky Rand-Tag wie AMSL/AGL (`drawHeightAxis`), bleibt beim
+  // horizontalen Scrollen sichtbar, anders als die Tick-Beschriftungen.
+  ctx.fillStyle = MUTED; ctx.font = "600 8px system-ui, sans-serif"; ctx.textAlign = "right";
+  ctx.fillText("loc", x.left - 4, yBot + 12);
 }
 
 // --- Path-Achse (verstrichene Zeit seit Pfadbeginn, Path-Modus) -------------
@@ -1754,9 +1761,11 @@ function pathGridLines(ctx, grid, x, top, bot) {
 // Zeigen. Ohne das ließ sich ein Tick nur relativ zum Pfadstart lesen; bei
 // einem um Mitternacht startenden oder mehrere Stunden langen Pfad musste
 // man den Bezug zur echten Uhrzeit erst im Kopf nachrechnen (s. Feedback).
-// "loc" markiert explizit Ortszeit -- die App zeigt Start-/Zielzeiten sonst
-// in UTC (s. `app.js` `timeheadlabel`), ohne den Zusatz wäre die Achse hier
-// leicht mit UTC zu verwechseln.
+// UTC statt Ortszeit -- ein Pfad kann eine Zeitzonengrenze überqueren, dann
+// hätte "Ortszeit" keinen eindeutigen Bezugsort mehr (welcher Punkt des
+// Pfads?). Passt außerdem zur restlichen App, die Zeiten default in UTC
+// zeigt (s. `app.js` `timeheadlabel`); nur der Punkt-Modus (fester Ort, s.
+// `drawTimeAxis`) macht die Ausnahme und zeigt Ortszeit.
 function drawPathAxis(ctx, grid, x, yTop, yBot) {
   const { pos, times } = grid;
   const ticks = niceTicks(pos[0], pos[pos.length - 1], PATH_TICK_COUNT);
@@ -1769,13 +1778,15 @@ function drawPathAxis(ctx, grid, x, yTop, yBot) {
     const abs = interpAt(pos, times, t);
     if (!Number.isFinite(abs)) continue;
     const d = new Date(abs * 1000);
-    const dayKey = d.toDateString();
-    const hhmm = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+    const dayKey = d.toISOString().slice(0, 10);
+    const hhmm = `${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}`;
     const changed = dayKey !== lastDay;
     lastDay = dayKey;
     ctx.fillStyle = MUTED; ctx.font = "9px system-ui, sans-serif";
     ctx.fillText(
-      changed ? `${d.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit" })} ${hhmm} loc` : `${hhmm} loc`,
+      changed
+        ? `${String(d.getUTCDate()).padStart(2, "0")}.${String(d.getUTCMonth() + 1).padStart(2, "0")}. ${hhmm} UTC`
+        : `${hhmm} UTC`,
       x(t), yBot + 23,
     );
   }
@@ -1787,6 +1798,16 @@ function fmtElapsed(sec) {
   const h = Math.floor(s / 3600), m = Math.round((s % 3600) / 60);
   if (h <= 0) return `+${m} min`;
   return m === 0 ? `+${h} h` : `+${h}:${String(m).padStart(2, "0")} h`;
+}
+
+// Uhrzeit für Tooltip und Cursor (s. `setupHover`, `makeCursor`) -- dieselbe
+// Regel wie auf der Achse (`drawPathAxis`/`drawTimeAxis`): Path-Modus UTC
+// (Zeitzonengrenze), Punkt-Modus Ortszeit.
+function fmtClock(sec, isPath) {
+  return new Date(sec * 1000).toLocaleString("de-DE", {
+    weekday: "short", hour: "2-digit", minute: "2-digit",
+    ...(isPath ? { timeZone: "UTC" } : {}),
+  });
 }
 
 // Path-Modus: sichtbares Ende am rechten Chartrand, wenn der Pfad die
@@ -1891,7 +1912,7 @@ function setupHover(host, canvas, axis, grid, info) {
       tip.style.left = `${px + 12}px`;
       tip.style.top = `${py + 12}px`;
       tip.innerHTML = [
-        `<b>${new Date(grid.times[i] * 1000).toLocaleString("de-DE", { weekday: "short", hour: "2-digit", minute: "2-digit" })}</b>`,
+        `<b>${fmtClock(grid.times[i], isPath)}</b>`,
         `Höhe ${fmtHeight(h)} AMSL`,
         "unter Modell-Grund",
       ].join("<br>");
@@ -1920,7 +1941,7 @@ function setupHover(host, canvas, axis, grid, info) {
     tip.style.left = `${px + 12}px`;
     tip.style.top = `${py + 12}px`;
     tip.innerHTML = [
-      `<b>${new Date(grid.times[i] * 1000).toLocaleString("de-DE", { weekday: "short", hour: "2-digit", minute: "2-digit" })}</b>`,
+      `<b>${fmtClock(grid.times[i], isPath)}</b>`,
       isPath
         ? `Höhe ${fmtHeight(h)} AMSL · ${fmtHeight(hAgl)} über Modellgrund`
         : `Höhe ${fmtHeight(h)}`,
@@ -1983,9 +2004,7 @@ function makeCursor(plot, scroller, { x, y, grid, isPath, top, bot, zMin, zMax, 
     // X-Achse steht ganz unten und ist beim vertikalen Scrollen oft außer
     // Sicht (s. `MIN_MAIN_H`), deshalb trägt der Cursor sie mit sich.
     const t = interpAt(grid.pos, grid.times, pos);
-    const clock = Number.isFinite(t)
-      ? new Date(t * 1000).toLocaleString("de-DE", { weekday: "short", hour: "2-digit", minute: "2-digit" })
-      : "";
+    const clock = Number.isFinite(t) ? fmtClock(t, isPath) : "";
     label.textContent = isPath ? `${fmtElapsed(pos - p0)} · ${clock}` : clock;
 
     // Waagerecht nachscrollen, wenn die Position außerhalb des sichtbaren
