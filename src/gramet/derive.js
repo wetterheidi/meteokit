@@ -466,9 +466,13 @@ function precipEntries(grid, cloudBase, fogCols) {
  *   3. Auffangpfad mit den alten, unkalibrierten CAPE-/Updraft-Schwellen, wenn
  *      1. und 2. nichts liefern (z. B. CCL nicht bestimmbar).
  *
- * WIE HOCH sie reicht: EL aus der Parcel-Rechnung, sonst (Fallback-Kette) der
- * höchste vergletscherte Wolkenlevel, sonst irgendeine Wolkenspur, sonst
- * `CB_FALLBACK_TOP_M` — bewusst nie der Modelldeckel (s. `precipEntries`).
+ * WIE HOCH sie reicht: entrainment-gedämpftes EL aus der Parcel-Rechnung
+ * (`elZDiluted`, s. `hazards/convection.js` "ENTRAINMENT" für die Physik/
+ * Quellen — realistischer als das undiluted EL, das eine reale Quellwolke
+ * wegen Durchmischung mit Umgebungsluft nie ganz erreicht), sonst
+ * (Fallback-Kette) der höchste vergletscherte Wolkenlevel, sonst irgendeine
+ * Wolkenspur, sonst `CB_FALLBACK_TOP_M` — bewusst nie der Modelldeckel
+ * (s. `precipEntries`).
  * Basis: CCL, ersatzweise die allgemeine Wolkenbasis.
  *
  * WELCHES SYMBOL (falls überhaupt eins): ausschließlich die Parcel-Rechnung
@@ -514,7 +518,7 @@ function cbColumns(grid, cloudFrac, cloudBase, tropopauseLine, fogCols) {
 
     const c = conv[i];
     const anyTop = anyCloudTopAt(grid, cloudFrac, i);
-    const top = Number.isFinite(c?.elZ) ? c.elZ
+    const top = Number.isFinite(c?.elZDiluted) ? c.elZDiluted
       : Number.isFinite(deepTop) ? deepTop
         : Number.isFinite(anyTop) ? anyTop : CB_FALLBACK_TOP_M;
     // Basis muss unter dem Oberrand liegen -- bei hochbasiger Konvektion ohne

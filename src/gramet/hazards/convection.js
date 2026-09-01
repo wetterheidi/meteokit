@@ -30,6 +30,66 @@
  *
  * Einheiten hier wie in der Quelle: hPa/°C an der Schnittstelle der
  * Thermo-Funktionen, K nur intern; Höhen m AGL wie im übrigen GRAMET.
+ *
+ * ENTRAINMENT (elZDiluted/ecape): Das obige EL ist ein UNDILUTED Parcel --
+ * real mischen Cumulus-Updrafts Umgebungsluft ein und verlieren dadurch
+ * Auftrieb, sodass der tatsächlich erreichte Oberrand niedriger liegt. Genau
+ * das fehlte bisher: die Cb-Spalte sprang beim Auslösen (T_2m >= TA) sofort
+ * auf den vollen undiluted EL, statt sich -- wie eine reale Quellwolke von
+ * Cu humilis über Cu mediocris zu Cu congestus -- erst mit wachsender
+ * Instabilität tiefer zu entwickeln.
+ *
+ * Ein erster Anlauf hierzu (Peters et al. 2023, Eq. 18, mit einer aus der
+ * stundenweisen Grenzschichttiefe abgeleiteten Entrainmentrate) scheiterte an
+ * echten Fällen: die dort nötige Radius-Skalierung extrapoliert bei den in
+ * der Praxis üblichen flachen Grenzschichten (10er Meter) weit außerhalb des
+ * im Paper geprüften Bereichs und liefert dann unsinnige Werte (mal
+ * Totalunterdrückung, mal ein von Epsilon praktisch unabhängiger Restterm,
+ * der trotz extremer Verdünnung fast bis zum undiluted EL reicht) --
+ * s. Git-Historie/Konversation, nicht weiter verfolgt.
+ *
+ * Stattdessen jetzt: Gregory (2001, "Estimation of entrainment rate in
+ * simple models of convective clouds", Q. J. R. Meteorol. Soc. 127, 53-72).
+ * Kerngedanke: die Entrainmentrate ist keine von außen geschätzte Größe,
+ * sondern ergibt sich selbstkonsistent aus dem Auftrieb B und der
+ * Updraft-kinetischen-Energie w² des Parcels selbst,
+ *   epsilon = C * B / w²                                            (Eq. 3)
+ *   d(w²)/dz = 2a*B - 2*epsilon*w²                                   (Eq. 2)
+ *   dh_u/dz = epsilon * (h_e - h_u)                                  (Eq. 1)
+ * (h = "moist static energy", wie bei Peters et al.; dieselbe Grundform).
+ * Damit braucht es keine externe Längenskala mehr (kein Extrapolations-
+ * problem): früh, wenn B und w² beide klein sind, ist Epsilon groß (rasche
+ * Verdünnung, Cu humilis); mit wachsendem B/w² im Tagesverlauf sinkt Epsilon
+ * (Cu med -> TCU/Cb) -- genau der gesuchte, aus der Parcel-Dynamik selbst
+ * folgende Übergang. Del Genio & Wu (2010, "The Role of Entrainment in the
+ * Diurnal Cycle of Continental Convection", J. Climate 23, 2722-2738) haben
+ * dieses Schema an cloud-resolving-WRF-Simulationen des flach-zu-tief-
+ * Übergangs KONTINENTALER (nicht ozeanisch-tropischer) Konvektion als beste
+ * unter mehreren getesteten Parametrisierungen bestätigt -- die für unseren
+ * Fall (mitteleuropäisches Tageskonvektion) einschlägige Referenz.
+ *
+ * Die Koeffizienten C und a sowie die Kappung von Epsilon sind NICHT aus
+ * einer Abbildung abgelesen (Del Genio & Wu geben ihr eigenes, diagnostisch
+ * angepasstes C(z) nur grafisch, nicht als Formel), sondern aus einer
+ * echten, dokumentierten Implementierung von Gregory (2001) im operationellen
+ * Chikira-Sugiyama-Cumulusschema (Chikira & Sugiyama 2010, J. Atmos. Sci. 67,
+ * 2171-2193) übernommen: physics/CONV/Chikira_Sugiyama/cs_conv.F90,
+ * github.com/NCAR/ccpp-physics (NOAA/NCAR Common Community Physics Package).
+ * Von dort: CLMD=0.60 ("entrainment efficiency", = C), PA=0.15 (Auftrieb ->
+ * Updraft-KE-Faktor, = a), sowie die Kappung ELAMIN=0/ELAMAX=4e-3 m^-1 und
+ * die Dämpfungslängenskala TAUZ=1e4 m der w²-Fortschreibung -- diese Kappung
+ * ist es, die das Problem des ersten Anlaufs strukturell vermeidet: Epsilon
+ * kann dort gar nicht mehr auf physikalisch bedeutungslose Werte explodieren.
+ * `ascendFromCclEntraining` ist ein Prädiktor-Korrektor-Schritt je Level, wie
+ * dort implementiert, nur ohne dessen Eis-/Niederschlags-/Ensemble-Anteile
+ * (die unser einfaches Ein-Parcel-Modell nicht führt) und mit unserer
+ * eigenen, im übrigen Modul bereits verwendeten Auftriebsformel (virtuelle
+ * Temperatur, ohne Kondensatlast -- s. Modulkopf oben zu `ascendFromCcl`)
+ * statt der dortigen vollen Wolkenwasserbilanz. Die Updraft-Start-KE an der
+ * CCL (GREGORY_W2_SEED) ist NICHT aus der Quelle übernommen -- die hat dafür
+ * ein eigenes Wolkenbasis-Geschwindigkeitsspektrum, das hier nicht
+ * nachgebildet wird -- sondern ein kleiner, als Auslöse-Regularisierung
+ * gekennzeichneter Platzhalter (s. dort).
  */
 
 const KELVIN = 273.15;
@@ -41,6 +101,20 @@ const DP_STEP_HPA = 5;
 // Harte Abbruchgrenze der Aufstiegssuche; normalerweise bricht schon der
 // Gitterdeckel ab (envSampler liefert dort null).
 const P_TOP_HPA = 120;
+
+// Entrainment (Gregory 2001 / Chikira & Sugiyama 2010), s. Modulkopf
+// ("ENTRAINMENT") für Herleitung/Quellen.
+const LV_REF = 2500800;      // J/kg, Lv am Tripelpunkt (wie bei Peters et al. 2023, Annahme 4)
+const GREGORY_CLMD = 0.60;   // "entrainment efficiency" C in epsilon=C*B/w² (CLMD in cs_conv.F90)
+const GREGORY_PA = 0.15;     // Auftrieb->Updraft-KE-Faktor a in d(w²)/dz=2aB-... (PA in cs_conv.F90)
+const GREGORY_CLMDPA = GREGORY_CLMD * GREGORY_PA;
+const GREGORY_CLMP = (1 - GREGORY_CLMD) * (2 * GREGORY_PA);
+const GREGORY_TAUZ_M = 1.0e4;  // m, Dämpfungslängenskala der w²-Fortschreibung (TAUZ in cs_conv.F90)
+const GREGORY_ELAMIN = 0;      // m^-1, untere Kappung von epsilon (ELAMIN in cs_conv.F90)
+const GREGORY_ELAMAX = 4.0e-3; // m^-1, obere Kappung von epsilon (ELAMAX in cs_conv.F90)
+const GREGORY_WCCRT = 1.0e-6;  // m²/s², Mindest-Updraft-KE (WCCRT in cs_conv.F90); darunter endet der Aufstieg
+// Start-KE an der CCL -- Platzhalter-Regularisierung, nicht aus der Quelle (s. Modulkopf).
+const GREGORY_W2_SEED = 0.01;  // m²/s² (w0 ~ 0.1 m/s)
 
 // --- Thermodynamik (portiert, s. Modulkopf) ----------------------------------
 
@@ -261,9 +335,107 @@ function ascendFromCcl(env, ccl) {
   return { elZ, elTC, cape };
 }
 
+function clip(x, lo, hi) { return Math.min(Math.max(x, lo), hi); }
+
 /**
- * Pro Stunde `{ cclZ, cclT, taC, tSfcC, elZ, elT, cape }` oder `null`, wenn
- * sich kein CCL bestimmen lässt — reine Parcel-Größen ohne Tuning-Parameter.
+ * Sättigte Parcel-Temperatur (°C) zu gegebener "moist static energy" `hTarget`
+ * auf Druck `pHpa`/Höhe `zM` -- Newton-Inversion von
+ * `h = CP*T + LV_REF*qsat(T,p) + G*z` (Eq. 9 bei Peters et al., hier mit der
+ * bereits vorhandenen Sättigungsfunktion `mixingRatio`). `tGuessC` als
+ * Startwert (Vorgänger-Level) macht 2-3 Iterationen genug.
+ */
+function tempFromSaturatedMse(hTarget, pHpa, zM, tGuessC) {
+  let tC = tGuessC;
+  for (let it = 0; it < 6; it++) {
+    const w = mixingRatio(tC, pHpa);
+    const h = CP * (tC + KELVIN) + LV_REF * w + G * zM;
+    const dT = 0.5;
+    const dwdT = (mixingRatio(tC + dT, pHpa) - w) / dT;
+    const dhdT = CP + LV_REF * dwdT;
+    const tCNew = tC + (hTarget - h) / dhdT;
+    if (Math.abs(tCNew - tC) < 0.01) return tCNew;
+    tC = tCNew;
+  }
+  return tC;
+}
+
+/**
+ * Ein Level-Schritt der Gregory-Verdünnung (s. Modulkopf "ENTRAINMENT"): `h`
+ * um `eps*(h_env-h)*dz` verdünnen (Eq. 1), daraus die Parcel-Temperatur und
+ * ihren (virtuell korrigierten) Auftrieb an diesem Level bestimmen.
+ */
+function stepLevelEntraining(hPrev, eps, dz, e, pHpa, tGuessC) {
+  const hEnv = CP * e.tK + LV_REF * e.w + G * e.z; // Umgebungs-MSE, tatsächliche Feuchte (Eq. 10)
+  const h = hPrev + eps * (hEnv - hPrev) * dz;
+  const tC = tempFromSaturatedMse(h, pHpa, e.z, tGuessC);
+  const tvPcl = (tC + KELVIN) * (1 + 0.608 * mixingRatio(tC, pHpa));
+  const tvEnv = e.tK * (1 + 0.608 * e.w);
+  const buoy = (G * (tvPcl - tvEnv)) / tvEnv;
+  return { tC, buoy, h };
+}
+
+/**
+ * Wie `ascendFromCcl`, aber mit selbstkonsistenter Gregory-Entrainmentrate
+ * (s. Modulkopf "ENTRAINMENT") statt des undiluted Profils -- das reale,
+ * durchmischungsbegrenzte Pendant zu EL/CAPE. Prädiktor-Korrektor je Level,
+ * wie in `cs_conv.F90` (s. Modulkopf): erst Entrainmentrate/Verdünnung/
+ * Auftrieb am unteren Levelrand schätzen (Prädiktor), damit die Updraft-KE
+ * `w2` fortschreiben, daraus am oberen Levelrand die Entrainmentrate erneut
+ * bestimmen (Korrektor) und die Verdünnung damit wiederholen.
+ *
+ * Der Aufstieg endet, sobald `w2` unter `GREGORY_WCCRT` fällt (Updraft ohne
+ * kinetische Energie) oder das Gitter endet -- nicht erst am Gitterdeckel
+ * wie beim undiluted Profil, weil ein entrainment-geschwächter Updraft real
+ * schon vorher "ausbeult".
+ */
+function ascendFromCclEntraining(env, ccl) {
+  let tPclC = ccl.tC, pCur = ccl.pHpa, zPrev = ccl.z;
+  let hPrev = CP * (ccl.tC + KELVIN) + LV_REF * mixingRatio(ccl.tC, ccl.pHpa) + G * ccl.z;
+  let buoyPrev = 0; // an der CCL per Definition neutral (Parcel = Umgebung)
+  let w2 = GREGORY_W2_SEED;
+  let ecape = 0, elZ = NaN, elTC = NaN;
+
+  for (let p = pCur - DP_STEP_HPA; p >= P_TOP_HPA; p -= DP_STEP_HPA) {
+    if (w2 <= GREGORY_WCCRT) break; // Updraft ohne kinetische Energie -- Ende
+    const e = env(p);
+    if (!e) break; // Gitterdeckel
+    const dz = e.z - zPrev;
+
+    // Prädiktor.
+    const elarm1 = clip((GREGORY_CLMDPA * buoyPrev) / w2, GREGORY_ELAMIN, GREGORY_ELAMAX);
+    const step1 = stepLevelEntraining(hPrev, elarm1, dz, e, p, tPclC);
+    const buoyAvg1 = (buoyPrev + step1.buoy) / 2;
+    let w2New = buoyAvg1 > 0
+      ? (w2 + GREGORY_CLMP * dz * buoyAvg1) / (1 + dz / GREGORY_TAUZ_M)
+      : (w2 + GREGORY_PA * 2 * dz * buoyAvg1) / (1 + dz / GREGORY_TAUZ_M + 2 * dz * GREGORY_ELAMIN);
+    w2New = Math.max(w2New, 0);
+
+    // Korrektor: Entrainmentrate mit dem neuen w² neu bestimmen, Verdünnung wiederholen.
+    const elarm2 = w2New > 0
+      ? clip((GREGORY_CLMDPA * step1.buoy) / w2New, GREGORY_ELAMIN, GREGORY_ELAMAX)
+      : 0;
+    const elar = (elarm1 + elarm2) / 2;
+    const step2 = stepLevelEntraining(hPrev, elar, dz, e, p, step1.tC);
+
+    const buoyAvg2 = (buoyPrev + step2.buoy) / 2;
+    const buoyInc = buoyAvg2 * dz;
+    if (buoyInc > 0) { ecape += buoyInc; elZ = e.z; elTC = step2.tC; }
+
+    hPrev = step2.h; buoyPrev = step2.buoy; w2 = w2New; tPclC = step2.tC;
+    pCur = p; zPrev = e.z;
+  }
+  return { elZ, elTC, ecape };
+}
+
+/**
+ * Pro Stunde `{ cclZ, cclT, taC, tSfcC, elZ, elT, cape, elZDiluted,
+ * elTDiluted, ecape }` oder `null`, wenn sich kein CCL bestimmen lässt --
+ * reine Parcel-Größen ohne freie Tuning-Parameter. `elZ`/`elT`/`cape` sind
+ * das undiluted Profil (s. `ascendFromCcl`); `elZDiluted`/`elTDiluted`/
+ * `ecape` das entrainment-gedämpfte Pendant (s. `ascendFromCclEntraining`,
+ * Modulkopf "ENTRAINMENT") -- Letzteres ist die für Zeichnung/Symbolik
+ * gedachte, realistischere Größe, ersteres bleibt zur Provenienz/Diagnose
+ * erhalten.
  *
  * Den Auslöse-Vergleich (T_2m gegen TA) macht bewusst `derive.js`: dort liegen
  * alle einstellbaren GRAMET-Schwellen beisammen, und der Vergleich braucht
@@ -282,10 +454,14 @@ export function computeColumns(grid) {
     if (!ccl) continue;
     const env = envSampler(grid, i);
     const asc = env ? ascendFromCcl(env, ccl) : { elZ: NaN, elTC: NaN, cape: 0 };
+    const ascDil = env
+      ? ascendFromCclEntraining(env, ccl)
+      : { elZ: NaN, elTC: NaN, ecape: 0 };
     const taC = dryAdiabatT(ccl.tC + KELVIN, ccl.pHpa, sfc.pSfc) - KELVIN;
     out[i] = {
       cclZ: ccl.z, cclT: ccl.tC, taC, tSfcC: sfc.tSfcC,
       elZ: asc.elZ, elT: asc.elTC, cape: asc.cape,
+      elZDiluted: ascDil.elZ, elTDiluted: ascDil.elTC, ecape: ascDil.ecape,
     };
   }
   return out;
