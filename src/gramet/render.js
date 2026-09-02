@@ -34,6 +34,7 @@ import { niceLogHeights, niceTicks, fmtH } from "../crosssection.js";
 import { CHART_PX_PER_HOUR } from "../windbarb.js";
 import { fmtHeight, fmtWind, fmtTemp, fmtDir, windUnit, windToDisplay, tempUnit, tempToDisplay } from "../units.js";
 import { metarWeather } from "../briefing.js";
+import { zoneTag, zHours, zMinutes, zDayKey, fmtDate as fmtZDate, fmtClock as fmtZClock } from "../timefmt.js";
 import * as fog from "./hazards/fog.js";
 import { TERRAIN_ATTRIBUTION } from "./terrain.js";
 
@@ -1687,8 +1688,8 @@ function timeGridLines(ctx, times, x, top, bot) {
   let lastDay = null;
   for (let i = 0; i < times.length; i++) {
     const d = new Date(times[i] * 1000);
-    if (d.getMinutes() !== 0) continue;
-    const dayKey = d.toDateString();
+    if (zMinutes(d) !== 0) continue;
+    const dayKey = zDayKey(d);
     if (dayKey !== lastDay) {
       lastDay = dayKey;
       ctx.strokeStyle = "#c9c8c2"; ctx.lineWidth = 1; ctx.setLineDash([2, 3]);
@@ -1713,12 +1714,12 @@ function drawTimeAxis(ctx, times, x, yTop, yBot) {
   ctx.textBaseline = "alphabetic";
   for (let i = 0; i < times.length; i++) {
     const d = new Date(times[i] * 1000);
-    if (d.getMinutes() !== 0) continue;
-    const h = d.getHours(), dayKey = d.toDateString();
+    if (zMinutes(d) !== 0) continue;
+    const h = zHours(d), dayKey = zDayKey(d);
     if (dayKey !== lastDay) {
       lastDay = dayKey;
       ctx.fillStyle = INK; ctx.font = "600 11px system-ui, sans-serif"; ctx.textAlign = "left";
-      ctx.fillText(d.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit" }), x(times[i]) + 3, yBot + 12);
+      ctx.fillText(fmtZDate(d, { day: "2-digit", month: "2-digit" }), x(times[i]) + 3, yBot + 12);
     } else if (h === 6 || h === 12 || h === 18) {
       ctx.fillStyle = INK; ctx.font = "600 10px system-ui, sans-serif"; ctx.textAlign = "center";
       ctx.fillText(String(h).padStart(2, "0"), x(times[i]), yBot + 12);
@@ -1727,13 +1728,13 @@ function drawTimeAxis(ctx, times, x, yTop, yBot) {
       ctx.fillText(String(h).padStart(2, "0"), x(times[i]), yBot + 11);
     }
   }
-  // Punkt-Modus zeigt Ortszeit (Ausnahme -- die App zeigt Zeiten sonst
-  // durchgehend in UTC, s. `app.js` `timeheadlabel`, und Path-Modus unten in
-  // `drawPathAxis`). An einem festen Ort ist das eindeutig, deshalb hier
-  // erlaubt; sticky Rand-Tag wie AMSL/AGL (`drawHeightAxis`), bleibt beim
-  // horizontalen Scrollen sichtbar, anders als die Tick-Beschriftungen.
+  // Punkt-Modus zeigt die vom Host per `setTimeZone` gewählte Anzeigezone
+  // (loc/UTC, s. `timefmt.js`) -- Path-Modus bleibt unten in `drawPathAxis`
+  // fest auf UTC (Zeitzonengrenze entlang des Pfads, s. dortiger Kommentar).
+  // Sticky Rand-Tag wie AMSL/AGL (`drawHeightAxis`), bleibt beim horizontalen
+  // Scrollen sichtbar, anders als die Tick-Beschriftungen.
   ctx.fillStyle = MUTED; ctx.font = "600 8px system-ui, sans-serif"; ctx.textAlign = "right";
-  ctx.fillText("loc", x.left - 4, yBot + 12);
+  ctx.fillText(zoneTag(), x.left - 4, yBot + 12);
 }
 
 // --- Path-Achse (verstrichene Zeit seit Pfadbeginn, Path-Modus) -------------
@@ -1801,13 +1802,15 @@ function fmtElapsed(sec) {
 }
 
 // Uhrzeit für Tooltip und Cursor (s. `setupHover`, `makeCursor`) -- dieselbe
-// Regel wie auf der Achse (`drawPathAxis`/`drawTimeAxis`): Path-Modus UTC
-// (Zeitzonengrenze), Punkt-Modus Ortszeit.
+// Regel wie auf der Achse (`drawPathAxis`/`drawTimeAxis`): Path-Modus fest UTC
+// (Zeitzonengrenze), Punkt-Modus in der vom Host gewählten Anzeigezone.
 function fmtClock(sec, isPath) {
-  return new Date(sec * 1000).toLocaleString("de-DE", {
-    weekday: "short", hour: "2-digit", minute: "2-digit",
-    ...(isPath ? { timeZone: "UTC" } : {}),
-  });
+  if (isPath) {
+    return new Date(sec * 1000).toLocaleString("de-DE", {
+      weekday: "short", hour: "2-digit", minute: "2-digit", timeZone: "UTC",
+    });
+  }
+  return fmtZClock(new Date(sec * 1000), { weekday: "short", hour: "2-digit", minute: "2-digit" });
 }
 
 // Path-Modus: sichtbares Ende am rechten Chartrand, wenn der Pfad die

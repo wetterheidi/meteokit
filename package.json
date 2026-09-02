@@ -17,6 +17,7 @@
     "./gramet/render": "./src/gramet/render.js",
     "./config": "./src/config.js",
     "./units": "./src/units.js",
+    "./timefmt": "./src/timefmt.js",
     "./column": "./src/column.js",
     "./weather": "./src/weather.js",
     "./clouds": "./src/clouds.js",

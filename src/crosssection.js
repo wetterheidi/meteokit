@@ -14,6 +14,7 @@ import {
 } from "./units.js";
 import { placeWindBarb, CHART_PX_PER_HOUR, CHART_BARB_SIZE } from "./windbarb.js";
 import { lerpAngle } from "./column.js";
+import { zoneTag, zHours, zMinutes, zDayKey, fmtDate as fmtZDate, fmtClock as fmtZClock } from "./timefmt.js";
 
 const KT_PER_MS = 1.94384;
 
@@ -76,7 +77,7 @@ export function renderCrossSection(host, field, opts = {}) {
   const yW = yFor(wTop, wBot), yT = yFor(tTop, tBot), yC = yFor(cTop, cBot);
 
   const svg = mk("svg", { width: W, height: Hpx, viewBox: `0 0 ${W} ${Hpx}`, class: "xs-svg" });
-  svg.append(txt(2, 10, "loc", MUTED, 9, "start")); // Zeitzonen-Hinweis: lokale Zeit
+  svg.append(txt(2, 10, zoneTag(), MUTED, 9, "start")); // Zeitzonen-Hinweis (s. timefmt.js)
 
   // Panels: Heatmap-Zellen (Färbung nach physikalischem Wert, Skala einheitenfest).
   const gW = mk("g", {}), gT = mk("g", {}), gC = mk("g", {});
@@ -162,7 +163,7 @@ function setupHover(svg, ctx) {
     ov.append(mk("circle", { cx: sx, cy: py, r: 3.2, fill: "none", stroke: INK, "stroke-width": 1.3 }));
     void y;
     drawTip(ov, px, py, [
-      new Date(time[i] * 1000).toLocaleString("de-DE", { weekday: "short", hour: "2-digit", minute: "2-digit" }),
+      fmtZClock(new Date(time[i] * 1000), { weekday: "short", hour: "2-digit", minute: "2-digit" }),
       `Höhe ${fmtHeight(h)}`,
       `Wind ${fmtDir(s.dir)} ${fmtWind(s.spd)}`,
       `Temp ${fmtTemp(s.temp)}`,
@@ -269,12 +270,12 @@ function timeAxis(svg, time, x, yTop, yBot) {
   let lastDay = null;
   for (let i = 0; i < time.length; i++) {
     const d = new Date(time[i] * 1000);
-    if (d.getMinutes() !== 0) continue;
-    const h = d.getHours(), dayKey = d.toDateString();
+    if (zMinutes(d) !== 0) continue;
+    const h = zHours(d), dayKey = zDayKey(d);
     if (dayKey !== lastDay) {
       lastDay = dayKey;
       svg.append(mk("line", { x1: x(time[i]), y1: yTop, x2: x(time[i]), y2: yBot, stroke: "#c9c8c2", "stroke-width": 1, "stroke-dasharray": "2 3" }));
-      svg.append(txt(x(time[i]) + 3, 12, d.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit" }), INK, 11, "start", 600));
+      svg.append(txt(x(time[i]) + 3, 12, fmtZDate(d, { day: "2-digit", month: "2-digit" }), INK, 11, "start", 600));
     } else if (h === 6 || h === 12 || h === 18) {
       svg.append(txt(x(time[i]), 12, String(h).padStart(2, "0"), MUTED, 10, "middle"));
     }
