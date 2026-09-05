@@ -315,10 +315,23 @@ function findCcl(grid, i, w, pSfc) {
  * Nullgradgrenze auf 4000 m) -- portiert wie `sounding_viewer.html`, das
  * ebenfalls das gesamte Profil durchsucht und sich nur das jeweils letzte
  * Niveau mit positivem Auftrieb merkt, statt frühzeitig abzubrechen.
+ *
+ * EL wird beim Vorzeichenwechsel linear auf den exakten Nulldurchgang
+ * INNERHALB des 5-hPa-Schritts interpoliert, statt (wie bis 2026-09-05) auf
+ * dessen Levelende zu runden -- analog zur Korrektur in `sounding_data`
+ * (Commits 214c509/5df2cad, dort zwischen echten Sondierungslevels statt
+ * RK4-Zwischenschritten, gleiches Prinzip). Unsere Schrittweite ist zwar
+ * schon feiner als ein rohes Modelllevel, aber bei den oft nur wenige
+ * hundert Meter tiefen verdünnten Türmen (s. `ascendFromCclEntraining`) ist
+ * ein Bias von bis zu ~5 hPa proportional trotzdem spürbar. CAPE bleibt
+ * unverändert schrittweise aufintegriert (wie in `sounding_data`, das
+ * ebenfalls nur die EL-Position, nicht die CAPE-Summe, nachträglich
+ * korrigiert).
  */
 function ascendFromCcl(env, ccl) {
   let tPclK = ccl.tC + KELVIN, pCur = ccl.pHpa, zPrev = ccl.z;
   let cape = 0, elZ = NaN, elTC = NaN;
+  let buoyPrev = 0; // Auftriebsbeschleunigung am unteren Schrittrand; an der CCL per Definition 0
 
   for (let p = pCur - DP_STEP_HPA; p >= P_TOP_HPA; p -= DP_STEP_HPA) {
     const e = env(p);
@@ -326,11 +339,18 @@ function ascendFromCcl(env, ccl) {
     const tNextK = moistStep(tPclK, pCur, p - pCur);
     const tvPcl = tNextK * (1 + 0.608 * mixingRatio(tNextK - KELVIN, p));
     const tvEnv = e.tK * (1 + 0.608 * e.w);
-    const buoy = (G * (tvPcl - tvEnv) / tvEnv) * (e.z - zPrev);
+    const buoyNow = (G * (tvPcl - tvEnv)) / tvEnv; // Auftriebsbeschleunigung am oberen Schrittrand
+    const dz = e.z - zPrev;
+    const buoy = buoyNow * dz;
     if (buoy > 0) {
-      cape += buoy; elZ = e.z; elTC = e.tK - KELVIN;
+      cape += buoy; elZ = e.z; elTC = tNextK - KELVIN;
+    } else if (buoyPrev > 0) {
+      // Vorzeichenwechsel in diesem Schritt: exakten Nulldurchgang interpolieren.
+      const f = buoyPrev / (buoyPrev - buoyNow);
+      elZ = zPrev + f * dz;
+      elTC = (tPclK + f * (tNextK - tPclK)) - KELVIN;
     }
-    tPclK = tNextK; pCur = p; zPrev = e.z;
+    tPclK = tNextK; pCur = p; zPrev = e.z; buoyPrev = buoyNow;
   }
   return { elZ, elTC, cape };
 }
@@ -386,7 +406,10 @@ function stepLevelEntraining(hPrev, eps, dz, e, pHpa, tGuessC) {
  * Der Aufstieg endet, sobald `w2` unter `GREGORY_WCCRT` fällt (Updraft ohne
  * kinetische Energie) oder das Gitter endet -- nicht erst am Gitterdeckel
  * wie beim undiluted Profil, weil ein entrainment-geschwächter Updraft real
- * schon vorher "ausbeult".
+ * schon vorher "ausbeult". EL wird wie in `ascendFromCcl` auf den exakten
+ * Nulldurchgang innerhalb des Schritts interpoliert statt auf dessen
+ * Levelende gerundet -- hier besonders relevant, weil die verdünnten Türme
+ * oft nur wenige hundert Meter tief sind.
  */
 function ascendFromCclEntraining(env, ccl) {
   let tPclC = ccl.tC, pCur = ccl.pHpa, zPrev = ccl.z;
@@ -419,7 +442,15 @@ function ascendFromCclEntraining(env, ccl) {
 
     const buoyAvg2 = (buoyPrev + step2.buoy) / 2;
     const buoyInc = buoyAvg2 * dz;
-    if (buoyInc > 0) { ecape += buoyInc; elZ = e.z; elTC = step2.tC; }
+    if (buoyInc > 0) {
+      ecape += buoyInc; elZ = e.z; elTC = step2.tC;
+    } else if (buoyPrev > 0) {
+      // Vorzeichenwechsel in diesem Schritt: exakten Nulldurchgang interpolieren
+      // (s. `ascendFromCcl` für dieselbe Korrektur/Begründung).
+      const f = buoyPrev / (buoyPrev - step2.buoy);
+      elZ = zPrev + f * dz;
+      elTC = tPclC + f * (step2.tC - tPclC);
+    }
 
     hPrev = step2.h; buoyPrev = step2.buoy; w2 = w2New; tPclC = step2.tC;
     pCur = p; zPrev = e.z;
