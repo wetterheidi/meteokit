@@ -90,6 +90,23 @@
  * ein eigenes Wolkenbasis-Geschwindigkeitsspektrum, das hier nicht
  * nachgebildet wird -- sondern ein kleiner, als Auslöse-Regularisierung
  * gekennzeichneter Platzhalter (s. dort).
+ *
+ * "Erster Nulldurchgang" vs. "ganzes Profil scannen" (bis 2026-09-05 offene
+ * Frage): für `elZDiluted` beantwortet sich das aus genau dieser KE-Bilanz,
+ * nicht heuristisch. Die Schleife bricht nicht beim ersten negativen Auftrieb
+ * ab, sondern erst, wenn `w2` unter `GREGORY_WCCRT` fällt (s. o.) -- eine
+ * dünne Stabilitätsschicht/Kappe wird also automatisch durchstoßen, wenn die
+ * bis dahin aufgebaute Updraft-KE dafür reicht, sonst bricht der Aufstieg dort
+ * tatsächlich ab. Das ist dieselbe Physik, die Gregory (2001) Eq. 2 für die
+ * KE-Fortschreibung vorschreibt, hier nur konsequent bis zum Abbruch
+ * angewendet -- kein Widerspruch mehr zwischen den beiden Lesarten, weil
+ * beide Fälle (Durchstoßen vs. echtes Ende) aus derselben Bilanz herausfallen.
+ * `elZFirstCross`/`elTFirstCross` (zusätzlich zu `elZ`/`elZDiluted`) halten
+ * nur den ERSTEN Nulldurchgang separat fest -- rein diagnostisch, um an echten
+ * Profilen (s. `diagnose-convection.mjs` in droneforecast) zu sehen, wie oft
+ * `elZDilutedFirstCross` überhaupt von `elZDiluted` abweicht, also wie oft in
+ * der Praxis eine Kappe durchstoßen wird. Fließt NICHT ins Rendering
+ * (`derive.js` konsumiert weiterhin nur `elZDiluted`).
  */
 
 const KELVIN = 273.15;
@@ -331,6 +348,7 @@ function findCcl(grid, i, w, pSfc) {
 function ascendFromCcl(env, ccl) {
   let tPclK = ccl.tC + KELVIN, pCur = ccl.pHpa, zPrev = ccl.z;
   let cape = 0, elZ = NaN, elTC = NaN;
+  let elZFirst = NaN, elTFirst = NaN; // erster Nulldurchgang, rein diagnostisch (s. Modulkopf)
   let buoyPrev = 0; // Auftriebsbeschleunigung am unteren Schrittrand; an der CCL per Definition 0
 
   for (let p = pCur - DP_STEP_HPA; p >= P_TOP_HPA; p -= DP_STEP_HPA) {
@@ -349,10 +367,11 @@ function ascendFromCcl(env, ccl) {
       const f = buoyPrev / (buoyPrev - buoyNow);
       elZ = zPrev + f * dz;
       elTC = (tPclK + f * (tNextK - tPclK)) - KELVIN;
+      if (!Number.isFinite(elZFirst)) { elZFirst = elZ; elTFirst = elTC; }
     }
     tPclK = tNextK; pCur = p; zPrev = e.z; buoyPrev = buoyNow;
   }
-  return { elZ, elTC, cape };
+  return { elZ, elTC, cape, elZFirst, elTFirst };
 }
 
 function clip(x, lo, hi) { return Math.min(Math.max(x, lo), hi); }
@@ -417,6 +436,7 @@ function ascendFromCclEntraining(env, ccl) {
   let buoyPrev = 0; // an der CCL per Definition neutral (Parcel = Umgebung)
   let w2 = GREGORY_W2_SEED;
   let ecape = 0, elZ = NaN, elTC = NaN;
+  let elZFirst = NaN, elTFirst = NaN; // erster Nulldurchgang, rein diagnostisch (s. Modulkopf)
 
   for (let p = pCur - DP_STEP_HPA; p >= P_TOP_HPA; p -= DP_STEP_HPA) {
     if (w2 <= GREGORY_WCCRT) break; // Updraft ohne kinetische Energie -- Ende
@@ -450,23 +470,27 @@ function ascendFromCclEntraining(env, ccl) {
       const f = buoyPrev / (buoyPrev - step2.buoy);
       elZ = zPrev + f * dz;
       elTC = tPclC + f * (step2.tC - tPclC);
+      if (!Number.isFinite(elZFirst)) { elZFirst = elZ; elTFirst = elTC; }
     }
 
     hPrev = step2.h; buoyPrev = step2.buoy; w2 = w2New; tPclC = step2.tC;
     pCur = p; zPrev = e.z;
   }
-  return { elZ, elTC, ecape };
+  return { elZ, elTC, ecape, elZFirst, elTFirst };
 }
 
 /**
- * Pro Stunde `{ cclZ, cclT, taC, tSfcC, elZ, elT, cape, elZDiluted,
- * elTDiluted, ecape }` oder `null`, wenn sich kein CCL bestimmen lässt --
+ * Pro Stunde `{ cclZ, cclT, taC, tSfcC, elZ, elT, cape, elZFirstCross,
+ * elTFirstCross, elZDiluted, elTDiluted, ecape, elZDilutedFirstCross,
+ * elTDilutedFirstCross }` oder `null`, wenn sich kein CCL bestimmen lässt --
  * reine Parcel-Größen ohne freie Tuning-Parameter. `elZ`/`elT`/`cape` sind
  * das undiluted Profil (s. `ascendFromCcl`); `elZDiluted`/`elTDiluted`/
  * `ecape` das entrainment-gedämpfte Pendant (s. `ascendFromCclEntraining`,
  * Modulkopf "ENTRAINMENT") -- Letzteres ist die für Zeichnung/Symbolik
  * gedachte, realistischere Größe, ersteres bleibt zur Provenienz/Diagnose
- * erhalten.
+ * erhalten. Die `*FirstCross`-Felder sind der jeweils ERSTE Nulldurchgang
+ * (statt des finalen, KE-geprüften Oberrands) -- rein diagnostisch, s.
+ * Modulkopf "ENTRAINMENT", nicht für Rendering gedacht.
  *
  * Den Auslöse-Vergleich (T_2m gegen TA) macht bewusst `derive.js`: dort liegen
  * alle einstellbaren GRAMET-Schwellen beisammen, und der Vergleich braucht
@@ -484,15 +508,19 @@ export function computeColumns(grid) {
     const ccl = findCcl(grid, i, sfc.w, sfc.pSfc);
     if (!ccl) continue;
     const env = envSampler(grid, i);
-    const asc = env ? ascendFromCcl(env, ccl) : { elZ: NaN, elTC: NaN, cape: 0 };
+    const asc = env
+      ? ascendFromCcl(env, ccl)
+      : { elZ: NaN, elTC: NaN, cape: 0, elZFirst: NaN, elTFirst: NaN };
     const ascDil = env
       ? ascendFromCclEntraining(env, ccl)
-      : { elZ: NaN, elTC: NaN, ecape: 0 };
+      : { elZ: NaN, elTC: NaN, ecape: 0, elZFirst: NaN, elTFirst: NaN };
     const taC = dryAdiabatT(ccl.tC + KELVIN, ccl.pHpa, sfc.pSfc) - KELVIN;
     out[i] = {
       cclZ: ccl.z, cclT: ccl.tC, taC, tSfcC: sfc.tSfcC,
       elZ: asc.elZ, elT: asc.elTC, cape: asc.cape,
+      elZFirstCross: asc.elZFirst, elTFirstCross: asc.elTFirst,
       elZDiluted: ascDil.elZ, elTDiluted: ascDil.elTC, ecape: ascDil.ecape,
+      elZDilutedFirstCross: ascDil.elZFirst, elTDilutedFirstCross: ascDil.elTFirst,
     };
   }
   return out;
