@@ -1478,13 +1478,18 @@ function precipSpacingPx(rateMmH) {
   return PRECIP_SPACING_MAX_PX - span * Math.tanh(r / PRECIP_RATE_SCALE);
 }
 
-// Streuung der Symbole um ihre Rasterposition, damit der Vorhang nicht wie
+// Streuung der Symbole in ihrer Stundenspalte, damit der Vorhang nicht wie
 // eine gezogene Linie wirkt (s. Wolkenschraffur, die schon so arbeitet).
-// X als Anteil der Stundenspalte, Y als Anteil des Symbolabstands -- beide
-// bewusst moderat: bei mehr als ~0,35 Spaltenbreite laufen die Vorhänge
-// benachbarter Stunden ineinander und die Zuordnung "Vorhang unter dieser
-// Stunde" geht verloren. Werte rein optisch gewählt.
-const PRECIP_JITTER_X = 0.30, PRECIP_JITTER_Y = 0.32;
+// X als Anteil der Stundenspalte, Y als Anteil des Symbolabstands.
+// X = 0,5 spreizt die Symbole über die GESAMTE Stundenspalte statt nur einen
+// schmalen Bereich um die Mitte: `precipitation` ist eine Stundensumme über
+// den ganzen Zeitraum, keine Momentaufnahme -- die Darstellung soll das
+// widerspiegeln statt einen falschen zeitlichen Schwerpunkt zu suggerieren.
+// Bei 0,5 berühren sich die Vorhänge benachbarter Stunden exakt an der
+// Spaltengrenze (kein Überlapp, keine Lücke). Ein früherer, engerer Wert
+// (0,30) hielt die Vorhänge bewusst optisch getrennt; das wurde zugunsten der
+// wahrheitsgetreueren Verteilung aufgegeben (s. Feedback).
+const PRECIP_JITTER_X = 0.5, PRECIP_JITTER_Y = 0.32;
 const PRECIP_SIZE_MIN = 0.80, PRECIP_SIZE_SPAN = 0.45;
 
 // Zeitliche Verschiebung des Vorhangs, als Anteil der Stundenspalte nach LINKS.
