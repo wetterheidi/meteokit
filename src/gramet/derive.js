@@ -498,13 +498,18 @@ function cbColumns(grid, cloudFrac, cloudBase, tropopauseLine, fogCols) {
   const conv = convection.computeColumns(grid);
   const out = [];
   for (let i = 0; i < times.length; i++) {
+    const tropZ = tropAt(tropopauseLine, pos[i]);
     let maxAbsW = 0, deepTop = NaN;
     for (let k = 0; k < nk; k++) {
       const ix = i * nk + k;
-      const w = grid.w[ix];
-      if (Number.isFinite(w) && Math.abs(w) > maxAbsW) maxAbsW = Math.abs(w);
+      const z = grid.z[ix], w = grid.w[ix];
+      // Nur unterhalb der Tropopause kann |w| Bodenkonvektion anzeigen -- darüber
+      // sind w-Spitzen Jetstream-/Wellendynamik (Tropopausenfalten, Leewellen),
+      // besonders an Hochflanken (s. Feedback: TCU auf stabiler Hochflanke, weil
+      // maxAbsW ungefiltert bis zum Gitterdeckel scannte).
+      const belowTrop = !Number.isFinite(tropZ) || z < tropZ;
+      if (Number.isFinite(w) && belowTrop && Math.abs(w) > maxAbsW) maxAbsW = Math.abs(w);
       if (cloudFrac[ix] >= CF_BKN && (grid.T[ix] - KELVIN) <= CB_GLACIATION_C) {
-        const z = grid.z[ix];
         if (!Number.isFinite(deepTop) || z > deepTop) deepTop = z;
       }
     }
@@ -514,10 +519,15 @@ function cbColumns(grid, cloudFrac, cloudBase, tropopauseLine, fogCols) {
     const wxShower = label.includes("SH");
     const cape = surface?.cape ? surface.cape[i] : NaN;
     const capeSignal = Number.isFinite(cape) && cape >= CB_CAPE_MIN_JKG && Number.isFinite(deepTop);
-    const updraftSignal = maxAbsW >= CB_UPDRAFT_MIN_MS;
-
     const c = conv[i];
     const anyTop = anyCloudTopAt(grid, cloudFrac, i);
+    // Aufwind allein ist kein Konvektionsbeleg -- ein w-Ausschlag in trockener,
+    // wolkenloser Luft ist Wellenbewegung, kein Thermikaufwind (der kondensiert
+    // per Definition). Dieselbe Gegenprobe wie bei capeSignal (deepTop), hier
+    // zusätzlich anyTop, weil der Aufwind sonst der einzige Trigger ganz ohne
+    // unabhängige Bestätigung im Profil wäre.
+    const updraftSignal = maxAbsW >= CB_UPDRAFT_MIN_MS && (Number.isFinite(deepTop) || Number.isFinite(anyTop));
+
     const top = Number.isFinite(c?.elZDiluted) ? c.elZDiluted
       : Number.isFinite(deepTop) ? deepTop
         : Number.isFinite(anyTop) ? anyTop : CB_FALLBACK_TOP_M;
@@ -555,7 +565,6 @@ function cbColumns(grid, cloudFrac, cloudBase, tropopauseLine, fogCols) {
     if (towering) {
       const topTC = tempAtHeight(grid, i, top);
       const glaciated = Number.isFinite(topTC) && topTC <= CB_GLACIATION_C;
-      const tropZ = tropAt(tropopauseLine, pos[i]);
       const nearTropopause = Number.isFinite(tropZ) && tropZ - top < CB_TROPOPAUSE_GAP_M;
       kind = glaciated && nearTropopause ? "cb" : "tcu";
     }
