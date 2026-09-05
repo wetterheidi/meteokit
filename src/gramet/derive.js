@@ -527,39 +527,55 @@ function cbColumns(grid, cloudFrac, cloudBase, tropopauseLine, fogCols) {
     // zusätzlich anyTop, weil der Aufwind sonst der einzige Trigger ganz ohne
     // unabhängige Bestätigung im Profil wäre.
     const updraftSignal = maxAbsW >= CB_UPDRAFT_MIN_MS && (Number.isFinite(deepTop) || Number.isFinite(anyTop));
+    // Thermische Auslösung: T_2m erreicht die Auslösetemperatur (mit Zuschlag,
+    // s. TRIGGER_EXCESS_K) -- wird sowohl für die `top`-Wahl unten als auch für
+    // `thermalSignal` gebraucht.
+    const triggered = Number.isFinite(c?.taC) && c.tSfcC >= c.taC - TRIGGER_EXCESS_K;
 
-    const top = Number.isFinite(c?.elZDiluted) ? c.elZDiluted
-      : Number.isFinite(deepTop) ? deepTop
-        : Number.isFinite(anyTop) ? anyTop : CB_FALLBACK_TOP_M;
+    // Greift der Oberflächentrigger NICHT, meldet das Modell aber trotzdem
+    // Schauer/Gewitter, ist die Konvektion elevated/frontal erzwungen, nicht
+    // bodennah -- genau das Regime, für das die CCL-Parcel-Rechnung nicht
+    // gemacht ist. `elZDiluted` kollabiert dann auf wenige hundert Meter über
+    // dem CCL (Entrainment frisst die dünne Auftriebsschicht fast komplett
+    // auf), obwohl das Modell selbst eine viel höher reichende, echte
+    // Wolkenschicht rechnet (s. Feedback: -SHRA mit clc bis 81% bei ~3900 m,
+    // elZDiluted aber nur CCL+150 m). Dann lieber der modelleigene
+    // Wolkenoberrand als Obergrenze -- verlässlicher als der Parcel-Wert, weil
+    // er auf der tatsächlich diagnostizierten Feuchte/Wolke beruht, nicht auf
+    // einer Auslösung, die laut T_2m/TA gar nicht stattfindet.
+    const modelCloudTop = Number.isFinite(deepTop) ? deepTop : anyTop;
+    const top = (!triggered && (wxShower || wxThunder) && Number.isFinite(modelCloudTop)) ? modelCloudTop
+      : Number.isFinite(c?.elZDiluted) ? c.elZDiluted
+        : Number.isFinite(deepTop) ? deepTop
+          : Number.isFinite(anyTop) ? anyTop : CB_FALLBACK_TOP_M;
     // Basis muss unter dem Oberrand liegen -- bei hochbasiger Konvektion ohne
     // EL kann der Fallback-Oberrand sonst unter dem CCL landen und der Schaft
     // würde invertiert gezeichnet. Dann lieber die allgemeine Wolkenbasis.
     const base = [c?.cclZ, cloudBase[i], 0].find((b) => Number.isFinite(b) && b < top) ?? 0;
-    // Thermische Auslösung: T_2m erreicht die Auslösetemperatur (mit Zuschlag,
-    // s. TRIGGER_EXCESS_K). Zusätzlich Mächtigkeit gefordert -- ein flaches
-    // Cu-Feld ist noch keine TCU. Mit SH/TS im weather_code entfällt beides.
-    const triggered = Number.isFinite(c?.taC) && c.tSfcC >= c.taC - TRIGGER_EXCESS_K;
+    // Zusätzlich Mächtigkeit gefordert -- ein flaches Cu-Feld ist noch keine
+    // TCU. Mit SH/TS im weather_code entfällt beides (s. u.).
     const thermalSignal = triggered && top - base >= TCU_MIN_DEPTH_M;
 
     if (!wxThunder && !wxShower && !thermalSignal && !capeSignal && !updraftSignal) {
       out.push(null); continue;
     }
 
-    // Towering-Hürde (s. TCU_MIN_ABOVE_FREEZING_M). TS im weather_code hebelt
-    // nur die Existenz der Spalte aus: ein gemeldetes Gewitter, dem unsere
-    // Parcel-Rechnung nicht mal eine Towering-Wolke zugesteht, unterschlagen
-    // wäre der größere Fehler -- aber die Rechnung bleibt die Quelle für
-    // Amboss/Symbol (s. u.), TS allein erzwingt kein Symbol mehr.
+    // Towering-Hürde (s. TCU_MIN_ABOVE_FREEZING_M). TS/SH im weather_code
+    // hebeln nur die Existenz der Spalte aus: ein gemeldetes Gewitter oder
+    // Schauer, dem unsere Parcel-Rechnung nicht mal eine Towering-Wolke
+    // zugesteht, unterschlagen wäre der größere Fehler -- aber die Rechnung
+    // bleibt die Quelle für Amboss/Symbol (s. u.), TS/SH allein erzwingt kein
+    // Symbol mehr.
     const freezingZ = convectiveFreezingHeightAt(grid, i);
     const towering = Number.isFinite(freezingZ) && top - freezingZ >= TCU_MIN_ABOVE_FREEZING_M;
-    if (!towering && !wxThunder) {
+    if (!towering && !wxThunder && !wxShower) {
       out.push(null); continue;
     }
 
     // Kein Symbol (nur Schaft) unterhalb der Towering-Hürde: ohne die
     // Mindesthöhe über der Frostgrenze ist es laut Parcel-Rechnung ein
     // gewöhnlicher, unkritischer Cumulus -- weder TCU- noch Cb-Symbol wären
-    // gedeckt, auch wenn TS im weather_code die Spalte selbst erzwungen hat
+    // gedeckt, auch wenn TS/SH im weather_code die Spalte selbst erzwungen hat
     // (s. Feedback: Amboss/TCU-Symbol nie widersprüchlich zur Physik zeigen).
     let kind = "none";
     if (towering) {
