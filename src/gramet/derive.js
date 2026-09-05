@@ -91,6 +91,11 @@ export function deriveView(grid) {
   // metarWeather()-Aufrufe sollen dasselbe FG/BR/HZ-Ergebnis sehen wie die
   // Wetter-Zeile, nicht mit einer zweiten Berechnung auseinanderlaufen.
   const fogCols = fog.computeColumns(grid, d.cloudFrac);
+  // Vor precipEntries() berechnen und dorthin weiterreichen: die Cb/TCU-Spalte
+  // kennt für dieselbe Stunde bereits den (ggf. deutlich höheren) Oberrand der
+  // tatsächlich konvektiven Wolke, verankert an CCL statt an der irgendeiner
+  // -- ggf. flachen, unverbundenen -- untersten Wolkenschicht (s. dort).
+  const cbCols = cbColumns(grid, d.cloudFrac, cloudBase, tropopauseLine, fogCols);
 
   return {
     isotherms,
@@ -99,8 +104,8 @@ export function deriveView(grid) {
     daylight: daylightArr,
     cloudFrac: d.cloudFrac,
     cloudBase,
-    precip: precipEntries(grid, cloudBase, fogCols),
-    cb: cbColumns(grid, d.cloudFrac, cloudBase, tropopauseLine, fogCols),
+    precip: precipEntries(grid, cloudBase, fogCols, cbCols),
+    cb: cbCols,
     fog: fogCols,
     hazards: {
       icing: icing.computeGrid(grid, d.cloudFrac),
@@ -410,7 +415,7 @@ function freezingHeightAt(grid, i) {
  * Feedback). Phase (Regen/Schnee) kommt jetzt ebenfalls aus dem METAR-Kürzel
  * (SN/SG/FZ...), nicht mehr nur aus `snowfall > 0`.
  */
-function precipEntries(grid, cloudBase, fogCols) {
+function precipEntries(grid, cloudBase, fogCols, cbCols) {
   const out = [];
   const { times, pos, surface } = grid;
   if (!surface) return out;
@@ -437,7 +442,20 @@ function precipEntries(grid, cloudBase, fogCols) {
     // darüber (nächstes Artefakt, s. Feedback-Iteration).
     const top = cloudTopAt(grid, cloudFrac, i, cloudBase[i]);
     const anyTop = anyCloudTopAt(grid, cloudFrac, i);
-    const zTop = Number.isFinite(top) ? top : Number.isFinite(anyTop) ? anyTop : PRECIP_FALLBACK_TOP_M;
+    const genericTop = Number.isFinite(top) ? top : Number.isFinite(anyTop) ? anyTop : PRECIP_FALLBACK_TOP_M;
+    // Bei Schauer/Gewitter (SH/TS im weather_code) kann die konvektive Wolke,
+    // die den Niederschlag tatsächlich erzeugt, von der hier gefundenen
+    // untersten, ggf. flachen und unverbundenen Wolkenschicht getrennt sein
+    // (Lücke > CLOUD_TOP_GAP_TOLERANCE_M) -- `cloudTopAt` bricht dort korrekt
+    // ab, und der Vorhang blieb an dieser niedrigen Fremdschicht hängen, statt
+    // aus dem TCU/Cb zu fallen, der im selben Bild direkt daneben gezeichnet
+    // wird (s. Feedback: -SHRA mit TCU-Basis bei ~1500 m, Vorhang-Oberkante
+    // aber an einer ~500-m-Schicht). `cbColumns()` hat für dieselbe Stunde
+    // bereits den plausibleren, an CCL/Parcel-Rechnung verankerten Oberrand --
+    // wird hier nur als Untergrenze für `zTop` übernommen (nie gesenkt), falls
+    // er höher liegt als die generische Wolkensuche.
+    const cbHere = cbCols ? cbCols[i] : null;
+    const zTop = cbHere && Number.isFinite(cbHere.top) ? Math.max(genericTop, cbHere.top) : genericTop;
     // `snowfall` nur als Fallback, wenn der METAR-Code gar keine Aussage
     // macht (`!hasWx`) -- sonst überstimmt ein einzelner, oft marginaler
     // Modellwert einen expliziten "RA"/"SHRA"-Code (s. Feedback: Schnee bis
