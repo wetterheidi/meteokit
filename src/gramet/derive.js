@@ -499,6 +499,19 @@ function cbColumns(grid, cloudFrac, cloudBase, tropopauseLine, fogCols) {
   const out = [];
   for (let i = 0; i < times.length; i++) {
     const tropZ = tropAt(tropopauseLine, pos[i]);
+    const c = conv[i];
+    // Oberrand der mit der Konvektion zusammenhängenden Wolke, verankert an
+    // CCL (ersatzweise der allgemeinen Wolkenbasis) -- NICHT `anyCloudTopAt()`
+    // (höchstes CF>=FEW-Level im GESAMTEN Profil, ohne Zusammenhangs-Prüfung):
+    // die griff über eine mehrere km durchgehend wolkenfreie Lücke hinweg auf
+    // isolierten Cirrus weit oben, weit über der eigentlichen Schauerwolke --
+    // macht aus einem leichten Schauer optisch einen bis zur Tropopause
+    // reichenden Cb (s. Feedback: -SHRA mit Cb-Oberrand an der Tropopause
+    // unplausibel). `cloudTopAt()` bricht an einer solchen Lücke
+    // (> CLOUD_TOP_GAP_TOLERANCE_M) korrekt ab; `deepTop` unten wird an
+    // diesem Oberrand gespiegelt, aus demselben Grund (s. dort).
+    const cloudTopAnchor = [c?.cclZ, cloudBase[i]].find((b) => Number.isFinite(b));
+    const anyTop = Number.isFinite(cloudTopAnchor) ? cloudTopAt(grid, cloudFrac, i, cloudTopAnchor) : NaN;
     let maxAbsW = 0, deepTop = NaN;
     for (let k = 0; k < nk; k++) {
       const ix = i * nk + k;
@@ -509,7 +522,14 @@ function cbColumns(grid, cloudFrac, cloudBase, tropopauseLine, fogCols) {
       // maxAbsW ungefiltert bis zum Gitterdeckel scannte).
       const belowTrop = !Number.isFinite(tropZ) || z < tropZ;
       if (Number.isFinite(w) && belowTrop && Math.abs(w) > maxAbsW) maxAbsW = Math.abs(w);
-      if (cloudFrac[ix] >= CF_BKN && (grid.T[ix] - KELVIN) <= CB_GLACIATION_C) {
+      // Vereistes BKN+-Level zählt nur INNERHALB der zusammenhängenden Wolke
+      // (z <= anyTop, s. o.) als Oberrand -- sonst zieht ein isolierter,
+      // durch eine echte Lücke getrennter Cirrus-Fetzen denselben Fehler wie
+      // bei `anyCloudTopAt()`: eine 100-%-Cirrusschicht mehrere km über der
+      // eigentlichen, gar nicht vereisten Schauerwolke macht sie fälschlich
+      // zum bis zur Tropopause reichenden Cb (s. Feedback).
+      if (cloudFrac[ix] >= CF_BKN && (grid.T[ix] - KELVIN) <= CB_GLACIATION_C
+        && Number.isFinite(anyTop) && z <= anyTop) {
         if (!Number.isFinite(deepTop) || z > deepTop) deepTop = z;
       }
     }
@@ -519,8 +539,6 @@ function cbColumns(grid, cloudFrac, cloudBase, tropopauseLine, fogCols) {
     const wxShower = label.includes("SH");
     const cape = surface?.cape ? surface.cape[i] : NaN;
     const capeSignal = Number.isFinite(cape) && cape >= CB_CAPE_MIN_JKG && Number.isFinite(deepTop);
-    const c = conv[i];
-    const anyTop = anyCloudTopAt(grid, cloudFrac, i);
     // Aufwind allein ist kein Konvektionsbeleg -- ein w-Ausschlag in trockener,
     // wolkenloser Luft ist Wellenbewegung, kein Thermikaufwind (der kondensiert
     // per Definition). Dieselbe Gegenprobe wie bei capeSignal (deepTop), hier
