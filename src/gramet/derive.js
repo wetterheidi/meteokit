@@ -123,7 +123,11 @@ function isothermPolylines(grid, thresholdC) {
   const finished = [];
 
   for (let i = 0; i < nt; i++) {
-    const zs = columnCrossings(grid, i, thrK);
+    // Bei einer Inversion kreuzt T den Schwellwert im selben Profil mehrfach
+    // (z. B. 3x um 0°C) -- fürs Chart zählt nur der tiefste Durchgang beim
+    // Aufstieg, weitere Durchgänge wären nur verwirrendes Rauschen (s. Feedback).
+    const allZs = columnCrossings(grid, i, thrK);
+    const zs = allZs.length ? [allZs[0]] : [];
     const usedZ = new Array(zs.length).fill(false);
 
     for (const a of active) {
