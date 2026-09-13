@@ -77,6 +77,41 @@ Bereits eingerichtet (Stand 2026-09-13):
    in droneforecast/trajectories/DZMaster (idempotent, Let's-Encrypt-Zertifikat
    beim ersten Lauf).
 
+## Möglicher Optimierungsschritt: Delta-Updates statt Vollabgleich
+
+Die Core-API unterstützt einen `updatedAfter`-Parameter (z. B.
+`?updatedAfter=2026-08-13`), der tatsächlich filtert -- live verifiziert
+(2026-09-13): ohne Parameter `totalCount: 31885`, mit `updatedAfter` für die
+letzten 30 Tage `totalCount: 3588`, mit einem Zukunftsdatum `totalCount: 0`.
+Ein monatlicher Lauf müsste damit potenziell nur noch ca. 3600 statt 31885
+Einträge holen -- und das **ohne bbox-Rasterung**, also nur wenige
+Hundert-Einträge-Seiten statt 16200 Zellen-Anfragen. Das würde den Lauf von
+Tagen auf Minuten verkürzen.
+
+**Zwei offene Punkte, die das nicht trivial machen:**
+
+1. **Löschungen werden nicht erfasst.** Live getestet (2026-09-13): weder ein
+   `deleted=true`-Parameter noch ein Bulk-"was wurde gelöscht"-Endpunkt
+   existieren -- die API ignoriert unbekannte Query-Parameter einfach still
+   (auch ein frei erfundener Parameter liefert HTTP 200 ohne Fehler, das ist
+   kein Beleg für echte Filterung). Es gibt nur eine Änderungshistorie pro
+   einzelnem Datensatz auf der openAIP-Website
+   (`openaip.net/data/airspaces/<id>/rfc/history`), keinen API-Feed für alle
+   Löschungen seit einem Datum. Ein reiner Delta-Sync würde also entfernte
+   Lufträume nie aus dem Cache räumen -- weiterhin nötig: in größeren
+   Abständen (z. B. quartalsweise) ein kompletter Vollabgleich, um Verwaiste
+   zu entfernen.
+2. **Das Grid-Zellen-Modell passt nicht 1:1.** Aktuell schreibt das Skript
+   pro Zelle eine komplette Datei (einfacher atomarer Swap). Ein Delta-Update
+   müsste stattdessen aus der Geometrie jedes geänderten Features die
+   betroffene(n) Zelle(n) berechnen und die bestehende Zell-Datei gezielt
+   aktualisieren (per `_id` ersetzen/hinzufügen) -- spürbar mehr Komplexität
+   als der jetzige Ansatz.
+
+Da der aktuelle Vollabgleich unbeaufsichtigt läuft und niemanden stört, ist
+das vorerst zurückgestellt -- als Kandidat, falls der monatliche Cronjob mal
+störend auffällt.
+
 ## Client-seitiger Vertrag
 
 - `GET /meta.json` → `{ generatedAt, cellSizeDeg, cellCount, totalFeatures }`
