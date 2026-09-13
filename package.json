@@ -15,6 +15,7 @@
     "./gramet": "./src/gramet/index.js",
     "./gramet/hazards": "./src/gramet/hazards/index.js",
     "./gramet/render": "./src/gramet/render.js",
+    "./airspace": "./src/airspace/index.js",
     "./config": "./src/config.js",
     "./units": "./src/units.js",
     "./timefmt": "./src/timefmt.js",

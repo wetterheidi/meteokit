@@ -126,5 +126,10 @@ Darstellungszustand lebt in der Komponente; **Persistenz ist Sache der Host-App*
 4. Prüfen, dass nichts auf App-spezifische Konfiguration zurückgreift — was
    konfigurierbar sein muss, gehört in `configure()`.
 
-Naheliegende nächste Kandidaten: `windspinne-panel`, `meteogram`, danach die
-Leaflet-Overlays (erst sinnvoll, wenn eine zweite Karten-App existiert).
+Naheliegende nächste Kandidaten: `windspinne-panel`, `meteogram`.
+
+Die Leaflet-Overlays sind seit 2026-09 dabei, angefangen mit `meteokit/airspace`
+(weltweiter openAIP-Luftraum-Layer, s. `src/airspace/`) -- eingebunden in
+droneforecast, trajectories und DZMaster (upper_winds_open_meteo). Nutzt einen
+eigenen Cache-Server statt openAIPs Live-API (s. `tools/airspace-cache/README.md`
+für den Hintergrund).
