@@ -77,6 +77,44 @@ Bereits eingerichtet (Stand 2026-09-13):
    in droneforecast/trajectories/DZMaster (idempotent, Let's-Encrypt-Zertifikat
    beim ersten Lauf).
 
+## Vorfall 2026-09-13..17: falsch-leere Regionen durch missverstandenes 404
+
+Der erste komplette Welt-Lauf lief vom 13. bis 17.9. und meldete sich als
+"Fertig: 5270 Zellen, 23739 Features" -- aber Mitteleuropa, große Teile der
+USA und weitere datendichte Regionen blieben leer. Ursache: Log-Analyse zeigte
+zwei riesige zusammenhängende Blöcke fehlgeschlagener Zellen (u. a.
+durchgehend von Zelle 12958 bis zum letzten Grid-Eintrag 16200) -- die API
+hat ab einem bestimmten Punkt im mehrtägigen Lauf **jede** Anfrage mit HTTP
+404 statt Daten beantwortet (vermutlich ein Tages-/Laufkontingent, das nicht
+als 429 signalisiert wird). Ein Direkttest derselben Bbox zwei Tage später
+lieferte anstandslos HTTP 200 mit Daten -- die Sperre war also vorübergehend.
+
+Der eigentliche Bug: Das Skript hat 404 wie eine legitime "keine Daten hier"-
+Antwort behandelt. Das ist falsch -- die API liefert für tatsächlich leere
+Bboxen ein reguläres 200 mit leerem `items`-Array; 404 ist immer ein
+Fehlersignal. Dadurch wurden über 4800 Zellen fälschlich als leer
+veröffentlicht, ohne dass der Lauf das als Fehler erkannte.
+
+**Fix (in `fetch-airspaces.mjs`):**
+- 404 zählt jetzt wie 408/429 zum Retry-mit-Backoff.
+- Ein `CONSECUTIVE_FAILURE_LIMIT` (10) bricht den ganzen Lauf ab, sobald zu
+  viele Zellen in Folge endgültig scheitern -- statt einen Großteil der Welt
+  fälschlich als leer zu deployen, bleibt bei einem Abbruch der bisherige
+  Live-Stand unverändert (kein Swap).
+- Jede endgültig gescheiterte Zelle (auch ohne Abbruch) landet in
+  `<out>.failed-cells.txt` (eine Bbox pro Zeile).
+- Neue Betriebsart `--cells-file PATH`: liest Bboxen aus einer solchen Datei
+  statt des vollen Welt-Grids und schreibt sie **direkt** ins bereits live
+  ausgelieferte `--out`-Verzeichnis (kein Staging/Swap, reine Ergänzung),
+  regeneriert danach `meta.json` durch Auszählen aller vorhandenen Kacheln.
+  Gedacht für genau diesen Fall: gezielt nachholen, was in einem früheren
+  Lauf fehlgeschlagen ist, sobald die Störung vorbei ist.
+
+**Sofortmaßnahme (2026-09-19):** Die 4856 aus dem Log extrahierten
+fehlgeschlagenen Bboxen wurden per `--cells-file` gegen den weiterhin live
+ausgelieferten Datenstand nachgeholt (Direkttest zeigte, die API funktionierte
+zu diesem Zeitpunkt wieder normal).
+
 ## Möglicher Optimierungsschritt: Delta-Updates statt Vollabgleich
 
 Die Core-API unterstützt einen `updatedAfter`-Parameter (z. B.
