@@ -1,4 +1,5 @@
 import { SURFACE_API_BASE, getModel, SURFACE_CORE, SURFACE_OPTIONAL } from "./config.js";
+import { fetchWithFallback, modelApiBases } from "./apifetch.js";
 
 /**
  * Zeithorizont eines Forecast-Requests als Query-Parameter: eine Zahl wird
@@ -82,9 +83,8 @@ export async function fetchSurface(lat, lon, modelKey, horizon, fetchImpl = fetc
 
 /**
  * Initialisierungszeitpunkt des aktuell verfügbaren Modelllaufs (z. B.
- * der "00-UTC-Lauf"), unabhängig von Ort/Höhe. Quelle: Michaels Instanz(en)
- * (`model.apiBase`, siehe config.js — ICON Global liegt auf einem anderen
- * Host als ICON-D2/-EU) — deren statisches Meta-JSON je Datensatz liefert
+ * der "00-UTC-Lauf"), unabhängig von Ort/Höhe. Quelle: der Modelllevel-Host
+ * (`model.apiBase`, bei Ausfall `model.apiFallbacks`, siehe config.js) — deren statisches Meta-JSON je Datensatz liefert
  * `last_run_initialisation_time` (unixtime s). Nicht die öffentliche
  * OpenMeteo-Instanz (`SURFACE_API_BASE`); "Open-Meteo" bezeichnet hier nur
  * das API-/Datenformat, das auch Michaels Server verwenden.
@@ -94,7 +94,9 @@ export async function fetchSurface(lat, lon, modelKey, horizon, fetchImpl = fetc
 export async function fetchModelRunInit(modelKey, fetchImpl = fetch.bind(globalThis)) {
   const model = getModel(modelKey);
   try {
-    const resp = await fetchImpl(`${model.apiBase}/data/${model.dataset}/static/meta.json`);
+    const resp = await fetchWithFallback(modelApiBases(model), `/data/${model.dataset}/static/meta.json`, {
+      fetchImpl, sourceKey: model.apiModel,
+    });
     if (!resp.ok) return null;
     const data = await resp.json();
     return Number.isFinite(data.last_run_initialisation_time) ? data.last_run_initialisation_time : null;

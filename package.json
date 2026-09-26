@@ -17,6 +17,7 @@
     "./gramet/render": "./src/gramet/render.js",
     "./airspace": "./src/airspace/index.js",
     "./config": "./src/config.js",
+    "./apifetch": "./src/apifetch.js",
     "./units": "./src/units.js",
     "./timefmt": "./src/timefmt.js",
     "./column": "./src/column.js",

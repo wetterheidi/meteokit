@@ -1,8 +1,8 @@
 /**
  * Datenquellen-Konfiguration der Bibliothek (`meteokit/config`).
  *
- * Die Defaults unten sind sofort einsatzfähig (Michaels Open-Meteo-Instanzen
- * für Modelllevel, die öffentliche Instanz für Oberflächenfelder) -- eine App,
+ * Die Defaults unten sind sofort einsatzfähig (open-meteo.wetterheidi.de mit
+ * Michaels Open-Meteo-Instanzen als Fallback für Modelllevel, die öffentliche Instanz für Oberflächenfelder) -- eine App,
  * die nichts konfiguriert, verhält sich exakt wie droneforecast bisher.
  *
  * ZWEI GETRENNTE QUELLEN, das ist fachlich zwingend:
@@ -23,21 +23,35 @@
  *     configure({ surfaceApiBase: "https://api.open-meteo.com" });
  */
 
-// Modell-Level-Daten (u/v/T/RH/… auf nativen ICON-Leveln): Michaels Instanz.
-export const API_BASE = "https://open-meteo.mah.priv.at";
-// ICON Global (Modelllevel) läuft seit 2026-08 auf einem eigenen Server
-// (Absprache mit Michael): die dwd_icon-Ingestion auf API_BASE ist kaputt
-// (meta.json liefert 500, Modelllevel-Felder kommen durchgehend null zurück).
-// ICON-D2/ICON-EU bleiben unverändert auf API_BASE. Siehe MODELS.icon_global
-// unten sowie dasselbe Vorgehen im TLogPViewer (fetch_sounding_openmeteo.py).
-export const API_BASE_ICON_GLOBAL = "https://open-meteo-temp.mah.priv.at";
+// Modell-Level-Daten (u/v/T/RH/… auf nativen ICON-Leveln): seit 2026-09
+// bevorzugt der neue Server, der ICON-D2, ICON-EU UND ICON Global hostet
+// (identischer Aufbau wie Michaels Instanzen, nur andere URL). Per Stichprobe
+// 2026-09-26 für alle drei Modelle wertgleich mit den bisherigen Instanzen;
+// Ausnahme: `/v1/elevation` (DEM90) gibt es dort NICHT -- die Antwort ist
+// `{"elevation":[nan]}` (HTTP 200, kein gültiges JSON), daher muss der
+// Höhenabruf über `fetchJsonWithFallback` (meteokit/apifetch) laufen.
+export const API_BASE = "https://open-meteo.wetterheidi.de";
+
+// Bisherige Instanzen (Michael), bleiben als Fallback in `apiFallbacks`
+// erhalten -- siehe meteokit/apifetch.js für die Umschaltlogik.
+// ICON-D2/-EU (inkl. Downloadgruppe "heidiVars" und DEM90-Höhen):
+export const LEGACY_API_BASE = "https://open-meteo.mah.priv.at";
+// ICON Global lief seit 2026-08 auf einem eigenen Temp-Server, weil die
+// dwd_icon-Ingestion auf LEGACY_API_BASE kaputt ist (meta.json liefert 500,
+// Modelllevel-Felder durchgehend null). Stichprobe 2026-09-26: auch der
+// Temp-Server liefert inzwischen null -- bleibt trotzdem als letzter Fallback.
+export const LEGACY_API_BASE_ICON_GLOBAL = "https://open-meteo-temp.mah.priv.at";
+// Alter Name, bleibt für bestehende Importe gültig. ICON Global liegt jetzt
+// auf demselben (neuen) Server wie ICON-D2/-EU.
+export const API_BASE_ICON_GLOBAL = API_BASE;
 
 // Oberflächen-/Single-Level-Felder (Niederschlag, Böen, CAPE, Bewölkung, …):
 // `weather.js` (fetchSurface, Basis des "Jetzt"-Blocks/Meteogramms) holt
 // aktuell PAUSCHAL ALLES von hier, der öffentlichen, gemeterten Instanz —
 // trotz gleichem ICON-Modell nicht Michaels Instanz, um Vermischung von
 // Quellen im selben Datensatz zu vermeiden (siehe SURFACE_CORE/-OPTIONAL).
-// Michaels Instanz (Downloadgruppe "heidiVars", API_BASE) liefert per
+// Michaels Instanz (Downloadgruppe "heidiVars", LEGACY_API_BASE, und der
+// neue Server API_BASE mit identischem Aufbau) liefert per
 // Stichprobe (2026-08) tatsächlich mit echten Werten: temperature_2m,
 // relative_humidity_2m, dew_point_2m, precipitation, weather_code,
 // wind_gusts_10m, visibility, cape, snowfall. Als NULL (nicht Teil der
@@ -53,8 +67,10 @@ export const API_BASE_ICON_GLOBAL = "https://open-meteo-temp.mah.priv.at";
 export let SURFACE_API_BASE = "https://api.open-meteo.com";
 
 // Levelzählung der API: N=1 oberstes, N=nLevels unterstes Modelllevel (~10 m AGL).
-// `apiBase` je Modell (statt eines globalen API_BASE), weil ICON Global auf
-// einem anderen Server liegt als ICON-D2/ICON-EU (s. API_BASE_ICON_GLOBAL).
+// `apiBase` = bevorzugter Host je Modell, `apiFallbacks` = Ausweich-Hosts in
+// Prioritätsreihenfolge (die bisherigen Instanzen; ICON Global hatte einen
+// eigenen). Abrufe sollten über `modelApiBases(model)` + `fetchWithFallback`
+// aus meteokit/apifetch laufen, damit die Fallbacks greifen.
 //
 // Bewusst ein `const`-Objekt, dessen INHALT `configure({ models })` ersetzt --
 // so bleiben bestehende `import { MODELS }` gültig, ohne dass jede Lesestelle
@@ -65,6 +81,7 @@ export const MODELS = {
     dataset: "dwd_icon_d2",
     label: "ICON-D2 (~2,2 km, Mitteleuropa)",
     apiBase: API_BASE,
+    apiFallbacks: [LEGACY_API_BASE],
     grid: 0.02,
     gridMeters: 2200,
     nLevels: 65,
@@ -75,6 +92,7 @@ export const MODELS = {
     dataset: "dwd_icon_eu",
     label: "ICON-EU (~6,5 km, Europa)",
     apiBase: API_BASE,
+    apiFallbacks: [LEGACY_API_BASE],
     grid: 0.0625,
     gridMeters: 6500,
     nLevels: 74,
@@ -88,7 +106,8 @@ export const MODELS = {
     apiModel: "icon_global",
     dataset: "dwd_icon",
     label: "ICON (~13 km, global)",
-    apiBase: API_BASE_ICON_GLOBAL,
+    apiBase: API_BASE,
+    apiFallbacks: [LEGACY_API_BASE_ICON_GLOBAL],
     grid: 0.125,
     gridMeters: 13915,
     nLevels: 120,
@@ -129,7 +148,8 @@ export let SURFACE_OPTIONAL = [
  * @param {object}  [opts.models]           Ersetzt den Modellkatalog KOMPLETT
  *   (nicht zusammengeführt -- wer nur ein Modell ändern will, baut sich das
  *   neue Objekt aus dem bestehenden `MODELS` zusammen). Jeder Eintrag braucht
- *   mindestens `apiModel`, `apiBase`, `nLevels`, `grid`, `bbox`.
+ *   mindestens `apiModel`, `apiBase`, `nLevels`, `grid`, `bbox`
+ *   (optional `apiFallbacks`).
  * @param {string}  [opts.surfaceApiBase]   Instanz für die Oberflächenfelder.
  * @param {string[]} [opts.surfaceCore]     Immer angefragte Oberflächenvariablen.
  * @param {string[]} [opts.surfaceOptional] Variablen, die bei Fehler entfallen dürfen.

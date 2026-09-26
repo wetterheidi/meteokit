@@ -6,6 +6,7 @@
  */
 
 import { getModel } from "./config.js";
+import { fetchWithFallback, modelApiBases } from "./apifetch.js";
 import { cloudFraction } from "./clouds.js";
 import { lastFiniteIndex, horizonParams } from "./weather.js";
 
@@ -55,7 +56,10 @@ async function tryFetchColumn(lat, lon, model, horizon, vars, fetchImpl) {
   });
   let resp;
   try {
-    resp = await fetchImpl(`${model.apiBase}/v1/forecast?${params}`);
+    // Bevorzugter Host, bei Ausfall die Fallback-Instanzen (config.js).
+    resp = await fetchWithFallback(modelApiBases(model), `/v1/forecast?${params}`, {
+      fetchImpl, sourceKey: model.apiModel,
+    });
   } catch (err) {
     // Netzwerkabbruch: genauso vorübergehend wie ein 503.
     return { error: `Netzwerkfehler: ${err.message}`, retryable: true };
