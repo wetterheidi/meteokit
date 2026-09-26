@@ -139,7 +139,7 @@ export function buildBriefingContent({ surface, col, point, modelLabel, maxHeigh
 
   html += `</div>
     <div class="footer">
-      Höhendaten: DWD ICON Modell-Level via open-meteo.wetterheidi.de (Fallback open-meteo.mah.priv.at) · Oberfläche via open-meteo.com.
+      Höhendaten: DWD ICON Modell-Level via open-meteo.wetterheidi.de (Fallback open-meteo.mah.priv.at) · Oberfläche ebenfalls dort (Niederschlagswahrscheinlichkeit via open-meteo.com).
       Wolken/Wetter METAR-nah aus dem Modell abgeleitet (Heuristik), keine Beobachtung.
       Keine amtliche Flugwetterberatung — Verantwortung beim Piloten.
     </div>`;

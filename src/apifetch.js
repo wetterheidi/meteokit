@@ -104,8 +104,10 @@ export async function fetchWithFallback(bases, pathAndQuery, { fetchImpl, signal
  * trägt oder `validate(data)` false liefert (Beispiel: der neue Server
  * antwortet auf `/v1/elevation` mit `{"elevation":[nan]}` -- HTTP 200, aber
  * kein JSON). Wirft, wenn kein Host brauchbare Daten liefert.
+ * Mit `withBase: true` kommt `{ data, base }` zurück (liefernder Host) --
+ * nötig, wenn parallele Abrufe den Host je Ergebnis kennen müssen.
  */
-export async function fetchJsonWithFallback(bases, pathAndQuery, { fetchImpl, signal, sourceKey, validate } = {}) {
+export async function fetchJsonWithFallback(bases, pathAndQuery, { fetchImpl, signal, sourceKey, validate, withBase } = {}) {
   const doFetch = fetchImpl || fetch.bind(globalThis);
   const path = pathAndQuery.split("?")[0];
   let lastErr = null;
@@ -126,7 +128,7 @@ export async function fetchJsonWithFallback(bases, pathAndQuery, { fetchImpl, si
       }
       if (validate && !validate(data)) throw new Error("Unbrauchbare Antwort");
       recordSource(sourceKey, base, bases, path);
-      return data;
+      return withBase ? { data, base } : data;
     } catch (err) {
       if (isAbort(err, signal)) throw err;
       lastErr = err;

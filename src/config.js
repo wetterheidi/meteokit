@@ -46,25 +46,33 @@ export const LEGACY_API_BASE_ICON_GLOBAL = "https://open-meteo-temp.mah.priv.at"
 export const API_BASE_ICON_GLOBAL = API_BASE;
 
 // Oberflächen-/Single-Level-Felder (Niederschlag, Böen, CAPE, Bewölkung, …):
-// `weather.js` (fetchSurface, Basis des "Jetzt"-Blocks/Meteogramms) holt
-// aktuell PAUSCHAL ALLES von hier, der öffentlichen, gemeterten Instanz —
-// trotz gleichem ICON-Modell nicht Michaels Instanz, um Vermischung von
-// Quellen im selben Datensatz zu vermeiden (siehe SURFACE_CORE/-OPTIONAL).
-// Michaels Instanz (Downloadgruppe "heidiVars", LEGACY_API_BASE, und der
-// neue Server API_BASE mit identischem Aufbau) liefert per
-// Stichprobe (2026-08) tatsächlich mit echten Werten: temperature_2m,
-// relative_humidity_2m, dew_point_2m, precipitation, weather_code,
-// wind_gusts_10m, visibility, cape, snowfall. Als NULL (nicht Teil der
-// Downloadgruppe): cloud_cover*, wind_speed_10m, wind_direction_10m,
-// precipitation_probability, freezing_level_height — für diese bleibt die
-// öffentliche Instanz ohnehin nötig. gustoverlay.js nutzt diesen Split
-// bereits gezielt für wind_gusts_10m (primär API_BASE, Fallback hierher).
+// Seit 2026-09 holt `weather.js` (fetchSurface) sie BEVORZUGT von den
+// Modelllevel-Hosts (`modelApiBases(model)`, also zuerst API_BASE) -- dort
+// liegen sie als Single-Level-Felder desselben Modelllaufs wie die
+// Modelllevel-Daten. Stichprobe 2026-09-26 (D2/EU/Global) auf API_BASE mit
+// echten Werten: alle SURFACE_CORE-Felder sowie visibility (nicht Global),
+// cape, freezing_level_height, snowfall -- bei gleicher `elevation` wertgleich
+// mit der öffentlichen Instanz. Als NULL: precipitation_probability und
+// soil_temperature_0cm. Solche durchgehend leeren Felder ergänzt
+// fetchSurface gezielt von hier, der öffentlichen, gemeterten Instanz; ist
+// die ganze Host-Kette ausgefallen, kommt alles von hier (s. weather.js).
 //
 // `let` statt `const`, damit `configure({ surfaceApiBase })` es umhängen kann;
 // ES-Modul-Live-Bindings sorgen dafür, dass importierende Module den neuen
 // Wert sehen. Deshalb den Wert NICHT beim Modulstart in eine eigene Konstante
 // kopieren, sondern erst beim Abruf lesen (so macht es `weather.js`).
 export let SURFACE_API_BASE = "https://api.open-meteo.com";
+
+// DEM90-Geländehöhe (`/v1/elevation`): Host-Kette, bevorzugter zuerst. Der
+// neue Server hat (Stand 2026-09-26) KEIN DEM90 und antwortet mit
+// `{"elevation":[nan]}` -- `fetchJsonWithFallback` (meteokit/apifetch)
+// überspringt das; sobald dort DEM90 liegt, greift er ohne Codeänderung.
+// `null` = Default (neuer Server, Michael, öffentliche Instanz), per
+// `configure({ elevationApiBases })` ersetzbar (z. B. Dev-Proxy).
+let ELEVATION_API_BASES = null;
+export function elevationApiBases() {
+  return ELEVATION_API_BASES || [API_BASE, LEGACY_API_BASE, SURFACE_API_BASE];
+}
 
 // Levelzählung der API: N=1 oberstes, N=nLevels unterstes Modelllevel (~10 m AGL).
 // `apiBase` = bevorzugter Host je Modell, `apiFallbacks` = Ausweich-Hosts in
@@ -153,8 +161,9 @@ export let SURFACE_OPTIONAL = [
  * @param {string}  [opts.surfaceApiBase]   Instanz für die Oberflächenfelder.
  * @param {string[]} [opts.surfaceCore]     Immer angefragte Oberflächenvariablen.
  * @param {string[]} [opts.surfaceOptional] Variablen, die bei Fehler entfallen dürfen.
+ * @param {string[]} [opts.elevationApiBases] Host-Kette für DEM90-Höhen.
  */
-export function configure({ models, surfaceApiBase, surfaceCore, surfaceOptional } = {}) {
+export function configure({ models, surfaceApiBase, surfaceCore, surfaceOptional, elevationApiBases: elevBases } = {}) {
   if (models) {
     for (const key of Object.keys(MODELS)) delete MODELS[key];
     Object.assign(MODELS, models);
@@ -162,6 +171,7 @@ export function configure({ models, surfaceApiBase, surfaceCore, surfaceOptional
   if (surfaceApiBase) SURFACE_API_BASE = surfaceApiBase;
   if (surfaceCore) SURFACE_CORE = [...surfaceCore];
   if (surfaceOptional) SURFACE_OPTIONAL = [...surfaceOptional];
+  if (elevBases) ELEVATION_API_BASES = [...elevBases];
 }
 
 /**

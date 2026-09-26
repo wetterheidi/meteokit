@@ -1,5 +1,5 @@
-import { SURFACE_API_BASE, getModel, SURFACE_CORE, SURFACE_OPTIONAL } from "./config.js";
-import { fetchWithFallback, modelApiBases } from "./apifetch.js";
+import { SURFACE_API_BASE, getModel, SURFACE_CORE, SURFACE_OPTIONAL, elevationApiBases } from "./config.js";
+import { fetchWithFallback, fetchJsonWithFallback, modelApiBases } from "./apifetch.js";
 
 /**
  * Zeithorizont eines Forecast-Requests als Query-Parameter: eine Zahl wird
@@ -22,12 +22,31 @@ export function horizonParams(horizon) {
  * Modell nicht anbietet, werden bei einem Fehler automatisch weggelassen.
  * `horizon`: Vorhersagetage (Zahl) oder Datumsbereich, s. `horizonParams()`.
  *
- * Rückgabe: { time: number[] (unixtime, s), units: {}, vars: { name: (number|null)[] }, elevation }
+ * Quellen (s. config.js, SURFACE_API_BASE):
+ *  1. Primär die Modelllevel-Hosts (`modelApiBases(model)`, neuer Server
+ *     zuerst) -- Single-Level-Felder desselben Laufs wie die Modelllevel-Daten.
+ *  2. Felder, die dort durchgehend null sind (z. B. precipitation_probability),
+ *     werden gezielt von der öffentlichen Instanz ergänzt.
+ *  3. Liefert die ganze Host-Kette nichts Brauchbares, kommt alles von der
+ *     öffentlichen Instanz (bisheriges Verhalten).
+ *
+ * Geländehöhe: `elevation` im Ergebnis ist die DEM90-Höhe des Punkts (Basis
+ * u. a. für den Orographie-Vergleich Modell vs. Gelände). Der neue Server hat
+ * kein DEM und würde ohne Vorgabe auf die Modellhöhe rechnen -- deshalb wird
+ * die DEM-Höhe vorab geholt (`elevationApiBases()`) und als `elevation`
+ * mitgeschickt, so dass auch das T2m-Downscaling wie bisher auf die echte
+ * Geländehöhe erfolgt (Stichprobe: dann wertgleich mit der öffentlichen
+ * Instanz). Schlägt der DEM-Abruf fehl, bleibt es bei der Server-Höhe und
+ * `elevationIsDem` ist false.
+ *
+ * Rückgabe: { time: number[] (unixtime, s), units: {}, vars: { name: (number|null)[] },
+ *   elevation, elevationIsDem, nights, varSources: { name: host } }
  */
 export async function fetchSurface(lat, lon, modelKey, horizon, fetchImpl = fetch.bind(globalThis)) {
   const model = getModel(modelKey);
+  const dem = await fetchDemElevation(lat, lon, fetchImpl);
 
-  const build = (vars) => {
+  const query = (vars) => {
     const params = new URLSearchParams({
       latitude: round5(lat),
       longitude: round5(lon),
@@ -38,14 +57,46 @@ export async function fetchSurface(lat, lon, modelKey, horizon, fetchImpl = fetc
       ...horizonParams(horizon),
       cell_selection: "nearest",
     });
-    return `${SURFACE_API_BASE}/v1/forecast?${params}`;
+    if (dem != null) params.set("elevation", String(dem));
+    return `/v1/forecast?${params}`;
   };
+  // Ein Host "liefert", wenn die Kernvariable echte Werte hat -- ein Host mit
+  // kaputter Ingestion antwortet sonst mit HTTP 200 und lauter null.
+  const hasData = (d) => (d.hourly?.temperature_2m || []).some(Number.isFinite);
 
   // Erst mit allen Variablen versuchen; scheitert der Request an einer nicht
   // verfügbaren Optionalen, ohne die Kernvariablen erneut anfragen.
-  let data = await tryFetch(build([...SURFACE_CORE, ...SURFACE_OPTIONAL]), fetchImpl);
-  if (!data) data = await tryFetch(build(SURFACE_CORE), fetchImpl);
+  const allVars = [...SURFACE_CORE, ...SURFACE_OPTIONAL];
+  const primaryBases = modelApiBases(model);
+  let data = null;
+  let host = null;
+  for (const vars of [allVars, SURFACE_CORE]) {
+    try {
+      ({ data, base: host } = await fetchJsonWithFallback(primaryBases, query(vars), {
+        fetchImpl, sourceKey: "surface", validate: hasData, withBase: true,
+      }));
+      break;
+    } catch { /* nächste Variante / öffentliche Instanz */ }
+  }
+  if (!data) {
+    data = await tryFetch(`${SURFACE_API_BASE}${query(allVars)}`, fetchImpl)
+      || await tryFetch(`${SURFACE_API_BASE}${query(SURFACE_CORE)}`, fetchImpl);
+    host = SURFACE_API_BASE;
+  }
   if (!data) throw new Error("Oberflächendaten konnten nicht geladen werden");
+
+  const varSources = {};
+  for (const key of Object.keys(data.hourly || {})) if (key !== "time") varSources[key] = host;
+
+  // Auf dem Primärhost durchgehend leere Felder von der öffentlichen Instanz
+  // ergänzen (nur diese Felder -- spart Kontingent der gemeterten Instanz).
+  if (host !== SURFACE_API_BASE) {
+    const empty = allVars.filter((v) => !(data.hourly?.[v] || []).some(Number.isFinite));
+    if (empty.length) {
+      const extra = await tryFetch(`${SURFACE_API_BASE}${query(empty)}`, fetchImpl);
+      if (extra) mergeHourly(data, extra, empty, varSources, SURFACE_API_BASE);
+    }
+  }
 
   const hourly = data.hourly || {};
   const time = hourly.time || [];
@@ -76,8 +127,10 @@ export async function fetchSurface(lat, lon, modelKey, horizon, fetchImpl = fetc
     time: trim(time),
     units: data.hourly_units || {},
     vars: trimmedVars,
-    elevation: data.elevation,
+    elevation: dem ?? data.elevation,
+    elevationIsDem: dem != null,
     nights,
+    varSources,
   };
 }
 
@@ -102,6 +155,43 @@ export async function fetchModelRunInit(modelKey, fetchImpl = fetch.bind(globalT
     return Number.isFinite(data.last_run_initialisation_time) ? data.last_run_initialisation_time : null;
   } catch {
     return null;
+  }
+}
+
+/**
+ * Ergänzt `names` in `data.hourly` aus `extra.hourly`, zeitstempelgenau (die
+ * Zeitachsen beider Instanzen sind bei gleichem Horizont identisch, aber
+ * nicht darauf verlassen). Nur Felder, die in `extra` echte Werte haben.
+ */
+function mergeHourly(data, extra, names, varSources, host) {
+  const t = data.hourly?.time || [];
+  const et = extra.hourly?.time || [];
+  const idx = new Map(et.map((ts, i) => [ts, i]));
+  for (const name of names) {
+    const src = extra.hourly?.[name];
+    if (!src || !src.some(Number.isFinite)) continue;
+    data.hourly[name] = t.map((ts) => (idx.has(ts) ? src[idx.get(ts)] ?? null : null));
+    if (extra.hourly_units?.[name]) (data.hourly_units ||= {})[name] = extra.hourly_units[name];
+    varSources[name] = host;
+  }
+}
+
+// DEM90-Höhe je Punkt (statisch) -- im Speicher gecacht, weil fetchSurface
+// z. B. beim Neuladen/Modellwechsel wiederholt für denselben Punkt läuft.
+const demCache = new Map();
+async function fetchDemElevation(lat, lon, fetchImpl) {
+  const key = `${round5(lat)},${round5(lon)}`;
+  if (demCache.has(key)) return demCache.get(key);
+  const first = (d) => (Array.isArray(d.elevation) ? d.elevation[0] : d.elevation);
+  try {
+    const params = new URLSearchParams({ latitude: round5(lat), longitude: round5(lon) });
+    const d = await fetchJsonWithFallback(elevationApiBases(), `/v1/elevation?${params}`, {
+      fetchImpl, sourceKey: "elevation", validate: (x) => Number.isFinite(first(x)),
+    });
+    demCache.set(key, first(d));
+    return first(d);
+  } catch {
+    return null; // nicht cachen -- nächster Aufruf versucht es erneut
   }
 }
 
