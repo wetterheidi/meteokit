@@ -50,11 +50,17 @@
  *        sicher (Sicht UND RH sind reale Modellfelder, kein Fallback).
  *     c. sonst kein Befund — AUCH wenn RH hoch ist oder `weather_code`
  *        Nebel meldet (s. Priorität 4): die Sicht ist hier die Wahrheit.
- *  4. Sonst (keine Sichtweite verfügbar — seltener Rand-/Instanzfall):
+ *  4. Sonst (keine Sichtweite verfügbar — Modelle ohne `visibility`, z. B.
+ *     ICON Global):
  *     a. `weather_code` 45/48 → FG, unsicher, keine Obergrenze (`metarWeather()`-
  *        Fallback, ebenso in `classifyFog()`).
- *     b. RH ≥ BR_RH_FALLBACK_MIN → BR, unsicher.
- *     c. RH ≥ HZ_RH_FALLBACK_MIN → HZ, unsicher.
+ *     b. Sicht aus T/RH am untersten Level geschätzt (`clouds.js`
+ *        `estimateVisibilityFromHumidity()`, FSL-/RUC-Formel) ≤
+ *        HAZE_VIS_MAX_M → BR, unsicher, mit `visEst`. Nie HZ (trockener
+ *        Dunst ist ohne Sichtfeld nicht diagnostizierbar), nie FG (Schätzung
+ *        nach unten auf FG_VIS_MAX_M begrenzt). Ersetzt den früheren reinen
+ *        RH-Fallback (≥ 60 % → HZ), der bei ICON Global fast jede Nacht Dunst
+ *        zeigte.
  *  5. sonst kein Befund (`null`).
  *
  * Alle RH-/Sicht-Schwellen sind wie an anderer Stelle im Wolkenmodul
@@ -71,9 +77,9 @@
 // (`fog.FG_VIS_MAX_M` etc., Namespace-Import) unverändert weiterläuft.
 import {
   CF_BKN, FOG_QW_MIN,
-  FG_VIS_MAX_M, HAZE_VIS_MAX_M, BR_HZ_RH_SPLIT, BR_RH_FALLBACK_MIN, HZ_RH_FALLBACK_MIN,
+  FG_VIS_MAX_M, HAZE_VIS_MAX_M, BR_HZ_RH_SPLIT, estimateVisibilityFromHumidity,
 } from "../../clouds.js";
-export { FG_VIS_MAX_M, HAZE_VIS_MAX_M, BR_HZ_RH_SPLIT, BR_RH_FALLBACK_MIN, HZ_RH_FALLBACK_MIN };
+export { FG_VIS_MAX_M, HAZE_VIS_MAX_M, BR_HZ_RH_SPLIT };
 
 const KELVIN = 273.15;
 
@@ -110,7 +116,7 @@ function scanTop(grid, i, threshold, getValue) {
  * Klassifikation einer einzelnen Stunde. `cloudFrac` kommt von `derive.js`
  * (`d.cloudFrac`, dieselbe Größe wie Wolkenbasis/Cb/Vereisung) statt hier neu
  * berechnet zu werden.
- * @returns {{type: "FG"|"BR"|"HZ", top: number|null, certain: boolean, freezing: boolean} | null}
+ * @returns {{type: "FG"|"BR"|"HZ", top: number|null, certain: boolean, freezing: boolean, visEst?: number} | null}
  */
 export function classifyColumn(grid, cloudFrac, i) {
   const { nk } = grid;
@@ -140,11 +146,9 @@ export function classifyColumn(grid, cloudFrac, i) {
   if (wcode === 45 || wcode === 48) {
     return { type: "FG", top: null, certain: false, freezing };
   }
-  if (Number.isFinite(rh0) && rh0 >= BR_RH_FALLBACK_MIN) {
-    return { type: "BR", top: null, certain: false, freezing: false };
-  }
-  if (Number.isFinite(rh0) && rh0 >= HZ_RH_FALLBACK_MIN) {
-    return { type: "HZ", top: null, certain: false, freezing: false };
+  const visEst = estimateVisibilityFromHumidity(grid.T[ix0] - KELVIN, rh0);
+  if (visEst <= HAZE_VIS_MAX_M) {
+    return { type: "BR", top: null, certain: false, freezing: false, visEst };
   }
   return null;
 }

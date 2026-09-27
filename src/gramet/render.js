@@ -634,19 +634,17 @@ const FG_ALPHA = 0.92;
 /** Schleierfarbe+-stärke einer Stunde. Sicht ist jetzt das primäre Kriterium
  *  (s. `hazards/fog.js`) -- Rampe daher an der Position innerhalb des
  *  Sichtweiten-Bands (FG_VIS_MAX_M..HAZE_VIS_MAX_M) festgemacht, nicht mehr
- *  an RH. `visM` fehlt nur im seltenen Rand-/Instanzfall ohne Sichtweiten-
- *  daten (Fallback-Klassifikation in `fog.js`) -- dort bleibt RH die einzige
- *  verfügbare Größe für eine grobe Rampe. Baseline+Rampe statt reinem
+ *  an RH. Fehlt `visM` (Modelle ohne Sichtfeld, z. B. ICON Global), dient
+ *  die Feuchte-Sichtschätzung `entry.visEst` aus `fog.js`. Baseline+Rampe statt reinem
  *  0..1-Verhältnis, damit "gerade eben BR/HZ" nicht schon fast unsichtbar
  *  ist -- rein optisch gewählt, nicht kalibriert. */
-function hazeColorAlpha(entry, visM, rh0) {
+function hazeColorAlpha(entry, visM) {
   if (!entry) return null;
   if (entry.type === "FG") return { color: FG_COLOR, alpha: FG_ALPHA };
+  if (!Number.isFinite(visM)) visM = entry.visEst; // Modelle ohne Sichtfeld: Feuchteschätzung aus fog.js
   const t = Number.isFinite(visM)
     ? clamp(1 - (visM - fog.FG_VIS_MAX_M) / (fog.HAZE_VIS_MAX_M - fog.FG_VIS_MAX_M), 0, 1)
-    : Number.isFinite(rh0)
-      ? clamp((rh0 - (entry.type === "BR" ? fog.BR_RH_FALLBACK_MIN : fog.HZ_RH_FALLBACK_MIN)) / 20, 0, 1)
-      : 0.5;
+    : 0.5;
   if (entry.type === "BR") return { color: BR_COLOR, alpha: HAZE_MAX_ALPHA * (0.65 + 0.35 * t) };
   if (entry.type === "HZ") return { color: HZ_COLOR, alpha: HAZE_MAX_ALPHA * (0.45 + 0.4 * t) };
   return null;
@@ -656,7 +654,7 @@ function hazeColorAlpha(entry, visM, rh0) {
 // Einheiten (AMSL) als Funktion der Pfadposition -- der Schleier ist an der
 // Höhe ÜBER GRUND festgemacht (HAZE_REF_*) und muss dem Gelände folgen.
 function drawFogHaze(ctx, grid, view, x, y, top, bot, groundAt = null) {
-  const { pos, nk } = grid;
+  const { pos } = grid;
   const span = x.right - x.left, h = bot - top;
   if (span <= 0 || h <= 0 || !view.fog) return;
 
@@ -666,7 +664,7 @@ function drawFogHaze(ctx, grid, view, x, y, top, bot, groundAt = null) {
   for (let i = 0; i < pos.length; i++) {
     let off = clamp((x(pos[i]) - x.left) / span, 0, 1);
     if (off <= lastOff) off = Math.min(1, lastOff + 1e-4);
-    const ca = hazeColorAlpha(view.fog[i], grid.surface?.visibility?.[i], grid.rh[i * nk]);
+    const ca = hazeColorAlpha(view.fog[i], grid.surface?.visibility?.[i]);
     if (ca) anyHaze = true;
     colorGrad.addColorStop(off, ca ? `rgba(${ca.color},${ca.alpha})` : "rgba(0,0,0,0)");
     lastOff = off;

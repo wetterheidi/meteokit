@@ -92,9 +92,19 @@ export const FOG_QW_MIN = 1e-5;    // kg/kg — Kondensat-Schwelle für „Nebel
 export const FG_VIS_MAX_M = 1000;      // m — Sicht darunter ⇒ FG, unabhängig von RH
 export const HAZE_VIS_MAX_M = 5000;    // m — 1000–5000 m ⇒ BR/HZ, sonst kein Befund
 export const BR_HZ_RH_SPLIT = 80;      // % — RH-Split BR (≥) vs. HZ (<) im Sichtband
-// Nur für den seltenen Fall ohne Sichtweitendaten: reiner RH-Fallback.
-export const BR_RH_FALLBACK_MIN = 90;  // %
-export const HZ_RH_FALLBACK_MIN = 60;  // %
+
+// Modelle OHNE `visibility` (ICON Global): Sicht wird aus der bodennahen
+// Feuchte geschätzt (`estimateVisibilityFromHumidity()`). Der frühere reine
+// RH-Fallback (RH ≥ 60 % → HZ, ≥ 90 % → BR) markierte praktisch jede Nacht
+// und jeden feuchten Tag als Dunst — bei Spreads von 5–6 K, an denen ein
+// Modell mit Sichtdiagnose (ICON-D2) durchgehend >10 km liefert.
+// FSL-/RUC-Formel (NOAA/FSL, Doran et al. 1999): Vis[mi] = 6000·(T−Td)/RH^1.75.
+// Ergibt ≤ 5 km erst bei Spread ≲ 1.5 K und RH ≳ 90 % — BR also nur nahe
+// Sättigung, bei 2 K Spread schon ~7 km. Ergebnisse sind nach unten auf
+// FG_VIS_MAX_M begrenzt: eine reine Feuchteschätzung darf kein FG ergeben
+// (FG kommt weiter aus Kondensat/Wolkenfraktion/weather_code), und HZ gibt es
+// ohne Sichtfeld gar nicht — trockener Dunst ist Aerosol, keine Feuchtegröße.
+const VIS_EST_MI_TO_M = 1609.344;
 
 // Kondensat-Skalen für die QW/QI-Stufe (Stufe 2, s. u.): getrennt für Wasser
 // und Eis, NICHT eine gemeinsame Skala — Eis erzeugt bei gleicher Masse mehr
@@ -317,6 +327,22 @@ export function lowestCloudBase(col, i) {
 }
 
 /**
+ * Sichtschätzung (m) aus bodennaher Temperatur (°C) und RH (%) für Modelle
+ * ohne `visibility`-Feld — FSL-/RUC-Formel, s. Kommentar bei den Sicht-
+ * Schwellen oben. Untergrenze FG_VIS_MAX_M (Feuchte allein ⇒ höchstens BR).
+ * NaN bei fehlenden Eingängen.
+ */
+export function estimateVisibilityFromHumidity(tC, rh) {
+  if (!Number.isFinite(tC) || !Number.isFinite(rh) || rh <= 0) return NaN;
+  const r = Math.min(rh, 100);
+  // Taupunkt via Magnus (über Wasser), wie `dewFromRhT()` in briefing.js
+  const ln = Math.log(r / 100) + (17.62 * tC) / (243.12 + tC);
+  const td = (243.12 * ln) / (17.62 - ln);
+  const visMi = (6000 * Math.max(0, tC - td)) / Math.pow(r, 1.75);
+  return Math.max(FG_VIS_MAX_M, visMi * VIS_EST_MI_TO_M);
+}
+
+/**
  * Nebel/Dunst-Diagnose (FG/BR/HZ) zur Stunde `i`, col-native Gegenstück zu
  * `gramet/hazards/fog.js` `classifyColumn()` (dort grid-native für GRAMETs
  * Höhenschnitt) — SICHTWEITE ALS PRIMÄRES KRITERIUM, exakt dieselbe Priorität
@@ -329,8 +355,10 @@ export function lowestCloudBase(col, i) {
  *  3. Sonst, wenn `visibility` vorhanden ist: < FG_VIS_MAX_M → FG; ≤
  *     HAZE_VIS_MAX_M → BR (RH ≥ BR_HZ_RH_SPLIT) oder HZ; sonst kein Befund —
  *     AUCH wenn `wcode` Nebel meldet (die Sicht ist hier die Wahrheit).
- *  4. Sonst (keine Sichtweite verfügbar): `wcode` 45/48 → FG, unsicher; RH-
- *     Fallback für BR/HZ, unsicher.
+ *  4. Sonst (keine Sichtweite verfügbar, z. B. ICON Global): `wcode` 45/48
+ *     → FG, unsicher; sonst Sicht aus Feuchte geschätzt
+ *     (`estimateVisibilityFromHumidity()`), ≤ HAZE_VIS_MAX_M → BR, unsicher,
+ *     mit `visEst` (m). Nie HZ.
  *  5. sonst kein Befund (`null`).
  *
  * `freezing`: unterkühlter Nebel (T ≤ 0 °C im untersten Level) — friert auf
@@ -339,7 +367,7 @@ export function lowestCloudBase(col, i) {
  *
  * @param {number} [visibility] Sicht (m), i. d. R. `surface.vars.visibility[i]`
  * @param {number} [wcode] `weather_code[i]`, nur Fallback ohne Sichtwert
- * @returns {{type: "FG"|"BR"|"HZ", certain: boolean, freezing: boolean} | null}
+ * @returns {{type: "FG"|"BR"|"HZ", certain: boolean, freezing: boolean, visEst?: number} | null}
  */
 export function classifyFog(col, i, visibility, wcode) {
   const t0 = col.t?.[0]?.[i];
@@ -362,8 +390,8 @@ export function classifyFog(col, i, visibility, wcode) {
   }
 
   if (wcode === 45 || wcode === 48) return { type: "FG", certain: false, freezing };
-  if (Number.isFinite(rh0) && rh0 >= BR_RH_FALLBACK_MIN) return { type: "BR", certain: false, freezing: false };
-  if (Number.isFinite(rh0) && rh0 >= HZ_RH_FALLBACK_MIN) return { type: "HZ", certain: false, freezing: false };
+  const visEst = estimateVisibilityFromHumidity(t0, rh0);
+  if (visEst <= HAZE_VIS_MAX_M) return { type: "BR", certain: false, freezing: false, visEst };
   return null;
 }
 
