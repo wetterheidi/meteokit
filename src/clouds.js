@@ -98,7 +98,12 @@ export const BR_HZ_RH_SPLIT = 80;      // % — RH-Split BR (≥) vs. HZ (<) im 
 // RH-Fallback (RH ≥ 60 % → HZ, ≥ 90 % → BR) markierte praktisch jede Nacht
 // und jeden feuchten Tag als Dunst — bei Spreads von 5–6 K, an denen ein
 // Modell mit Sichtdiagnose (ICON-D2) durchgehend >10 km liefert.
-// FSL-/RUC-Formel (NOAA/FSL, Doran et al. 1999): Vis[mi] = 6000·(T−Td)/RH^1.75.
+// Empirische Formel nach Doran et al. (1999, AFWA-MM5-Produkte, 8th ARAM
+// Conf.): Vis[mi] = 6000·(T−Td)/RH^1.75 (T, Td in °C, RH in %). Primärquelle
+// nicht eingesehen; zitiert nach Khlestova & Tatarinovich (COSMO AWARE Task
+// 4.1, 2021, Tab. 1). NICHT das RH-Schema des RUC (Smirnova et al. 2000:
+// 8 km ab RH ≥ 95 %, exponentiell zu größeren Werten) — frühere Kommentare
+// nannten es fälschlich „RUC-Formel".
 // Ergibt ≤ 5 km erst bei Spread ≲ 1.5 K und RH ≳ 90 % — BR also nur nahe
 // Sättigung, bei 2 K Spread schon ~7 km. Ergebnisse sind nach unten auf
 // FG_VIS_MAX_M begrenzt: eine reine Feuchteschätzung darf kein FG ergeben
@@ -328,7 +333,7 @@ export function lowestCloudBase(col, i) {
 
 /**
  * Sichtschätzung (m) aus bodennaher Temperatur (°C) und RH (%) für Modelle
- * ohne `visibility`-Feld — FSL-/RUC-Formel, s. Kommentar bei den Sicht-
+ * ohne `visibility`-Feld — Formel nach Doran et al. (1999), s. Kommentar bei den Sicht-
  * Schwellen oben. Untergrenze FG_VIS_MAX_M (Feuchte allein ⇒ höchstens BR).
  * NaN bei fehlenden Eingängen.
  */

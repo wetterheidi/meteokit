@@ -55,7 +55,7 @@
  *     a. `weather_code` 45/48 → FG, unsicher, keine Obergrenze (`metarWeather()`-
  *        Fallback, ebenso in `classifyFog()`).
  *     b. Sicht aus T/RH am untersten Level geschätzt (`clouds.js`
- *        `estimateVisibilityFromHumidity()`, FSL-/RUC-Formel) ≤
+ *        `estimateVisibilityFromHumidity()`, Doran et al. 1999) ≤
  *        HAZE_VIS_MAX_M → BR, unsicher, mit `visEst`. Nie HZ (trockener
  *        Dunst ist ohne Sichtfeld nicht diagnostizierbar), nie FG (Schätzung
  *        nach unten auf FG_VIS_MAX_M begrenzt). Ersetzt den früheren reinen
