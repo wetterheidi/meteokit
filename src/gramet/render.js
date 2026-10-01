@@ -169,14 +169,20 @@ const ISENTROPE_LABEL_COLOR = "#8a6500";
 // Modell-Vertikalwind `w` (m/s, positiv aufwärts) als Schattierung pro Zelle.
 // Magenta/Cyan statt des üblichen Rot/Blau: Rot/Orange/Gelb ist schon die
 // Turbulenz (TURB_STYLES), und Blau ginge auf dem blauen Tag/Nacht-Himmel
-// unter. Deckkraft wächst mit sqrt(|w|) bis W_SAT_MS -- so bleiben auch die
-// schwachen Wellen gröberer Modelle (ICON-EU: oft nur 0,1-0,5 m/s) sichtbar,
-// ohne dass ICON-D2-Aufwinde von einigen m/s alles zudecken. Unter W_MIN_MS
-// nichts (Rauschen). Schwellen nicht kalibriert.
+// unter. Deckkraft linear von 0 bei W_MIN_MS bis voll bei W_SAT_MS, darüber
+// gesättigt -- ab der Schwelle statt ab 0, damit das Rauschen knapp darüber
+// nicht schon eine sichtbare Grundfarbe bekommt. Skala an
+// der tatsächlichen Größenordnung der Modell-w ausgerichtet (Stichprobe
+// ICON-D2, Front Nordfriesland 2026-10-01): Hebung an der Front verbreitet
+// 0,3-0,5 m/s, schmale Spitzen ~1 m/s, Grundrauschen überall +-0,1-0,2 m/s.
+// Die erste Skala (sqrt bis 2 m/s, ab 0,05 m/s) machte die Front kaum
+// sichtbar und färbte zugleich das Rauschen ein (s. Feedback). Stärkere
+// Aufwinde (Konvektion, kräftige Bergwellen) sättigen jetzt -- gewollt, die
+// sollen auffallen. Schwellen nicht kalibriert.
 const W_UP_RGB = [230, 73, 128];
 const W_DOWN_RGB = [34, 211, 238];
-const W_MIN_MS = 0.05;
-const W_SAT_MS = 2;
+const W_MIN_MS = 0.1;
+const W_SAT_MS = 0.5;
 const W_MAX_ALPHA = 0.6;
 // Stufe: 1 K (derive.js ISENTROPE_STEP_K) beim gezoomten Höhenbereich, bei
 // "Gesamthöhe" (kein `state.zMax`) nur jede zweite -- dort wird die Schar
@@ -1711,7 +1717,7 @@ function drawVerticalWind(ctx, grid, x, y) {
       const zHi = k < nk - 1 ? mid(grid.z[ix], grid.z[ix + 1]) : grid.z[ix];
       const yTop = y(zHi), yBot = y(zLo);
       if (!(yBot > yTop)) continue;
-      const a = W_MAX_ALPHA * Math.sqrt(Math.min(Math.abs(w) / W_SAT_MS, 1));
+      const a = W_MAX_ALPHA * Math.min((Math.abs(w) - W_MIN_MS) / (W_SAT_MS - W_MIN_MS), 1);
       const [r, g, b] = w > 0 ? W_UP_RGB : W_DOWN_RGB;
       ctx.fillStyle = `rgba(${r},${g},${b},${a.toFixed(3)})`;
       // +0.5 px Überlappung gegen Haarlinien zwischen Nachbarzellen.
