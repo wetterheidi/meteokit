@@ -166,8 +166,11 @@ const ISOTACH_DASH = [7, 3, 1, 3];
 const ISENTROPE_COLOR = "#e8b730";
 const ISENTROPE_HALO = "rgba(0,0,0,0.45)";
 const ISENTROPE_LABEL_COLOR = "#8a6500";
-// Alle Isentropen werden gezeichnet (Stufe s. derive.js ISENTROPE_STEP_K);
-// beschriftet und etwas kräftiger ist jedes Vielfache von ISENTROPE_MAJOR_K.
+// Stufe: 1 K (derive.js ISENTROPE_STEP_K) beim gezoomten Höhenbereich, bei
+// "Gesamthöhe" (kein `state.zMax`) nur jede zweite -- dort wird die Schar
+// oberhalb der Tropopause sonst zur Fläche (s. Feedback). Beschriftet und
+// etwas kräftiger ist jedes Vielfache von ISENTROPE_MAJOR_K.
+const ISENTROPE_FULL_RANGE_STEP_K = 2;
 const ISENTROPE_MAJOR_K = 5;
 
 /** Sicht fürs GRAMET, knapper als `metarVis` im Briefing (Meter, feste
@@ -366,7 +369,9 @@ export function renderGramet(host, grid, view, state = {}) {
     // Opt-in wie die Windfiedern (Default aus): die Linienschar belastet die
     // Hauptfläche zusätzlich. Unter Isothermen/Isotachen, damit die einzelnen
     // Schwellwertlinien obenauf bleiben.
-    if (toggles.isentropes) drawIsentropes(ctx, rview.isentropes, x, y);
+    if (toggles.isentropes) {
+      drawIsentropes(ctx, rview.isentropes, x, y, state.zMax == null ? ISENTROPE_FULL_RANGE_STEP_K : 1);
+    }
     if (toggles.isotherms !== false) drawIsotherms(ctx, rview.isotherms, x, y);
     if (toggles.isotachs !== false) drawIsotachs(ctx, rview.isotachs, x, y);
     if (toggles.tropopause !== false) drawTropopause(ctx, rview.tropopause, x, y);
@@ -1672,11 +1677,12 @@ function drawIsotachs(ctx, isotachs, x, y) {
     labelBox(ctx, x(p.t), y(p.z), `${kt} kt`, ISOTACH_COLOR, x.right + M.r);
   }
 }
-function drawIsentropes(ctx, isentropes, x, y) {
+function drawIsentropes(ctx, isentropes, x, y, stepK) {
   const zMin = y.inv(y.bot), zMax = y.inv(y.top);
   ctx.save();
   ctx.lineJoin = "round";
   for (const { thetaK, polylines: raw } of isentropes) {
+    if (thetaK % stepK !== 0) continue;
     const polylines = raw.flatMap((pl) => clipPolylineZ(pl, zMin, zMax));
     if (!polylines.length) continue;
     const major = thetaK % ISENTROPE_MAJOR_K === 0;
