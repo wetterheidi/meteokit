@@ -359,10 +359,6 @@ export function renderGramet(host, grid, view, state = {}) {
     // `drawClouds()` (s. u., mit maskierter cloudFrac) innerhalb der FG-Schicht
     // nichts mehr zu zeichnen hat.
     drawFogHaze(ctx, rgrid, rview, x, y, mainTop, mainBot, groundAt);
-    // Vertikalwind opt-in (Default aus), UNTER Wolken/Hazards: Wellen liegen
-    // meist in wolkenfreier Luft, dort bleibt die Schattierung sichtbar,
-    // während die eigentlichen GRAMET-Inhalte obenauf lesbar bleiben.
-    if (toggles.w) drawVerticalWind(ctx, rgrid, x, y);
     // Zellzerlegung einmal ziehen: Schaft, Amboss und Symbol müssen auf demselben
     // Turm sitzen (s. `cbCells`).
     const cells = toggles.cb !== false ? cbCells(rgrid, rview.cb, x, y) : [];
@@ -378,6 +374,12 @@ export function renderGramet(host, grid, view, state = {}) {
     }
     const seed = hashSeed(`${grid.meta.lat},${grid.meta.lon},${grid.meta.elevation},${times[0]}`);
     if (toggles.precip !== false) drawPrecip(ctx, rview.precip, pos, x, y, seed, groundAt);
+    // Vertikalwind opt-in (Default aus), ÜBER Wolken/Niederschlag, aber unter
+    // den Hazards: zuerst lag er unter den Wolken, verschwand dann aber bei
+    // dichter Bewölkung fast vollständig -- gerade bei Wellen mit Lenticularis-/
+    // Föhnmauer-Bewölkung (s. Feedback, Testfall 24.09. Alpen). Die Wolken
+    // werden dabei eingefärbt; wer w einschaltet, will es sehen.
+    if (toggles.w) drawVerticalWind(ctx, rgrid, x, y);
     // Vereisung/Turbulenz bewusst ÜBER Wolken/Niederschlag: beides sind Gefahren-
     // hinweise, die auf der Wolke "aufsitzen" sollen, statt darunter zu verschwinden
     // -- die Kontur-Füllung ist transparent genug (s. `drawHazardArea`), dass die
