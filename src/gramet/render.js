@@ -42,11 +42,15 @@ const INK = "#0b0b0b", MUTED = "#52514e", GRID = "#d9d8d3";
 // Rechter Rand: Platz für die Beschriftungskästchen der Isothermen/Isotachen/
 // Tropopause, die am rechten Ende ihrer Polylinie sitzen (also i. d. R. exakt
 // auf `x.right`) -- mit dem alten 16 px wurden sie abgeschnitten.
-// BOT auf 32 (statt 22) fuer die Path-Achse: die zeigt seit der Uhrzeit-
-// Zeile (s. `drawPathAxis`) zwei Textzeilen statt einer, sonst wuerde die
-// untere abgeschnitten. Im Punkt-Modus (eine Zeile, `drawTimeAxis`) bleibt
-// dadurch nur etwas mehr Luft am unteren Rand -- kein separater Wert noetig.
-const TOPAX = 22, GAP = 16, BOT = 32, M = { l: 50, r: 52 };
+// Die Zeitachse sitzt direkt unter der Hauptfläche (bzw. unter dem
+// Bodenstreifen im Punkt-Modus), nicht erst unter den Bodenzeilen -- dort war
+// der Bezug zur Wetterdarstellung zu weit weg (s. Feedback). Ihr Band ersetzt
+// den früheren Abstand zwischen Hauptpanel und Zeilen: AXIS_H.point für die eine
+// Textzeile von `drawTimeAxis`, AXIS_H.path für die zwei von `drawPathAxis`
+// (verstrichene Zeit + Uhrzeit). BOT ist nur noch der Rand unter der letzten
+// Bodenzeile.
+const TOPAX = 22, BOT = 10, M = { l: 50, r: 52 };
+const AXIS_H = { point: 18, path: 28 };
 
 // Untergrenze der Hauptfläche. Ist im Container weniger Platz, wächst der
 // Chart NICHT weiter nach unten zusammen, sondern der Rest wird gescrollt
@@ -71,11 +75,11 @@ const CLICK_SLOP_PX = 4;
 
 // Die einzigen beiden Maße, die von der Containergröße abhängen. Als eigene
 // Funktion, weil der ResizeObserver sie ohne Redraw auswerten können muss.
-function dimsFor(host, { hours, rowsH, stripH, minMainH }) {
+function dimsFor(host, { hours, rowsH, stripH, axisH, minMainH }) {
   const containerPw = Math.max(host.clientWidth || 0, 360) - M.l - M.r;
   return {
     pw: Math.max(hours * CHART_PX_PER_HOUR, containerPw),
-    mainH: Math.max(minMainH, (host.clientHeight || 560) - TOPAX - stripH - rowsH - GAP * 2 - BOT),
+    mainH: Math.max(minMainH, (host.clientHeight || 560) - TOPAX - stripH - axisH - rowsH - BOT),
   };
 }
 
@@ -91,8 +95,8 @@ const NIGHT_COLOR = "#050b1e", DAY_COLOR = "#2b5c93";
 // eine reine Punktprognose (ein Ort über die Zeit, nicht eine Route über den
 // Raum) -- ein Geländeprofil ergibt dort keinen Sinn, die Höhe des einen
 // Punkts ändert sich ja nicht. Statt einer Silhouette also ein schmaler,
-// horizontaler Streifen im ohnehin leeren GAP zwischen Hauptpanel und
-// Zahlenzeilen -- reine Bodenkontakt-Anzeige, kein Höhenprofil, verdrängt
+// horizontaler Streifen direkt unter dem Hauptpanel (über der Zeitachse und
+// den Zahlenzeilen) -- reine Bodenkontakt-Anzeige, kein Höhenprofil, verdrängt
 // darum auch keine echten Daten (s. Feedback). Der PATH-Modus hat KEINEN
 // Streifen mehr: das Gelände (Modell-Orographie) sitzt dort als Silhouette
 // direkt in der Haupttafel (`drawModelTerrain`, AMSL-Achse -- Ogimet-
@@ -283,6 +287,7 @@ export function renderGramet(host, grid, view, state = {}) {
     const zMin = state.zMin ?? hMinData, zMax = state.zMax ?? hMaxData;
     // Path-Modus ohne Bodenstreifen -- das Gelände sitzt in der Haupttafel.
     const stripH = isPath ? 0 : GROUND_H;
+    const axisH = isPath ? AXIS_H.path : AXIS_H.point;
 
     // Spannweite in `pos`-Einheiten (Point-Modus: Sekunden = `times`-Spanne,
     // Path-Modus: verstrichene Sekunden seit Pfadbeginn) -- `CHART_PX_PER_HOUR`
@@ -292,11 +297,11 @@ export function renderGramet(host, grid, view, state = {}) {
     // Ab hier hängen nur noch zwei Größen am Container -- gebündelt in
     // `dimsFor`, damit der ResizeObserver unten prüfen kann, ob sich
     // überhaupt etwas ändert, ohne den ganzen Chart neu zu zeichnen.
-    lastFixed = { hours, rowsH, stripH, minMainH: state.minMainH ?? MIN_MAIN_H };
+    lastFixed = { hours, rowsH, stripH, axisH, minMainH: state.minMainH ?? MIN_MAIN_H };
     const { pw, mainH } = (lastDims = dimsFor(host, lastFixed));
 
     const W = M.l + pw + M.r;
-    const H = TOPAX + mainH + stripH + GAP + rowsH + GAP + BOT;
+    const H = TOPAX + mainH + stripH + axisH + rowsH + BOT;
     const dpr = window.devicePixelRatio || 1;
 
     const canvas = document.createElement("canvas");
@@ -395,7 +400,12 @@ export function renderGramet(host, grid, view, state = {}) {
     if (state.pathStop) drawPathStopMarker(ctx, x, mainTop, mainBot, state.pathStop.reason);
     if (!isPath) drawGround(ctx, grid, view, x, mainBot, stripH);
 
-    let rowTop = mainBot + stripH + GAP;
+    // Zeitachse direkt unter Hauptfläche/Bodenstreifen, darunter die Zeilen.
+    const axisTop = mainBot + stripH;
+    if (isPath) drawPathAxis(ctx, grid, x, mainTop, axisTop);
+    else drawTimeAxis(ctx, times, x, mainTop, axisTop);
+
+    let rowTop = axisTop + axisH;
     for (const id of activeRows) {
       const def = ROW_DEFS[id];
       ctx.save();
@@ -410,11 +420,9 @@ export function renderGramet(host, grid, view, state = {}) {
       rowTop += def.height;
     }
     // Unterkante der letzten Bodenzeile -- bis hierhin ist die X-Position
-    // sinnvoll (Hover-Meldung und Cursorlinie), darunter steht nur die Achse.
+    // sinnvoll (Hover-Meldung und Cursorlinie).
     const chartBot = rowTop;
 
-    if (grid.meta.mode === "path") drawPathAxis(ctx, grid, x, mainTop, rowTop);
-    else drawTimeAxis(ctx, times, x, mainTop, rowTop);
     ctx.fillStyle = INK; ctx.font = "bold 12px system-ui, sans-serif"; ctx.textAlign = "left";
     ctx.fillText("GRAMET", x.left, 13);
 
