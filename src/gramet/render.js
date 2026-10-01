@@ -166,6 +166,18 @@ const ISOTACH_DASH = [7, 3, 1, 3];
 const ISENTROPE_COLOR = "#e8b730";
 const ISENTROPE_HALO = "rgba(0,0,0,0.45)";
 const ISENTROPE_LABEL_COLOR = "#8a6500";
+// Modell-Vertikalwind `w` (m/s, positiv aufwärts) als Schattierung pro Zelle.
+// Magenta/Cyan statt des üblichen Rot/Blau: Rot/Orange/Gelb ist schon die
+// Turbulenz (TURB_STYLES), und Blau ginge auf dem blauen Tag/Nacht-Himmel
+// unter. Deckkraft wächst mit sqrt(|w|) bis W_SAT_MS -- so bleiben auch die
+// schwachen Wellen gröberer Modelle (ICON-EU: oft nur 0,1-0,5 m/s) sichtbar,
+// ohne dass ICON-D2-Aufwinde von einigen m/s alles zudecken. Unter W_MIN_MS
+// nichts (Rauschen). Schwellen nicht kalibriert.
+const W_UP_RGB = [230, 73, 128];
+const W_DOWN_RGB = [34, 211, 238];
+const W_MIN_MS = 0.05;
+const W_SAT_MS = 2;
+const W_MAX_ALPHA = 0.6;
 // Stufe: 1 K (derive.js ISENTROPE_STEP_K) beim gezoomten Höhenbereich, bei
 // "Gesamthöhe" (kein `state.zMax`) nur jede zweite -- dort wird die Schar
 // oberhalb der Tropopause sonst zur Fläche (s. Feedback). Beschriftet und
@@ -341,6 +353,10 @@ export function renderGramet(host, grid, view, state = {}) {
     // `drawClouds()` (s. u., mit maskierter cloudFrac) innerhalb der FG-Schicht
     // nichts mehr zu zeichnen hat.
     drawFogHaze(ctx, rgrid, rview, x, y, mainTop, mainBot, groundAt);
+    // Vertikalwind opt-in (Default aus), UNTER Wolken/Hazards: Wellen liegen
+    // meist in wolkenfreier Luft, dort bleibt die Schattierung sichtbar,
+    // während die eigentlichen GRAMET-Inhalte obenauf lesbar bleiben.
+    if (toggles.w) drawVerticalWind(ctx, rgrid, x, y);
     // Zellzerlegung einmal ziehen: Schaft, Amboss und Symbol müssen auf demselben
     // Turm sitzen (s. `cbCells`).
     const cells = toggles.cb !== false ? cbCells(rgrid, rview.cb, x, y) : [];
@@ -1677,6 +1693,32 @@ function drawIsotachs(ctx, isotachs, x, y) {
     labelBox(ctx, x(p.t), y(p.z), `${kt} kt`, ISOTACH_COLOR, x.right + M.r);
   }
 }
+// Eine Zelle je Gitterpunkt, begrenzt durch die Mitten zu den Nachbarspalten
+// bzw. -leveln (im Path-Modus verschiebt sich die Säule mit dem Gelände, die
+// Levelmitten werden deshalb pro Spalte bestimmt).
+function drawVerticalWind(ctx, grid, x, y) {
+  const { nk, pos } = grid, nt = pos.length;
+  const mid = (a, b) => (a + b) / 2;
+  for (let i = 0; i < nt; i++) {
+    const x0 = x(i > 0 ? mid(pos[i - 1], pos[i]) : pos[i]);
+    const x1 = x(i < nt - 1 ? mid(pos[i], pos[i + 1]) : pos[i]);
+    if (!(x1 > x0)) continue;
+    for (let k = 0; k < nk; k++) {
+      const ix = i * nk + k;
+      const w = grid.w[ix];
+      if (!Number.isFinite(w) || Math.abs(w) < W_MIN_MS) continue;
+      const zLo = k > 0 ? mid(grid.z[ix - 1], grid.z[ix]) : grid.z[ix];
+      const zHi = k < nk - 1 ? mid(grid.z[ix], grid.z[ix + 1]) : grid.z[ix];
+      const yTop = y(zHi), yBot = y(zLo);
+      if (!(yBot > yTop)) continue;
+      const a = W_MAX_ALPHA * Math.sqrt(Math.min(Math.abs(w) / W_SAT_MS, 1));
+      const [r, g, b] = w > 0 ? W_UP_RGB : W_DOWN_RGB;
+      ctx.fillStyle = `rgba(${r},${g},${b},${a.toFixed(3)})`;
+      // +0.5 px Überlappung gegen Haarlinien zwischen Nachbarzellen.
+      ctx.fillRect(x0, yTop, x1 - x0 + 0.5, yBot - yTop + 0.5);
+    }
+  }
+}
 function drawIsentropes(ctx, isentropes, x, y, stepK) {
   const zMin = y.inv(y.bot), zMax = y.inv(y.top);
   ctx.save();
@@ -2005,7 +2047,7 @@ function setupHover(host, canvas, axis, grid, info) {
         ? `Höhe ${fmtHeight(h)} AMSL · ${fmtHeight(hAgl)} über Modellgrund`
         : `Höhe ${fmtHeight(h)}`,
       `Temp ${fmtTemp(s.T - 273.15)}${Number.isFinite(s.p) ? ` · θ ${Math.round(s.T * Math.pow(1e5 / s.p, 0.2857))} K` : ""}`,
-      `Wind ${fmtDir(dir)} ${fmtWind(s.spd)}`,
+      `Wind ${fmtDir(dir)} ${fmtWind(s.spd)}${Number.isFinite(s.w) ? ` · w ${s.w >= 0 ? "+" : "−"}${num(Math.abs(s.w))} m/s` : ""}`,
       `Wolken ${Math.round((s.cloudFrac || 0) * 100)} %`,
       `WW (Boden) ${ww}`,
       `Nd (Vorstunde) ${amount}${snow}`,
