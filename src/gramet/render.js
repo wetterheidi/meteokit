@@ -159,6 +159,18 @@ const TURB_SYMBOL_INK = "#c62828";
 // Oliv), auf dem Tag/Nacht-Verlauf kaum zu trennen (s. Feedback).
 const ISOTACH_COLOR = "#7b2fbf";
 const ISOTACH_DASH = [7, 3, 1, 3];
+// Isentropen: eine dichte Linienschar, deshalb dünn, durchgezogen und in
+// einer eigenen Farbfamilie (Gold) -- mit dunklem statt weißem Halo, sonst
+// würde die Schar aus weißen Säumen den Himmel aufhellen. Gold bleibt auf
+// dem dunkelblauen Tag/Nacht-Verlauf und auf der weißen Wolkentextur lesbar.
+const ISENTROPE_COLOR = "#e8b730";
+const ISENTROPE_HALO = "rgba(0,0,0,0.45)";
+const ISENTROPE_LABEL_COLOR = "#8a6500";
+// Ab diesem sichtbaren Höhenbereich nur noch jede zweite Isentrope (4 statt
+// 2 K, s. derive.js ISENTROPE_STEP_K), sonst wird die Schar bei "Gesamthöhe"
+// zur Fläche. Beschriftet (und etwas kräftiger) wird jede fünfte gezeichnete.
+const ISENTROPE_THIN_ABOVE_M = 6000;
+const ISENTROPE_MAJOR_EVERY = 5;
 
 /** Sicht fürs GRAMET, knapper als `metarVis` im Briefing (Meter, feste
  *  METAR-Rundung) -- hier ist die Spaltenbreite pro Stunde eng, daher km statt
@@ -353,6 +365,10 @@ export function renderGramet(host, grid, view, state = {}) {
       drawHazardArea(ctx, rgrid, rview.hazards.turbulence, TURB_STYLES, x, y);
       drawTurbulenceSevereGlyphs(ctx, rgrid, rview.hazards.turbulence, x, y);
     }
+    // Opt-in wie die Windfiedern (Default aus): die Linienschar belastet die
+    // Hauptfläche zusätzlich. Unter Isothermen/Isotachen, damit die einzelnen
+    // Schwellwertlinien obenauf bleiben.
+    if (toggles.isentropes) drawIsentropes(ctx, rview.isentropes, x, y);
     if (toggles.isotherms !== false) drawIsotherms(ctx, rview.isotherms, x, y);
     if (toggles.isotachs !== false) drawIsotachs(ctx, rview.isotachs, x, y);
     if (toggles.tropopause !== false) drawTropopause(ctx, rview.tropopause, x, y);
@@ -890,6 +906,7 @@ function amslViewOf(view, grid) {
     ...view,
     isotherms: view.isotherms.map(({ tempC, polylines }) => ({ tempC, polylines: polylines.map(cvtPl) })),
     isotachs: view.isotachs.map(({ kt, polylines }) => ({ kt, polylines: polylines.map(cvtPl) })),
+    isentropes: view.isentropes.map(({ thetaK, polylines }) => ({ thetaK, polylines: polylines.map(cvtPl) })),
     tropopause: cvtPl(view.tropopause),
     precip: view.precip.map((e) => ({
       ...e,
@@ -1657,6 +1674,33 @@ function drawIsotachs(ctx, isotachs, x, y) {
     labelBox(ctx, x(p.t), y(p.z), `${kt} kt`, ISOTACH_COLOR, x.right + M.r);
   }
 }
+function drawIsentropes(ctx, isentropes, x, y) {
+  const zMin = y.inv(y.bot), zMax = y.inv(y.top);
+  const stepK = zMax - zMin > ISENTROPE_THIN_ABOVE_M ? 4 : 2;
+  const majorK = stepK * ISENTROPE_MAJOR_EVERY;
+  ctx.save();
+  ctx.lineJoin = "round";
+  for (const { thetaK, polylines: raw } of isentropes) {
+    if (thetaK % stepK !== 0) continue;
+    const polylines = raw.flatMap((pl) => clipPolylineZ(pl, zMin, zMax));
+    if (!polylines.length) continue;
+    const major = thetaK % majorK === 0;
+    const width = major ? 1.4 : 0.8;
+    for (const pl of polylines) {
+      if (pl.length < 2) continue;
+      ctx.strokeStyle = ISENTROPE_HALO; ctx.lineWidth = width + 1.2;
+      pathFor(ctx, pl, x, y); ctx.stroke();
+      ctx.strokeStyle = ISENTROPE_COLOR; ctx.lineWidth = width;
+      pathFor(ctx, pl, x, y); ctx.stroke();
+    }
+    if (major) {
+      const last = rightmost(polylines);
+      const p = last[last.length - 1];
+      labelBox(ctx, x(p.t), y(p.z), `${thetaK} K`, ISENTROPE_LABEL_COLOR, x.right + M.r);
+    }
+  }
+  ctx.restore();
+}
 function drawTropopause(ctx, line, x, y) {
   const zMin = y.inv(y.bot), zMax = y.inv(y.top);
   const polylines = clipPolylineZ(line, zMin, zMax);
@@ -1959,7 +2003,7 @@ function setupHover(host, canvas, axis, grid, info) {
       isPath
         ? `Höhe ${fmtHeight(h)} AMSL · ${fmtHeight(hAgl)} über Modellgrund`
         : `Höhe ${fmtHeight(h)}`,
-      `Temp ${fmtTemp(s.T - 273.15)}`,
+      `Temp ${fmtTemp(s.T - 273.15)}${Number.isFinite(s.p) ? ` · θ ${Math.round(s.T * Math.pow(1e5 / s.p, 0.2857))} K` : ""}`,
       `Wind ${fmtDir(dir)} ${fmtWind(s.spd)}`,
       `Wolken ${Math.round((s.cloudFrac || 0) * 100)} %`,
       `WW (Boden) ${ww}`,

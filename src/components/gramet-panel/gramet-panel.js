@@ -66,7 +66,7 @@ const ZOOM_HEADROOM = 1.15;
 
 // "terrain" (echtes Mapterhorn-Gelände) ist nur im Path-Modus sinnvoll --
 // die Checkbox dazu blendet gramet-panel.css über `:host([path])` ein/aus.
-const LAYER_KEYS = ["isotherms", "isotachs", "hazards", "windbarbs", "terrain"];
+const LAYER_KEYS = ["isotherms", "isotachs", "isentropes", "hazards", "windbarbs", "terrain"];
 
 export class GrametPanelElement extends HTMLElement {
   static observedAttributes = ["subtitle", "range", "max-height"];
@@ -99,6 +99,7 @@ export class GrametPanelElement extends HTMLElement {
         <div class="layers">
           <label><input type="checkbox" data-layer="isotherms" checked> Isothermen</label>
           <label><input type="checkbox" data-layer="isotachs" checked> Isotachen</label>
+          <label><input type="checkbox" data-layer="isentropes"> Isentropen</label>
           <label><input type="checkbox" data-layer="hazards" checked> Hazards</label>
           <label><input type="checkbox" data-layer="windbarbs"> Windfiedern</label>
           <label class="terrain"><input type="checkbox" data-layer="terrain" checked> Gelände</label>

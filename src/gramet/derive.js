@@ -20,6 +20,16 @@ const FOG_BASE_M = 30; // m AGL — mirrors clouds.js FOG_BASE_M (nicht exportie
 const ISOTHERM_MAX_JUMP_M = 1500; // m je Spaltenschritt, s. METHODIK/Plan
 const ISOTHERM_THRESHOLDS_C = [0, -20, -40];
 const ISOTACH_THRESHOLDS_KT = [50, 75, 100];
+// Isentropen: feste θ-Stufe statt fester Werteliste -- der θ-Bereich hängt
+// stark von Jahreszeit und Höhenbereich ab. 2 K ist die übliche Stufe in
+// Querschnitten und dicht genug, um Wellen/Inversionen in der unteren
+// Troposphäre aufzulösen; der Renderer dünnt bei großem Höhenbereich aus.
+const ISENTROPE_STEP_K = 2;
+// Nur θ unterhalb dieser Höhe (AGL) bestimmt die Stufen -- die "Gesamthöhe"
+// endet knapp über der Tropopause (render.js `fullRangeTop`), darüber wächst
+// θ in der Stratosphäre so schnell, dass bis zum Modelldeckel Hunderte
+// Isentropen anfielen, die nie zu sehen sind.
+const ISENTROPE_MAX_Z_M = 20000;
 
 // Konvektions-Spalten (TCU/Cb): primär Parcel-Theorie aus `hazards/
 // convection.js` (CCL als Basis, Auslösetemperatur als Trigger, EL als
@@ -82,6 +92,9 @@ export function deriveView(grid) {
   const d = deriveGrid(grid);
   const isotherms = ISOTHERM_THRESHOLDS_C.map((tempC) => ({ tempC, polylines: isothermPolylines(grid, tempC) }));
   const isotachs = ISOTACH_THRESHOLDS_KT.map((kt) => ({ kt, polylines: contour(grid, d.wspd, kt / KT_PER_MS) }));
+  const isentropes = isentropeLevels(grid, d.theta).map((thetaK) => ({
+    thetaK, polylines: contour(grid, d.theta, thetaK, { pad: false }),
+  }));
   const tropopauseLine = tropopause(grid);
   const daylightArr = daylight(grid);
   const nt = grid.times.length;
@@ -100,6 +113,7 @@ export function deriveView(grid) {
   return {
     isotherms,
     isotachs,
+    isentropes,
     tropopause: tropopauseLine,
     daylight: daylightArr,
     cloudFrac: d.cloudFrac,
@@ -169,6 +183,25 @@ function columnCrossings(grid, i, thrK) {
   return zs;
 }
 
+// --- Isentropen ------------------------------------------------------------
+
+// Alle ISENTROPE_STEP_K-Vielfachen innerhalb des θ-Bereichs des Gitters
+// (bis ISENTROPE_MAX_Z_M). Leer, wenn θ nicht bestimmbar ist (kein
+// Leveldruck, `grid.p` NaN).
+function isentropeLevels(grid, theta) {
+  let lo = Infinity, hi = -Infinity;
+  for (let ix = 0; ix < theta.length; ix++) {
+    const v = theta[ix];
+    if (!Number.isFinite(v) || !(grid.z[ix] <= ISENTROPE_MAX_Z_M)) continue;
+    if (v < lo) lo = v;
+    if (v > hi) hi = v;
+  }
+  if (!(hi > lo)) return [];
+  const out = [];
+  for (let th = Math.ceil(lo / ISENTROPE_STEP_K) * ISENTROPE_STEP_K; th <= hi; th += ISENTROPE_STEP_K) out.push(th);
+  return out;
+}
+
 // --- Isotachen (marching squares) --------------------------------------------
 
 // Weit unter jeder realistischen Schwelle (Hazard-Level max 2,5; Isotachen
@@ -194,10 +227,16 @@ const OUTSIDE_FIELD = -1e6;
  * (reale und Phantom-Position fallen zusammen, die Interpolation kollabiert
  * unabhängig vom Mischungsfaktor auf diesen Punkt) -- die Fläche schließt
  * sich sauber am Rand statt quer durchs Bild.
+ *
+ * `pad: false` schaltet das Padding ab -- für reine LINIEN-Felder, die quer
+ * durchs Bild laufen und nicht gefüllt werden (Isentropen): mit Padding
+ * liefe jede Isentrope am Bildrand entlang wieder zurück (oberhalb von ihr
+ * ist θ überall größer als die Schwelle, die Phantomwerte nicht).
  */
-export function contour(grid, field, threshold) {
+export function contour(grid, field, threshold, { pad = true } = {}) {
   const { nk, pos: posArr } = grid, nt = posArr.length;
   const segments = [];
+  const lo = pad ? -1 : 0, iHi = pad ? nt : nt - 1, kHi = pad ? nk : nk - 1;
 
   const val = (i, k) => (i < 0 || i >= nt || k < 0 || k >= nk) ? OUTSIDE_FIELD : field[i * nk + k];
   const pos = (i, k) => {
@@ -205,8 +244,8 @@ export function contour(grid, field, threshold) {
     return { t: posArr[ci], z: grid.z[ci * nk + ck] };
   };
 
-  for (let i = -1; i < nt; i++) {
-    for (let k = -1; k < nk; k++) {
+  for (let i = lo; i < iHi; i++) {
+    for (let k = lo; k < kHi; k++) {
       const v00 = val(i, k), v10 = val(i + 1, k), v11 = val(i + 1, k + 1), v01 = val(i, k + 1);
       if (![v00, v10, v11, v01].every(Number.isFinite)) continue;
       const p00 = pos(i, k), p10 = pos(i + 1, k);
