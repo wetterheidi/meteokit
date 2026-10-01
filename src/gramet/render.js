@@ -166,11 +166,9 @@ const ISOTACH_DASH = [7, 3, 1, 3];
 const ISENTROPE_COLOR = "#e8b730";
 const ISENTROPE_HALO = "rgba(0,0,0,0.45)";
 const ISENTROPE_LABEL_COLOR = "#8a6500";
-// Ab diesem sichtbaren Höhenbereich nur noch jede zweite Isentrope (4 statt
-// 2 K, s. derive.js ISENTROPE_STEP_K), sonst wird die Schar bei "Gesamthöhe"
-// zur Fläche. Beschriftet (und etwas kräftiger) wird jede fünfte gezeichnete.
-const ISENTROPE_THIN_ABOVE_M = 6000;
-const ISENTROPE_MAJOR_EVERY = 5;
+// Alle Isentropen werden gezeichnet (Stufe s. derive.js ISENTROPE_STEP_K);
+// beschriftet und etwas kräftiger ist jedes Vielfache von ISENTROPE_MAJOR_K.
+const ISENTROPE_MAJOR_K = 5;
 
 /** Sicht fürs GRAMET, knapper als `metarVis` im Briefing (Meter, feste
  *  METAR-Rundung) -- hier ist die Spaltenbreite pro Stunde eng, daher km statt
@@ -1676,15 +1674,12 @@ function drawIsotachs(ctx, isotachs, x, y) {
 }
 function drawIsentropes(ctx, isentropes, x, y) {
   const zMin = y.inv(y.bot), zMax = y.inv(y.top);
-  const stepK = zMax - zMin > ISENTROPE_THIN_ABOVE_M ? 4 : 2;
-  const majorK = stepK * ISENTROPE_MAJOR_EVERY;
   ctx.save();
   ctx.lineJoin = "round";
   for (const { thetaK, polylines: raw } of isentropes) {
-    if (thetaK % stepK !== 0) continue;
     const polylines = raw.flatMap((pl) => clipPolylineZ(pl, zMin, zMax));
     if (!polylines.length) continue;
-    const major = thetaK % majorK === 0;
+    const major = thetaK % ISENTROPE_MAJOR_K === 0;
     const width = major ? 1.4 : 0.8;
     for (const pl of polylines) {
       if (pl.length < 2) continue;

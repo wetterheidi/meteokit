@@ -21,10 +21,10 @@ const ISOTHERM_MAX_JUMP_M = 1500; // m je Spaltenschritt, s. METHODIK/Plan
 const ISOTHERM_THRESHOLDS_C = [0, -20, -40];
 const ISOTACH_THRESHOLDS_KT = [50, 75, 100];
 // Isentropen: feste θ-Stufe statt fester Werteliste -- der θ-Bereich hängt
-// stark von Jahreszeit und Höhenbereich ab. 2 K ist die übliche Stufe in
-// Querschnitten und dicht genug, um Wellen/Inversionen in der unteren
-// Troposphäre aufzulösen; der Renderer dünnt bei großem Höhenbereich aus.
-const ISENTROPE_STEP_K = 2;
+// stark von Jahreszeit und Höhenbereich ab. 1 K (dichter als die in
+// Querschnitten übliche 2-K-Stufe), damit auch flache Wellen in schwach
+// stabiler Schichtung als Auslenkung sichtbar werden (s. Feedback).
+const ISENTROPE_STEP_K = 1;
 // Nur θ unterhalb dieser Höhe (AGL) bestimmt die Stufen -- die "Gesamthöhe"
 // endet knapp über der Tropopause (render.js `fullRangeTop`), darüber wächst
 // θ in der Stratosphäre so schnell, dass bis zum Modelldeckel Hunderte
