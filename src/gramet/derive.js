@@ -109,7 +109,7 @@ export function deriveView(grid) {
     fog: fogCols,
     hazards: {
       icing: icing.computeGrid(grid, d.cloudFrac),
-      turbulence: turbulence.computeGrid(grid, d.ri, d.shear2, d.nm),
+      turbulence: turbulence.computeGrid(grid, d.riEx, d.shear2Ex, d.nm),
     },
   };
 }

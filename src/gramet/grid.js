@@ -263,14 +263,25 @@ export function derive(grid) {
   }
 
   // Staggered Zwischenniveaus (nt x (nk-1)) für Scherung/Stabilität — Grundlage
-  // des späteren Turbulenz-Moduls (hazards/turbulence.js).
+  // des Turbulenz-Moduls (hazards/turbulence.js).
   const nm = Math.max(0, nk - 1);
   const shear2 = new Float32Array(nt * nm), n2 = new Float32Array(nt * nm), ri = new Float32Array(nt * nm);
+  // Überschuss-Scherung (`shear2Ex`) und die damit gebildete Richardson-Zahl
+  // (`riEx`) für die Turbulenz-Diagnose (hazards/turbulence.js): Scherung
+  // abzüglich der Scherung eines neutralen logarithmischen Bodenprofils,
+  // verankert am untersten Modell-Level (~10 m) -- s. `logProfileFactor`.
+  // `shear2`/`ri` bleiben die rohen physikalischen Größen.
+  const shear2Ex = new Float32Array(nt * nm), riEx = new Float32Array(nt * nm);
   for (let i = 0; i < nt; i++) {
+    const ixRef = i * nk;
+    const zRef = grid.z[ixRef], uRef = grid.u[ixRef], vRef = grid.v[ixRef];
     for (let k = 0; k < nm; k++) {
       const ix0 = i * nk + k, ix1 = i * nk + k + 1, im = i * nm + k;
       const dz = grid.z[ix1] - grid.z[ix0];
-      if (!(dz > 0)) { shear2[im] = NaN; n2[im] = NaN; ri[im] = NaN; continue; }
+      if (!(dz > 0)) {
+        shear2[im] = NaN; n2[im] = NaN; ri[im] = NaN; shear2Ex[im] = NaN; riEx[im] = NaN;
+        continue;
+      }
       const du = grid.u[ix1] - grid.u[ix0], dv = grid.v[ix1] - grid.v[ix0];
       const s2 = (du / dz) ** 2 + (dv / dz) ** 2;
       const thetaAvg = (theta[ix0] + theta[ix1]) / 2;
@@ -279,11 +290,38 @@ export function derive(grid) {
       shear2[im] = s2;
       n2[im] = nn2;
       ri[im] = s2 > 1e-8 ? nn2 / s2 : NaN; // Schutz bei ~Nullscherung
+      // Vektoriell: erwartete Windänderung = Referenzwind (Richtung + Betrag)
+      // mal Zunahme des Log-Faktors über die Schicht. Richtungsdrehung mit der
+      // Höhe (Ekman, Fronten) bleibt damit vollständig im Überschuss.
+      const df = logProfileFactor(grid.z[ix1], zRef) - logProfileFactor(grid.z[ix0], zRef);
+      const dfOk = Number.isFinite(df) ? df : 0;
+      const duEx = du - uRef * dfOk, dvEx = dv - vRef * dfOk;
+      const s2Ex = (duEx / dz) ** 2 + (dvEx / dz) ** 2;
+      shear2Ex[im] = s2Ex;
+      riEx[im] = s2Ex > 1e-8 ? nn2 / s2Ex : NaN;
     }
   }
 
-  grid.derived = { theta, wspd, cloudFrac, shear2, n2, ri, nm };
+  grid.derived = { theta, wspd, cloudFrac, shear2, n2, ri, shear2Ex, riEx, nm };
   return grid.derived;
+}
+
+// Rauigkeitslänge des neutralen Log-Profils für die Überschuss-Scherung. Fester
+// Wert für "offenes Gelände/Acker" -- KEIN Modell-/Standortwert. Empfindlich
+// v. a. in der untersten Schicht (Test 2026-10-01, ICON-D2, 4 Orte: z0 0,5 m
+// statt 0,1 m senkt "mäßig" dort z. B. an der Küste von 17 % auf 0 %).
+// Land/Wasser-Unterscheidung ist als Erweiterung vorgemerkt.
+export const TURB_Z0_M = 0.1;
+
+// Faktor f(z) = ln(z/z0) / ln(zRef/z0) des neutralen logarithmischen Wind-
+// profils relativ zur Referenzhöhe zRef (unterstes Modell-Level, f(zRef) = 1):
+// V_log(z) = V(zRef) · f(z). Über der Bodenschicht wächst f nur noch sehr
+// langsam (bei 500 m ~0,002 s⁻¹ erwartete Scherung je 5 m/s Referenzwind) --
+// dort bleibt die Überschuss-Scherung praktisch gleich der rohen Scherung.
+// NaN bei ungültigen Höhen (Aufrufer behandelt das als "keine Korrektur").
+function logProfileFactor(z, zRef) {
+  if (!(z > TURB_Z0_M) || !(zRef > TURB_Z0_M)) return NaN;
+  return Math.log(z / TURB_Z0_M) / Math.log(zRef / TURB_Z0_M);
 }
 
 // --- Validierung -------------------------------------------------------------

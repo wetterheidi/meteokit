@@ -27,6 +27,22 @@
  * herauskommen, wenn `ri` wegen der Division-durch-~0-Absicherung NaN ist
  * (genau der Fall, den das Gate eigentlich abfangen soll).
  *
+ * Überschuss-Scherung (2026-10-01): Aufrufer übergeben `riEx`/`shear2Ex`
+ * aus `grid.js` `derive()` statt der rohen `ri`/`shear2` -- die Scherung
+ * abzüglich der eines neutralen logarithmischen Bodenprofils (z0 =
+ * `TURB_Z0_M`, verankert am untersten Modell-Level). Anlass: das Scher-Gate
+ * oben stammt aus der freien Atmosphäre, die normale Bodenschicht-Scherung
+ * (⌀ 0,03–0,05 s⁻¹ zwischen 10 und ~37 m) sättigt es; bei windiger, gut
+ * durchmischter Luft ist zudem Ri ≈ 0 -> g(Ri) = 1. Folge war "mäßig" in
+ * 19–73 % aller Stunden in der untersten Schicht (Live-Test ICON-D2, 48 h,
+ * München/Berlin/Cuxhaven/Frankfurt) -- faktisch eine Doppelung der Böen-
+ * Information. Mit Überschuss-Scherung dort 0–31 %; Scherung, die über das
+ * Log-Profil hinausgeht (z. B. Low-Level-Jet, Richtungsscherung), bleibt
+ * erhalten. Grenzen: fester z0 (kein Land/Wasser, keine Bebauung/Wald);
+ * thermische Turbulenz bei labiler Schichtung OHNE Überschuss-Scherung
+ * (Tagesthermik) wird nicht mehr angezeigt -- als eigene, gröbere Diagnose
+ * vorgemerkt.
+ *
  * Schwellen (Ri-Fenster wie TFI-Kategorien) NICHT kalibriert -- Platzhalter
  * wie an anderer Stelle im Modul, s. METHODIK.md.
  *
@@ -91,7 +107,8 @@ function wWind(windSpeed) {
 
 /**
  * Turbulence-Flag-Index (0..1) einer Schicht -- reine Funktion von Ri,
- * Scherquadrat (beide aus `grid.js` `derive()`) und mittlerer Windgeschwin-
+ * Scherquadrat (beide aus `grid.js` `derive()`, für die Diagnose die
+ * Überschuss-Varianten `riEx`/`shear2Ex`, s. Modulkopf) und mittlerer Windgeschwin-
  * digkeit der Schicht (m/s, komponentenweise aus u/v der beiden Rand-Level
  * gemittelt, s. Aufrufer), unabhängig von Grid/Zeitachse/Rendering.
  * Scher-Gate zuerst (s. Modulkopf) -- vermeidet `NaN * 0` bei der
