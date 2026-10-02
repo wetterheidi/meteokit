@@ -67,7 +67,7 @@ Bereits eingerichtet (Stand 2026-09-13):
    `airspace.wetterheidi.de`-Vhost (s. unten).
 5. Cronjob (monatlich, 1. um 03:00 Uhr):
    ```
-   0 3 1 * * cd /apps/airspace-cache && set -a && . .env && set +a && /usr/bin/node fetch-airspaces.mjs --out /apps/airspace-cache/data >> /var/log/airspace-cache.log 2>&1
+   0 3 1 * * cd /apps/airspace-cache && set -a && . ./.env && set +a && /usr/bin/node fetch-airspaces.mjs --out /apps/airspace-cache/data >> /var/log/airspace-cache.log 2>&1
    ```
 6. nginx-Vhost `airspace.wetterheidi.de`: **öffentlich, kein Pförtner-Gate**
    (wird von mehreren Apps per `fetch()` aus dem Browser angesprochen), mit
@@ -76,6 +76,26 @@ Bereits eingerichtet (Stand 2026-09-13):
    Vhost-Anlage sonst analog zu den bestehenden `deploy-hetzner.sh`-Skripten
    in droneforecast/trajectories/DZMaster (idempotent, Let's-Encrypt-Zertifikat
    beim ersten Lauf).
+
+## Prüfen, ob ein Lauf geklappt hat
+
+```bash
+./check-airspace-cache.sh            # Default-Host root@178.104.206.136
+```
+
+Prüft öffentlich `meta.json` (Alter, Mindestumfang Zellen/Features) und
+Stichproben-Kacheln aus datendichten Regionen, per SSH dann: ob der Cron-Lauf
+dieses Monats überhaupt ins Log geschrieben hat, ob gerade ein Lauf aktiv ist,
+Staging-Reste nach Absturz, `data.failed-cells.txt` und das Log-Ende. Exit-Code
+0 = OK, 1 = Warnung, 2 = Fehler. Ein "Fertig" im Log allein reicht nicht -- so
+endete auch der fehlerhafte Lauf vom September.
+
+**Vorfall 2026-10-01:** Der Oktober-Lauf startete laut syslog, schrieb aber
+nichts ins Log. Ursache: cron nutzt `/bin/sh` (dash), und dort sucht `. .env`
+ohne Schrägstrich nur im `$PATH`, nicht im aktuellen Verzeichnis -- die
+`&&`-Kette brach vor `node` ab, und da die Log-Umleitung nur am `node`-Befehl
+hängt, blieb das Log unverändert. Richtig ist `. ./.env` (Cronzeile oben
+korrigiert).
 
 ## Vorfall 2026-09-13..17: falsch-leere Regionen durch missverstandenes 404
 
