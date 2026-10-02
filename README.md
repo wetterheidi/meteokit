@@ -57,8 +57,9 @@ intern und darf sich jederzeit ändern — auch wenn die Datei im Repo sichtbar 
 | `meteokit/gramet/hazards` | `ipiAt`/`tfiAt` + Kategorisierung (Icing, Turbulenz) |
 | `meteokit/gramet/render` | `renderGramet`, `exportPng` — Low-Level-Zeichnen auf ein eigenes Canvas. Nur für Sonderfälle (z. B. Debug-Seiten); der empfohlene Weg ist `<gramet-panel>`. |
 | `meteokit/config` | `configure`, `getModel`, `MODELS`, `API_BASE`, `SURFACE_*` |
+| `meteokit/modelpick` | `pickModel`, `candidateModels` — bestes Modell am Punkt (feinstes zuerst, Bbox + echte Datenabdeckung geprüft) |
 | `meteokit/units` | Einheiten-Singleton: `setUnits`, `fmtWind`, `fmtHeight`, … |
-| `meteokit/column` | `fetchColumn`, `buildField`, `sampleColumnAtHeight`, … |
+| `meteokit/column` | `fetchColumn`, `buildField`, `sampleColumnAtHeight`, `sliceColumnRange`, … |
 | `meteokit/weather` | `fetchSurface`, `fetchModelRunInit`, `nearestIndex`, … |
 | `meteokit/clouds` | Wolken-/Nebeldiagnostik: `cloudLayers`, `cloudCeiling`, `classifyFog`, … |
 | `meteokit/briefing` | `buildBriefingHtml`, `metarWeather`, … |

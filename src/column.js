@@ -355,3 +355,24 @@ function toArr(src, T, factor) {
 }
 function firstFinite(a) { for (const x of a) if (Number.isFinite(x)) return x; return null; }
 function round5(x) { return Math.round(x * 1e5) / 1e5; }
+
+/** Säule auf das Zeitfenster [startSec, endSec] (Unixsekunden, inklusive)
+ *  zuschneiden -- z. B. für ein Tages-GRAMET 00–24 Z aus einem längeren
+ *  Abruf. Gibt eine neue Säule gleicher Struktur zurück (Level-Arrays werden
+ *  kopiert, die Ausgangssäule bleibt unverändert). */
+export function sliceColumnRange(col, startSec, endSec) {
+  const i0 = col.time.findIndex((t) => t >= startSec);
+  if (i0 < 0) return { ...col, time: [], ...mapLevels(col, () => []), pmsl: [] };
+  let i1 = col.time.length;
+  while (i1 > i0 && col.time[i1 - 1] > endSec) i1--;
+  const cut = (arr) => arr.slice(i0, i1);
+  return { ...col, time: cut(col.time), ...mapLevels(col, cut), pmsl: col.pmsl ? cut(col.pmsl) : col.pmsl };
+}
+
+function mapLevels(col, fn) {
+  const out = {};
+  for (const key of ["h", "u", "v", "t", "rh", "p", "w", "q", "qw", "qi", "clc"]) {
+    if (col[key]) out[key] = col[key].map(fn);
+  }
+  return out;
+}
