@@ -3,13 +3,16 @@
  * Wolkenschraffur mit vielen Einzelstrichen ist auf Canvas günstiger).
  * Einstieg: `renderGramet(host, grid, view, state)`, `state = { zMin, zMax,
  * axis: "log"|"lin", activeRows, layerToggles, pathStop, terrain, maxHeightM,
- * profile }`.
+ * profile, xAxis }`. `xAxis: "dist"` (nur Path-Modus) legt die X-Achse linear
+ * in die zurückgelegte Strecke statt in die Zeit (s. `distMap`).
  * Höhenumschalter (axis/zMin/zMax) folgt demselben State/Mechanismus wie
  * `crosssection.js` (`settings.xsZoom`) — dieselbe Umschaltfläche bedient
  * beide Ansichten. `terrain`/`maxHeightM`/`profile` sind nur im Path-Modus
- * wirksam; `profile = { pos, z (m AMSL, NaN = Lücke), color?, label? }`
- * zeichnet ein Höhenprofil (z. B. die Trajektorie der Host-App) als Linie in
- * die Haupttafel (s. `drawProfile`).
+ * wirksam; `profile = { pos, z (m AMSL, NaN = Lücke), color?, label?,
+ * speed? }` zeichnet ein Höhenprofil (z. B. die Trajektorie der Host-App) als
+ * Linie in die Haupttafel (s. `drawProfile`); das optionale `speed` (m/s je
+ * Profilpunkt, Groundspeed der Host-App) erscheint als eigene Zeile „GS"
+ * (s. `groundSpeedRow`).
  *
  * HÖHENREFERENZ: Punkt-Modus plottet AGL (wie bisher), der PATH-Modus plottet
  * AMSL mit der Modell-Orographie als Silhouette in der Haupttafel (Ogimet-
@@ -245,6 +248,28 @@ const ROW_DEFS = {
   },
 };
 
+/** Groundspeed-Zeile (Path-Modus): Werte der Host-App (`profile.speed`, m/s
+ *  je Profilpunkt, NaN = unbekannt) an den Gitterspalten abgelesen, damit sie
+ *  im selben Raster stehen wie die übrigen Zahlenzeilen. Abgeleitete Größe der
+ *  Host-App (z. B. droneforecast: Winddreieck aus Eigengeschwindigkeit und
+ *  Modellwind), keine Modellausgabe -- daher eigenes Label „GS". */
+function groundSpeedRow(profile) {
+  return {
+    height: NUMBER_ROW_HEIGHT * 0.7, label: () => ["GS", windUnit()],
+    draw: (ctx, grid, view, x, top, h) => {
+      const vals = Float32Array.from(grid.pos, (p) => interpAt(profile.pos, profile.speed, p));
+      drawNumberRow(ctx, grid.pos, x, top, h, [
+        { values: vals, fmt: (v) => fmtSpeed(windToDisplay(v)), color: "#b5179e" },
+      ]);
+    },
+  };
+}
+
+// m/s mit einer Nachkommastelle (Drohnentempi sind klein), sonst ganzzahlig.
+function fmtSpeed(v) {
+  return windUnit() === "m/s" ? v.toFixed(1) : String(Math.round(v));
+}
+
 // Reihenfolge wie im METAR-Meldungskopf: Wind/Böen, Sicht, WW (Wolken laufen
 // nicht als eigene Zeile, sondern schon in der Hauptfläche mit), Temp/Taupunkt,
 // Luftdruck (s. Feedback).
@@ -275,8 +300,13 @@ export function renderGramet(host, grid, view, state = {}) {
     const { times, pos, nk } = grid;
     if (!times || times.length < 2) { host.textContent = "Keine Gitterdaten."; return null; }
 
-    const activeRows = (state.activeRows ?? DEFAULT_ROWS).filter((id) => ROW_DEFS[id]);
     const isPath = grid.meta.mode === "path";
+    // Zeilen als Definitionsliste: die festen aus ROW_DEFS plus -- nur im
+    // Path-Modus und nur wenn die Host-App sie liefert -- die Groundspeed-
+    // Zeile aus `profile.speed` (s. `groundSpeedRow`), ganz oben, weil sie
+    // die Flugplanung betrifft und nicht die Wetterlage am Boden.
+    const rows = (state.activeRows ?? DEFAULT_ROWS).filter((id) => ROW_DEFS[id]).map((id) => ROW_DEFS[id]);
+    if (isPath && state.profile?.speed?.length === state.profile.pos?.length) rows.unshift(groundSpeedRow(state.profile));
     // Path-Modus: AMSL-Projektion NUR fürs Rendering (`grid.z`/`view` bleiben
     // AGL, s. Kommentar an `amslGrid`) -- alle Zeichenfunktionen unten arbeiten
     // auf `rgrid`/`rview`, die Physik/Heuristik-Seite (maskFog, Hover-Sampling)
@@ -325,7 +355,7 @@ export function renderGramet(host, grid, view, state = {}) {
     // Path-Modus: verstrichene Sekunden seit Pfadbeginn) -- `CHART_PX_PER_HOUR`
     // bleibt der gemeinsame Dichte-Maßstab für beide Modi.
     const hours = Math.max(1, (pos[pos.length - 1] - pos[0]) / 3600);
-    const rowsH = activeRows.reduce((s, id) => s + ROW_DEFS[id].height, 0);
+    const rowsH = rows.reduce((s, def) => s + def.height, 0);
     // Ab hier hängen nur noch zwei Größen am Container -- gebündelt in
     // `dimsFor`, damit der ResizeObserver unten prüfen kann, ob sich
     // überhaupt etwas ändert, ohne den ganzen Chart neu zu zeichnen.
@@ -345,9 +375,23 @@ export function renderGramet(host, grid, view, state = {}) {
     const ctx = canvas.getContext("2d");
     ctx.scale(dpr, dpr);
 
+    // X-Abbildung `pos` -> Pixel und zurück (`x.inv`). Alle Zeichen-, Hover-
+    // und Cursorfunktionen rechnen weiter in `pos`; nur diese Abbildung
+    // entscheidet, ob die Achse linear in der Zeit oder (Path-Modus,
+    // `state.xAxis === "dist"`) linear in der zurückgelegten Strecke läuft.
     const p0 = pos[0], p1 = pos[pos.length - 1];
-    const x = (p) => M.l + (p - p0) / (p1 - p0) * pw;
+    const D = isPath && state.xAxis === "dist" ? distMap(grid, state.profile) : null;
+    let x;
+    if (D) {
+      const d0 = D.at(p0), d1 = D.at(p1);
+      x = (p) => M.l + (D.at(p) - d0) / (d1 - d0) * pw;
+      x.inv = (px) => D.posOf(d0 + clamp((px - M.l) / pw, 0, 1) * (d1 - d0));
+    } else {
+      x = (p) => M.l + (p - p0) / (p1 - p0) * pw;
+      x.inv = (px) => p0 + clamp((px - M.l) / pw, 0, 1) * (p1 - p0);
+    }
     x.left = M.l; x.right = M.l + pw;
+    x.dist = D; // null = Zeitachse
 
     const mainTop = TOPAX, mainBot = TOPAX + mainH;
     const y = makeYScale(mainTop, mainBot, zMin, zMax, lin);
@@ -455,8 +499,7 @@ export function renderGramet(host, grid, view, state = {}) {
     else drawTimeAxis(ctx, times, x, mainTop, axisTop);
 
     let rowTop = axisTop + axisH;
-    for (const id of activeRows) {
-      const def = ROW_DEFS[id];
+    for (const def of rows) {
       ctx.save();
       ctx.beginPath(); ctx.rect(x.left, rowTop, pw, def.height); ctx.clip();
       def.draw(ctx, grid, view, x, rowTop, def.height);
@@ -770,7 +813,7 @@ function drawFogHaze(ctx, grid, view, x, y, top, bot, groundAt = null) {
     mctx.translate(-x.left, -top);
     for (let sx = x.left; sx < x.right; sx += STRIP_PX) {
       const w = Math.min(STRIP_PX, x.right - sx);
-      const p = pos[0] + (sx + w / 2 - x.left) / span * (pos[pos.length - 1] - pos[0]);
+      const p = x.inv(sx + w / 2);
       const g = groundAt(p);
       const shape = mctx.createLinearGradient(0, top, 0, bot);
       for (let s = 0; s <= HAZE_SHAPE_STEPS; s++) {
@@ -1983,6 +2026,7 @@ function pathGridLines(ctx, grid, x, top, bot) {
 // zeigt (s. `app.js` `timeheadlabel`); nur der Punkt-Modus (fester Ort, s.
 // `drawTimeAxis`) macht die Ausnahme und zeigt Ortszeit.
 function drawPathAxis(ctx, grid, x, yTop, yBot) {
+  if (x.dist) { drawDistAxis(ctx, grid, x, yBot); return; }
   const { pos, times } = grid;
   const ticks = niceTicks(pos[0], pos[pos.length - 1], PATH_TICK_COUNT);
   ctx.textBaseline = "alphabetic"; ctx.textAlign = "center";
@@ -2006,6 +2050,98 @@ function drawPathAxis(ctx, grid, x, yTop, yBot) {
       x(t), yBot + 23,
     );
   }
+}
+
+// Strecken-Achse (Path-Modus, `state.xAxis === "dist"`): oben die zurück-
+// gelegte Strecke, darunter wie auf der Zeitachse die Uhrzeit (UTC) an genau
+// dieser Stelle -- bei nicht konstanter Geschwindigkeit stehen die Uhrzeiten
+// dann ungleichmäßig, und genau das soll sichtbar sein.
+function drawDistAxis(ctx, grid, x, yBot) {
+  const { pos, times } = grid;
+  const D = x.dist;
+  const d0 = D.at(pos[0]), d1 = D.at(pos[pos.length - 1]);
+  const km = d1 - d0 >= 2000;
+  const ticks = niceTicks(km ? d0 / 1000 : d0, km ? d1 / 1000 : d1, PATH_TICK_COUNT);
+  ctx.textBaseline = "alphabetic"; ctx.textAlign = "center";
+  let lastDay = null;
+  for (const v of ticks) {
+    const d = km ? v * 1000 : v;
+    const p = D.posOf(d);
+    const px = x(p);
+    ctx.fillStyle = INK; ctx.font = "600 10px system-ui, sans-serif";
+    ctx.fillText(fmtDist(d - d0), px, yBot + 11);
+    const abs = interpAt(pos, times, p);
+    if (!Number.isFinite(abs)) continue;
+    const dt = new Date(abs * 1000);
+    const dayKey = dt.toISOString().slice(0, 10);
+    const hhmm = `${String(dt.getUTCHours()).padStart(2, "0")}:${String(dt.getUTCMinutes()).padStart(2, "0")}`;
+    const changed = dayKey !== lastDay;
+    lastDay = dayKey;
+    ctx.fillStyle = MUTED; ctx.font = "9px system-ui, sans-serif";
+    ctx.fillText(
+      changed
+        ? `${String(dt.getUTCDate()).padStart(2, "0")}.${String(dt.getUTCMonth() + 1).padStart(2, "0")}. ${hhmm} UTC`
+        : `${hhmm} UTC`,
+      px, yBot + 23,
+    );
+  }
+}
+
+// "850 m" / "12,5 km" -- Strecke seit Pfadbeginn.
+function fmtDist(m) {
+  if (m < 2000) return `${Math.round(m)} m`;
+  const k = m / 1000;
+  return `${(k < 20 ? k.toFixed(1) : String(Math.round(k))).replace(".", ",")} km`;
+}
+
+/**
+ * Kumulierte Strecke als Funktion von `pos` (und zurück) für die Strecken-
+ * Achse. Quelle bevorzugt `profile.dist` der Host-App (m je Profilpunkt --
+ * folgt der echten, dichten Wegpunktliste, auch bei Kurven zwischen den
+ * Wetterspalten); sonst aus den Gitterspalten-Koordinaten (`grid.lat/lon`,
+ * Sehnen zwischen den Spalten, bei kurvigen Pfaden etwas zu kurz).
+ * `null`, wenn sich keine Strecke ergibt (z. B. Pfad ohne Ortsänderung) --
+ * dann bleibt die Zeitachse.
+ */
+function distMap(grid, profile) {
+  let xs, ds;
+  if (profile?.dist?.length && profile.dist.length === profile.pos?.length) {
+    xs = profile.pos; ds = profile.dist;
+  } else {
+    xs = grid.pos;
+    ds = new Float64Array(xs.length);
+    for (let i = 1; i < xs.length; i++) {
+      ds[i] = ds[i - 1] + haversineM(grid.lat[i - 1], grid.lon[i - 1], grid.lat[i], grid.lon[i]);
+    }
+  }
+  if (!(ds[ds.length - 1] - ds[0] > 1)) return null;
+  const at = (p) => interpSorted(xs, ds, p);
+  // Umkehrung über die (monoton nicht fallende) Strecke; bei Stillstand
+  // (gleiche Strecke über einen Zeitraum) gewinnt der erste Zeitpunkt.
+  const posOf = (d) => interpSorted(ds, xs, d);
+  return { at, posOf };
+}
+
+// Wie `interpAt`, aber binäre Suche -- die Strecken-Abbildung wird pro
+// Pixelstreifen/Spalte aufgerufen, auf Profilen mit über tausend Punkten.
+function interpSorted(xs, ys, p) {
+  const n = xs.length;
+  if (p <= xs[0]) return ys[0];
+  if (p >= xs[n - 1]) return ys[n - 1];
+  let lo = 0, hi = n - 1;
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >> 1;
+    if (xs[mid] < p) lo = mid; else hi = mid;
+  }
+  const f = xs[hi] > xs[lo] ? (p - xs[lo]) / (xs[hi] - xs[lo]) : 0;
+  return ys[lo] + f * (ys[hi] - ys[lo]);
+}
+
+function haversineM(lat1, lon1, lat2, lon2) {
+  const R = 6371000, r = Math.PI / 180;
+  const dLat = (lat2 - lat1) * r, dLon = (lon2 - lon1) * r;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * r) * Math.cos(lat2 * r) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
 }
 
 // "+45 min" / "+2:15 h" -- verstrichene Zeit seit Pfadbeginn.
@@ -2076,9 +2212,8 @@ function setupHover(host, canvas, axis, grid, info) {
   axis.addEventListener("pointerenter", () => { tip.style.display = "none"; emitPos(null); });
 
   // Chartpixel -> Position auf der X-Achse plus nächstliegende Datenspalte.
-  const p0 = grid.pos[0], p1 = grid.pos[grid.pos.length - 1];
   function posAt(px) {
-    const pos = clamp(p0 + (px - x.left) / (x.right - x.left) * (p1 - p0), p0, p1);
+    const pos = x.inv(px);
     let index = 0, best = Infinity;
     for (let j = 0; j < grid.pos.length; j++) {
       const d = Math.abs(grid.pos[j] - pos);
@@ -2224,7 +2359,9 @@ function makeCursor(plot, scroller, { x, y, grid, isPath, top, bot, zMin, zMax, 
     // Sicht (s. `MIN_MAIN_H`), deshalb trägt der Cursor sie mit sich.
     const t = interpAt(grid.pos, grid.times, pos);
     const clock = Number.isFinite(t) ? fmtClock(t, isPath) : "";
-    label.textContent = isPath ? `${fmtElapsed(pos - p0)} · ${clock}` : clock;
+    label.textContent = !isPath ? clock
+      : x.dist ? `${fmtDist(x.dist.at(pos) - x.dist.at(p0))} · ${clock}`
+      : `${fmtElapsed(pos - p0)} · ${clock}`;
 
     // Waagerecht nachscrollen, wenn die Position außerhalb des sichtbaren
     // Ausschnitts liegt -- nur auf Wunsch (`reveal`), denn beim eigenen Hovern

@@ -34,6 +34,14 @@ const BBOX_STOP_REASON = "Rand des Modellgebiets erreicht";
 // (`fetchColumn` trimmt die Zeitreihe dann auf Länge 0, s. dort). Realer Fall,
 // mit echten Koordinaten reproduziert -- kein hypothetischer Randfall.
 const NO_DATA_STOP_REASON = "Keine Modelldaten an diesem Punkt";
+// Wegpunkt-Zeit jenseits der Säulen-Zeitreihe: `fetchColumn` kürzt die Reihe
+// auf den echten Level-Horizont des Modells (z. B. ICON Global Modell-Level
+// nur bis +36 h, s. column.js), `sliceColumnAtTime` würde danach aber still
+// auf die letzte Stunde klemmen (`bracketTime`) -- der Pfad zeigte dann für
+// den Rest die Wetterlage einer falschen Zeit. Deshalb hier wie am
+// Modellrand abbrechen. Der ANFANG wird bewusst nicht geprüft: ein
+// Pfadbeginn vor der Reihe ist kein „Rest des Pfades fehlt".
+const HORIZON_STOP_REASON = "Ende des Vorhersagezeitraums erreicht";
 
 // Gleichzeitige Säulen-Fetches. Ein Pfad braucht bis zu `maxCols` volle
 // Modellsäulen, und EINE Säule ist teuer: 65-120 Level x 11 Variablen, gemessen
@@ -236,15 +244,21 @@ export async function fetchGridForPath(waypoints, modelKey, forecastDays, fetchI
   // Stelle -- die Reihenfolge entscheidet, deshalb erst hier nach dem
   // (reihenfolgetreuen) Parallelabruf ausgewertet.
   const waypointColumns = [];
+  const fetchedIdx = []; // Wegpunkt-Index je Eintrag in waypointColumns (für retimeGridForPath)
   for (const { i, wp, col, surface } of fetched) {
     if (!col.time.length) {
       pathStop = { lat: wp.lat, lon: wp.lon, index: i, reason: NO_DATA_STOP_REASON };
+      break;
+    }
+    if (wp.t > col.time[col.time.length - 1]) {
+      pathStop = { lat: wp.lat, lon: wp.lon, index: i, reason: HORIZON_STOP_REASON };
       break;
     }
     waypointColumns.push({
       lat: wp.lat, lon: wp.lon, t: wp.t, pos: pos[i],
       elevation: col.elevation, model: modelKey, col, surface,
     });
+    fetchedIdx.push(i);
   }
 
   if (waypointColumns.length < 2) {
@@ -264,13 +278,74 @@ export async function fetchGridForPath(waypoints, modelKey, forecastDays, fetchI
   // Fehlerfall wird hier schon abgefangen -- ein fehlgeschlagenes Overlay darf
   // in der Host-App keine unbehandelte Promise-Ablehnung auslösen, das Wetter
   // steht ja bereits.
+  // Geladene Säulen für `retimeGridForPath()` -- opak für die Host-App.
+  const columns = { list: waypointColumns, idx: fetchedIdx, horizon, n: waypoints.length };
   if (opts.terrainDeferred) {
     return {
-      grid, view, pathStop, terrain: null,
+      grid, view, pathStop, terrain: null, columns,
       terrainPromise: trimmed ? trimmed.catch(() => null) : Promise.resolve(null),
     };
   }
-  return { grid, view, pathStop, terrain: trimmed ? await trimmed : null };
+  return { grid, view, pathStop, terrain: trimmed ? await trimmed : null, columns };
+}
+
+/**
+ * Dasselbe Pfad-Gitter mit NEUEN Wegpunkt-Zeiten, ohne Netzwerk: die von
+ * `fetchGridForPath()` geladenen Säulen (`prev.columns`) werden an denselben
+ * Orten zu den neuen Zeiten geschnitten und neu zusammengesetzt. Gedacht für
+ * Host-Apps, deren Zeitplan vom Wetter selbst abhängt (droneforecast:
+ * windkorrigierte Groundspeed -- erst Wind ablesen, dann neue Ankunftszeiten).
+ *
+ * @param prev Ergebnis von `fetchGridForPath()` bzw. dieser Funktion
+ * @param waypoints dieselbe Wegpunktliste (gleiche Orte, gleiche Reihenfolge)
+ *   mit neuen, aufsteigenden `t`; darf am Ende GEKÜRZT sein (Pfad endet früher)
+ * @param opts { resampleIntervalSec } wie bei `fetchGridForPath()`
+ * @returns { grid, view, pathStop, terrain: null, columns } -- oder `null`,
+ *   wenn die geladenen Säulen die neuen Zeiten nicht abdecken (Zeiten jenseits
+ *   der geladenen Tage, oder der alte Pfad endete schon am Vorhersagehorizont
+ *   und dahinter fehlen Säulen). Dann muss die Host-App neu laden.
+ *
+ * Die Säulenauswahl (`selectWaypointsToFetch`) stammt aus den ALTEN Zeiten --
+ * räumlich bleibt sie gültig, nur die Zeitschwelle (eine Säule je Stunde)
+ * kann sich leicht verschieben. Für einen Zeitplan, der sich um Minuten bis
+ * wenige Stunden verschiebt, vernachlässigbar.
+ */
+export function retimeGridForPath(prev, waypoints, opts = {}) {
+  const src = prev?.columns;
+  if (!src || waypoints.length < 2 || waypoints.length > src.n) return null;
+  if (prev.pathStop?.reason === HORIZON_STOP_REASON) return null;
+  const startSec = Date.parse(`${src.horizon.startDate}T00:00:00Z`) / 1000;
+  const endSec = Date.parse(`${src.horizon.endDate}T23:00:00Z`) / 1000;
+  const pos = posOfPath(waypoints);
+
+  // Räumliche Abbrüche (Bbox, Datenloch) gelten weiter, sofern der Pfad
+  // überhaupt noch so weit reicht.
+  let pathStop = prev.pathStop && prev.pathStop.index < waypoints.length ? prev.pathStop : null;
+  const list = [];
+  const idx = [];
+  for (let k = 0; k < src.list.length; k++) {
+    const i = src.idx[k];
+    if (i >= waypoints.length) break;
+    const wp = waypoints[i];
+    if (wp.t < startSec || wp.t > endSec) return null;
+    const c = src.list[k];
+    if (wp.t > c.col.time[c.col.time.length - 1]) {
+      pathStop = { lat: wp.lat, lon: wp.lon, index: i, reason: HORIZON_STOP_REASON };
+      break;
+    }
+    list.push({ ...c, t: wp.t, pos: pos[i] });
+    idx.push(i);
+  }
+  // Gekürzter Pfad: der letzte Wegpunkt war womöglich nie eine Säule -- dann
+  // endet das Gitter an der letzten geladenen davor (wie bei einem Abbruch).
+  if (list.length < 2) throw new Error(pathStop ? pathStop.reason : "Zu wenige Säulen für den Pfad");
+
+  const dense = opts.resampleIntervalSec ? resamplePath(list, opts.resampleIntervalSec) : list;
+  const grid = gridFromWaypoints(dense);
+  return {
+    grid, view: deriveView(grid), pathStop, terrain: null,
+    columns: { list: src.list, idx: src.idx, horizon: src.horizon, n: src.n },
+  };
 }
 
 // Gelände jenseits des tatsächlich genutzten Wetter-Bereichs (Bbox-/No-Data-

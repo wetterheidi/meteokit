@@ -20,6 +20,11 @@
 
 .head {
   display: flex;
+  /* Umbrechen statt stauchen: Ebenen + zwei Umschalter + Export passen auf
+     schmaleren Desktop-Panels (angedockt neben dem Seitenpanel) nicht in eine
+     Zeile; gestaucht schnitten die Umschalter ihre Beschriftung ab. */
+  flex-wrap: wrap;
+  row-gap: 6px;
   align-items: baseline;
   gap: 10px;
   padding: 8px 12px;
@@ -54,6 +59,7 @@
 
 .range-toggle {
   display: inline-flex;
+  flex: none;
   margin-left: auto;
   border: 1px solid #c9c8c2;
   border-radius: 6px;
@@ -68,6 +74,7 @@
   color: #52514e;
   padding: 3px 9px;
   cursor: pointer;
+  white-space: nowrap;
 }
 .range-toggle button + button { border-left: 1px solid #c9c8c2; }
 .range-toggle button.active {
@@ -85,8 +92,12 @@
   cursor: pointer;
   padding: 0 4px;
 }
+.export-btn { flex: none; white-space: nowrap; }
 .close-btn { font-size: 20px; margin-left: 4px; }
 .range-toggle + .export-btn { margin-left: 8px; }
+/* Zeit/Strecke-Umschalter: nur im Path-Modus (Punkt-Modus hat nur Zeit). */
+.xaxis-toggle { display: none; margin-left: 6px; }
+:host([path]) .xaxis-toggle { display: inline-flex; }
 .export-btn:hover, .close-btn:hover { color: #0b0b0b; }
 
 /* Body/Canvas -- Klassennamen (.gm-plot/.gm-canvas/.gm-axis/.gm-tip) werden

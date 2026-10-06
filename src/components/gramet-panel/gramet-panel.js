@@ -38,7 +38,7 @@
  * beobachten und beim nächsten Öffnen die zuletzt gespeicherten Werte wieder
  * über `.update()`/die einzelnen Property-Setter hereinreichen.
  *
- * Events: `settingschange` (detail: `{ range, layers }`, bei Klick auf
+ * Events: `settingschange` (detail: `{ range, layers, xAxis }`, bei Klick auf
  * Höhenbereich-Umschalter oder Ebenen-Checkbox), `close` (Klick auf ×,
  * Host entscheidet, ob/wie das Panel verschwindet -- z. B. `hidden`),
  * `poshover` (detail: `{ pos, index }` bzw. `{ pos: null }` beim Verlassen --
@@ -80,6 +80,8 @@ export class GrametPanelElement extends HTMLElement {
   // Trajektorien-App gibt es keine gesetzliche Max-Flughöhe zu zeichnen.
   #maxHeightM = 300;
   #range = "full";
+  // X-Achse im Path-Modus: "time" (verstrichene Zeit) | "dist" (Strecke).
+  #xAxis = "time";
   #exportNameParts = ["gramet"];
   #terrain = null;
   #pathStop = null;
@@ -109,7 +111,11 @@ export class GrametPanelElement extends HTMLElement {
           <button type="button" data-range="full">Gesamthöhe</button>
           <button type="button" data-range="zoom">bis Flughöhe</button>
         </div>
-        <button type="button" class="export-btn" title="Als PNG speichern">⭳ PNG</button>
+        <div class="range-toggle xaxis-toggle" title="X-Achse: verstrichene Zeit oder zurückgelegte Strecke">
+          <button type="button" data-xaxis="time">Zeit</button>
+          <button type="button" data-xaxis="dist">Strecke</button>
+        </div>
+        <button type="button" class="export-btn" title="Als PNG speichern">↓ PNG</button>
         <button type="button" class="close-btn" title="Schließen">×</button>
       </div>
       <div class="notice" hidden></div>
@@ -134,6 +140,12 @@ export class GrametPanelElement extends HTMLElement {
       const btn = e.target.closest("button[data-range]");
       if (!btn) return;
       this.range = btn.dataset.range;
+      this._emitChange();
+    });
+    root.querySelector(".xaxis-toggle").addEventListener("click", (e) => {
+      const btn = e.target.closest("button[data-xaxis]");
+      if (!btn) return;
+      this.xAxis = btn.dataset.xaxis;
       this._emitChange();
     });
     root.querySelector(".export-btn").addEventListener("click", () => this.exportPng());
@@ -162,6 +174,16 @@ export class GrametPanelElement extends HTMLElement {
   get range() { return this.#range; }
   set range(v) {
     this.#range = v === "zoom" ? "zoom" : "full";
+    this._syncRangeButtons();
+    this._render();
+  }
+
+  /** X-Achse im Path-Modus: "time" (verstrichene Zeit, Default) oder "dist"
+   *  (zurückgelegte Strecke; Quelle `profile.dist`, sonst die Gitterspalten).
+   *  Im Punkt-Modus ohne Wirkung, der Umschalter ist dort ausgeblendet. */
+  get xAxis() { return this.#xAxis; }
+  set xAxis(v) {
+    this.#xAxis = v === "dist" ? "dist" : "time";
     this._syncRangeButtons();
     this._render();
   }
@@ -284,7 +306,7 @@ export class GrametPanelElement extends HTMLElement {
   /** Mehrere Properties in einem Rutsch setzen -- ein einziger Redraw statt
    *  einem pro Einzel-Setter (relevant beim Öffnen/bei Datenwechsel, wo
    *  Grid, Flughöhe, Höhenbereich und Ebenen zusammen aktualisiert werden). */
-  update({ grid, maxHeight, range, layers, subtitle, exportNameParts, terrain, pathStop, profile, zoomLabel, minMainHeight } = {}) {
+  update({ grid, maxHeight, range, layers, subtitle, exportNameParts, terrain, pathStop, profile, zoomLabel, minMainHeight, xAxis } = {}) {
     this.#loading = null;
     this.busy = null;
     if (zoomLabel !== undefined) this.zoomLabel = zoomLabel;
@@ -309,6 +331,10 @@ export class GrametPanelElement extends HTMLElement {
       this.#range = range === "zoom" ? "zoom" : "full";
       this._syncRangeButtons();
     }
+    if (xAxis !== undefined) {
+      this.#xAxis = xAxis === "dist" ? "dist" : "time";
+      this._syncRangeButtons();
+    }
     if (layers) {
       for (const key of LAYER_KEYS) {
         if (key in layers) this._layerCheckbox(key).checked = !!layers[key];
@@ -324,8 +350,11 @@ export class GrametPanelElement extends HTMLElement {
   }
 
   _syncRangeButtons() {
-    this.shadowRoot.querySelectorAll(".range-toggle button").forEach((b) => {
+    this.shadowRoot.querySelectorAll(".range-toggle button[data-range]").forEach((b) => {
       b.classList.toggle("active", b.dataset.range === this.#range);
+    });
+    this.shadowRoot.querySelectorAll(".xaxis-toggle button").forEach((b) => {
+      b.classList.toggle("active", b.dataset.xaxis === this.#xAxis);
     });
   }
 
@@ -333,7 +362,7 @@ export class GrametPanelElement extends HTMLElement {
     this.dispatchEvent(new CustomEvent("settingschange", {
       bubbles: true,
       composed: true,
-      detail: { range: this.#range, layers: this.layers },
+      detail: { range: this.#range, layers: this.layers, xAxis: this.#xAxis },
     }));
   }
 
@@ -376,6 +405,7 @@ export class GrametPanelElement extends HTMLElement {
       terrain: isPath ? this.#terrain ?? undefined : undefined,
       pathStop: isPath ? this.#pathStop ?? undefined : undefined,
       profile: isPath ? this.#profile ?? undefined : undefined,
+      xAxis: isPath ? this.#xAxis : undefined,
       layerToggles: this.layers,
       minMainH: this.#minMainHeight ?? undefined,
       onRedraw: (canvas) => { this.#canvas = canvas; },

@@ -18,5 +18,5 @@
  */
 
 export { fetchGrid, gridFromColumn, gridFromWaypoints, idx, sampleAt, derive } from "./grid.js";
-export { fetchGridForPath, posOfPath } from "./path.js";
+export { fetchGridForPath, retimeGridForPath, posOfPath } from "./path.js";
 export { fetchTerrainProfile } from "./terrain.js";

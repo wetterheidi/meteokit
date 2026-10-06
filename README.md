@@ -53,7 +53,7 @@ intern und darf sich jederzeit ändern — auch wenn die Datei im Repo sichtbar 
 | Import | Inhalt |
 |---|---|
 | `meteokit/components/gramet-panel` | Web Component `<gramet-panel>` (Seiteneffekt: registriert sich selbst) |
-| `meteokit/gramet` | `fetchGridForPath`, `posOfPath`, `gridFromColumn`, `gridFromWaypoints`, `sampleAt`, `derive`, `idx`, `fetchGrid` |
+| `meteokit/gramet` | `fetchGridForPath`, `retimeGridForPath`, `posOfPath`, `gridFromColumn`, `gridFromWaypoints`, `sampleAt`, `derive`, `idx`, `fetchGrid` |
 | `meteokit/gramet/hazards` | `ipiAt`/`tfiAt` + Kategorisierung (Icing, Turbulenz) |
 | `meteokit/gramet/render` | `renderGramet`, `exportPng` — Low-Level-Zeichnen auf ein eigenes Canvas. Nur für Sonderfälle (z. B. Debug-Seiten); der empfohlene Weg ist `<gramet-panel>`. |
 | `meteokit/config` | `configure`, `getModel`, `MODELS`, `API_BASE`, `SURFACE_*` |
@@ -108,12 +108,23 @@ panel.update({
   profile: { pos: posOfPath(waypoints), z: waypoints.map((w) => w.z) },
 });
 
-panel.addEventListener("settingschange", (e) => save(e.detail)); // { range, layers }
+panel.addEventListener("settingschange", (e) => save(e.detail)); // { range, layers, xAxis }
 panel.addEventListener("close", () => host.hidden = true);
 ```
 
 Darstellungszustand lebt in der Komponente; **Persistenz ist Sache der Host-App**
 (`settingschange` mitschreiben, beim nächsten Öffnen über `update()` zurückgeben).
+
+Path-Modus-Extras: Umschalter „Zeit | Strecke" im Kopf (`xAxis: "time" |
+"dist"`, in `update()` und im `settingschange`-Detail); die Strecke kommt aus
+`profile.dist` (m je Profilpunkt), ersatzweise aus den Gitterspalten.
+`profile.speed` (m/s je Profilpunkt, z. B. eine
+windkorrigierte Groundspeed der Host-App) erscheint als eigene Zeile „GS".
+`retimeGridForPath(prev, waypoints, opts)` setzt dieselben Säulen eines
+`fetchGridForPath()`-Ergebnisses mit neuen Wegpunkt-Zeiten neu zusammen (kein
+Netzwerk; `null` = Säulen decken die neuen Zeiten nicht ab, neu laden). Der
+Pfad endet mit `pathStop` am Modellrand, an Datenlöchern und am realen Ende
+der Vorhersage-Zeitreihe.
 
 Ladezustände: `panel.loading = "…"` ersetzt den Chart durch eine Meldung (auch
 für Fehler, daher ohne Spinner); `panel.loading = { text: "Lade …", spinner: true }`
