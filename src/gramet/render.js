@@ -34,6 +34,7 @@ import { niceLogHeights, niceTicks, fmtH } from "../crosssection.js";
 import { CHART_PX_PER_HOUR } from "../windbarb.js";
 import { fmtHeight, fmtWind, fmtTemp, fmtDir, windUnit, windToDisplay, tempUnit, tempToDisplay } from "../units.js";
 import { metarWeather } from "../briefing.js";
+import { wxHazardGlyph, WX_HAZARD_COLOR } from "../wwsymbols.js";
 import { zoneTag, zHours, zMinutes, zDayKey, fmtDate as fmtZDate, fmtClock as fmtZClock } from "../timefmt.js";
 import * as fog from "./hazards/fog.js";
 import { TERRAIN_ATTRIBUTION } from "./terrain.js";
@@ -428,6 +429,11 @@ export function renderGramet(host, grid, view, state = {}) {
     if (isPath && state.maxHeightM) {
       drawCeiling(ctx, grid, showRealTerrain ? state.terrain : null, state.maxHeightM, x, y);
     }
+    // FZRA/FZDZ/FZFG als rotes Warnsymbol am Boden -- ohne eigenen Schalter (Gefahr),
+    // FZRA/FZDZ hängen am Niederschlags-, FZFG wie der Schleier an keinem Schalter.
+    // Ganz zuletzt in der Hauptfläche, damit weder Linien noch (echtes)
+    // Gelände das Symbol überdecken.
+    drawFreezingGlyphs(ctx, grid, view, pos, x, y, groundAt, { precip: toggles.precip !== false });
     if (isPath && state.profile) {
       drawProfile(ctx, state.profile, x, y, mainTop, mainBot, zMin, zMax);
     }
@@ -1507,6 +1513,107 @@ function strokeSymbol(ctx, path, size, inkColor = CB_SYMBOL_INK) {
   ctx.restore();
 }
 
+// --- Gefrierende Bodenwettererscheinungen (FZRA / FZDZ / FZFG) ------------------
+
+// Rotes WMO-Wettersymbol (dieselbe Geometrie wie die Kartensymbole, s.
+// `wxHazardGlyph()` in wwsymbols.js) je zusammenhängendem Lauf von Stunden mit
+// FZRA, FZDZ bzw. FZFG -- ein Symbol je Ereignis, nicht je Stunde, analog zu den
+// Cb-/Vereisungssymbolen. Auslöser ist das METAR-Label aus `metarWeather()`,
+// nicht der rohe ww: FZFG kommt dort aus der Nebeldiagnose (Nebel bei Frost,
+// auch ohne ww 48), und ein per Sicht widerlegtes ww 48 entfällt -- Glyph,
+// Wetterzeile, Tooltip und Briefing zeigen so immer dasselbe.
+// `weather_code` ist ein Bodenfeld, das Symbol sitzt deshalb knapp über dem
+// Modellgrund: FZRA/FZDZ im unteren Teil des Vorhangs (mit dessen Zeitversatz, s.
+// `PRECIP_TIME_SHIFT`), FZFG in der Mitte des Nebelschleiers (`HAZE_REF_*`).
+// FZFG aus unsicherer Nebeldiagnose (`certain === false` in ALLEN Stunden des
+// Laufs) wird wie in der Wetterzeile gedämpft gezeichnet.
+const FZ_GLYPH_SIZE = 26;
+function drawFreezingGlyphs(ctx, grid, view, pos, x, y, groundAt, { precip = true } = {}) {
+  const wcode = grid.surface?.wcode;
+  if (!wcode || pos.length < 2) return;
+  const dt = pos[1] - pos[0];
+  const kindAt = (i) => {
+    if (!Number.isFinite(wcode[i])) return null;
+    const label = metarWeather(wcode[i], fog.toPhenomenon(view.fog?.[i]));
+    if (label === "FZFG") return "FZFG";
+    if (label.endsWith("FZRA")) return "FZRA";
+    if (label.endsWith("FZDZ")) return "FZDZ";
+    return null;
+  };
+  const runs = [];
+  for (let i = 0; i < pos.length; i++) {
+    const kind = kindAt(i);
+    if (!kind) continue;
+    const last = runs[runs.length - 1];
+    if (last && last.kind === kind && last.end === i - 1) last.end = i;
+    else runs.push({ kind, start: i, end: i });
+  }
+  const size = FZ_GLYPH_SIZE;
+  // FZRA und FZDZ teilen sich den Platz im Vorhang (Kollisionsschutz
+  // gemeinsam), FZFG sitzt höher im Schleier und zählt getrennt.
+  const lastX = { precip: -Infinity, fog: -Infinity };
+  for (const r of runs) {
+    const isPrecip = r.kind !== "FZFG";
+    if (isPrecip && !precip) continue;
+    const slot = isPrecip ? "precip" : "fog";
+    const tMid = (pos[r.start] + pos[r.end]) / 2 - (isPrecip ? PRECIP_TIME_SHIFT * dt : 0);
+    const cx = clamp(x(tMid), x.left + size / 2, x.right - size / 2);
+    if (cx - lastX[slot] < size * GLYPH_MIN_GAP) continue;
+    const hours = [];
+    for (let i = r.start; i <= r.end; i++) hours.push(i);
+    let wx = "FZFG", alpha = 1;
+    if (isPrecip) {
+      // Stärkste Stunde des Laufs bestimmt die Intensität (ein/zwei Tropfen).
+      wx = hours.some((i) => metarWeather(wcode[i]) === r.kind) ? r.kind : `-${r.kind}`;
+    } else if (hours.every((i) => view.fog?.[i]?.certain === false)) {
+      alpha = 0.55;
+    }
+    // Bodenhöhe in Achsen-Einheiten (Path-Modus AMSL, Punkt-Modus AGL = 0).
+    const g = groundAt ? groundAt(tMid) : 0;
+    const z = r.kind === "FZFG" ? g + (HAZE_REF_MIN + HAZE_REF_MAX) / 2 : g;
+    // Im Zoom ohne sichtbaren Boden an die Unterkante rücken statt wegfallen:
+    // die Gefahr gilt am Boden, das Symbol soll trotzdem zu sehen sein.
+    // Punkt-Modus: Boden = Panelunterkante (wie beim Vorhang; y(0) ist auf
+    // der Log-Achse nicht definiert).
+    const groundY = groundAt ? Math.min(y(g), y.bot) : y.bot;
+    let cy = r.kind === "FZFG" ? Math.min(y(z), groundY - size * 0.6) : groundY - size * 0.75;
+    cy = clamp(cy, y.top + size / 2, y.bot - size / 2);
+    drawHazardWx(ctx, cx, cy, wx, size, alpha);
+    lastX[slot] = cx;
+  }
+}
+
+// Zeichnet ein `wxHazardGlyph()` (34er-Raum) zentriert auf (cx, cy) -- Halo
+// additiv zur Strichstärke wie `strokeSymbol`, aber schmaler (1,4 statt
+// 2,2 px): die drei FZFG-Linien liegen nur ~4 px auseinander, ein breiterer
+// Halo füllte die Zwischenräume und machte das Symbol zum weißen Balken.
+function drawHazardWx(ctx, cx, cy, wx, size, alpha = 1) {
+  const glyph = wxHazardGlyph(wx);
+  if (!glyph) return;
+  const k = size / 34;
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.translate(cx, cy);
+  ctx.scale(k, k);
+  ctx.translate(-17, -17);
+  ctx.lineJoin = "round"; ctx.lineCap = "round";
+  const paths = glyph.strokes.map(({ d, w }) => [new Path2D(d), w]);
+  for (const [color, grow] of [[CB_SYMBOL_HALO, 0.7 / k], [WX_HAZARD_COLOR, 0]]) {
+    ctx.strokeStyle = color;
+    for (const [path, w] of paths) {
+      ctx.lineWidth = w + 2 * grow;
+      ctx.stroke(path);
+    }
+    ctx.fillStyle = color;
+    for (const [dx, dy, rr] of glyph.dots) {
+      ctx.beginPath();
+      ctx.arc(dx, dy, rr + grow, 0, 2 * Math.PI);
+      ctx.fill();
+    }
+  }
+  ctx.restore();
+}
+
 // --- Niederschlag --------------------------------------------------------------
 
 // Symbolabstand in PIXELN — bewusst NICHT in Höhenmetern: die Höhenachse ist
@@ -1548,10 +1655,12 @@ const PRECIP_SIZE_MIN = 0.80, PRECIP_SIZE_SPAN = 0.45;
 // Vorhang also am rechten Rand seines Bezugszeitraums; 0,5 setzt ihn auf dessen
 // Mitte. Bewusst als Stellschraube herausgezogen -- 0 stellt das alte Verhalten
 // wieder her.
-// Vorbehalt: `weather_code` gilt momentan (nicht rückwärts akkumuliert), und
-// Vorhänge, die nur daraus stammen (Menge unter der Schwelle, s.
-// `precipEntries`), werden hier trotzdem mitverschoben -- eine getrennte
-// Behandlung würde die Vorhänge benachbarter Stunden ungleich verteilen.
+// Dasselbe gilt für `weather_code`: laut ICON Database Reference (docs/
+// icon_database_main.pdf, Feld WW) beschreibt ww das "significant weather of
+// the last hour", also denselben Zeitraum -- Vorhänge, die nur aus ww stammen
+// (Menge unter der Schwelle, s. `precipEntries`), sind damit zu Recht
+// mitverschoben. Vorbehalt: die GRIB-Parametertabelle derselben Referenz
+// führt WW als `inst`; maßgeblich ist hier der ausdrückliche Beschreibungstext.
 const PRECIP_TIME_SHIFT = 0.5;
 
 // `groundAt` (nur Path-Modus, sonst null): der Vorhang endet dann am lokalen
@@ -2035,9 +2144,10 @@ function setupHover(host, canvas, axis, grid, info) {
     const ww = Number.isFinite(code)
       ? `${metarWeather(code, fog.toPhenomenon(view.fog?.[i]))} (ww ${String(code).padStart(2, "0")})`
       : "N/A";
-    // Menge ebenfalls Boden und zusätzlich rückwärtsgewandt: Open-Meteo gibt
-    // `precipitation` als Summe der VORANGEHENDEN Stunde aus, während ww zum
-    // Zeitstempel gilt. Beides nebeneinander, damit beim Kalibrieren sichtbar
+    // Menge ebenfalls Boden und wie ww rückwärtsgewandt: Open-Meteo gibt
+    // `precipitation` als Summe der VORANGEHENDEN Stunde aus, ww beschreibt
+    // laut ICON Database Reference das Wetter der letzten Stunde (s.
+    // `PRECIP_TIME_SHIFT`). Beides nebeneinander, damit beim Kalibrieren sichtbar
     // wird, welches der beiden Signale den Vorhang ausgelöst hat (das Gate in
     // `precipEntries` ist ein ODER aus Menge > PRECIP_MIN_RATE und ww).
     // Zwei Nachkommastellen, weil die Schwelle bei 0,05 mm/h liegt.
@@ -2170,7 +2280,7 @@ function drawWeatherRow(ctx, grid, view, x, top, height) {
 function weatherColor(label) {
   if (label.includes("TS")) return "#b71c1c";
   if (label.includes("SN") || label.includes("SG")) return "#1565c0";
-  if (label.includes("FZ")) return "#6a1b9a";
+  if (label.includes("FZ")) return WX_HAZARD_COLOR; // wie die FZRA/FZDZ/FZFG-Glyphen in der Hauptfläche
   if (label === "FG") return "#616161";
   if (label === "BR") return "#78909c";
   if (label === "HZ") return "#8d6e63";

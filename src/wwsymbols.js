@@ -34,15 +34,20 @@ const WX_CLR = {
   dust: "#d4a050", // braun – Staub / Sand (DU, SA, PO)
 };
 
+/** Gefahrenfarbe (FZ, TS, …) — auch für die GRAMET-Gefahrenglyphen. */
+export const WX_HAZARD_COLOR = WX_CLR.haz;
+
 // -- Basis-Formen (Primitiven) ------------------------------------------------
 
-function dot(cx, cy, clr, r = 2.6) {
+function dot(cx, cy, clr, r = DOT_R) {
   return `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${clr}"/>`;
 }
 
+const COMMA_R = 1.8, COMMA_TAIL_W = 1.6;
+const commaTailD = (cx, cy) => `M${cx},${cy + 1.5} C${cx + 3},${cy + 4} ${cx + 1},${cy + 8} ${cx - 1},${cy + 8}`;
 function comma(cx, cy, clr) {
-  return `<circle cx="${cx}" cy="${cy}" r="1.8" fill="${clr}"/>` +
-    `<path d="M${cx},${cy + 1.5} C${cx + 3},${cy + 4} ${cx + 1},${cy + 8} ${cx - 1},${cy + 8}" stroke="${clr}" stroke-width="1.6" fill="none" stroke-linecap="round"/>`;
+  return `<circle cx="${cx}" cy="${cy}" r="${COMMA_R}" fill="${clr}"/>` +
+    `<path d="${commaTailD(cx, cy)}" stroke="${clr}" stroke-width="${COMMA_TAIL_W}" fill="none" stroke-linecap="round"/>`;
 }
 
 function star(cx, cy, clr, r = 4.5) {
@@ -103,6 +108,17 @@ function showerTri(clr, intens) { // Schauer-Dreieck (Spitze unten)
   return tri + bars;
 }
 
+// Geometrie der Gefahren-Glyphen FZFG/FZRA als SVG-Pfaddaten (34er-Raum),
+// geteilt mit dem Canvas-Renderer des GRAMET (`wxHazardGlyph()`, dort per
+// `Path2D`) -- eine Form statt zweier, die auseinanderlaufen können.
+const FZFG_D = "M5,11 L29,11 M5,17 L29,17 M5,23 L29,23 M12,11 L17,23 L22,11";
+const FREEZING_S_D = "M6,17 C6,7 17,7 17,17 C17,27 28,27 28,17";
+// Tropfen tief in den Bögen des S (früher 12/22 bei r 2,6): dort berührten sie
+// die Linie und verschmolzen bei GRAMET-Größe (~26 px) mit dem Bogen.
+const FREEZING_DROPS = [[11.5, 14.5], [22.5, 19.5]]; // links (immer), rechts (ab mäßig)
+const DROP_R = 2.2;
+const DOT_R = 2.6;
+
 function fogLines(type, clr) {
   const line = (y, dash = false) => `<line x1="5" y1="${y}" x2="29" y2="${y}" stroke="${clr}" stroke-width="2.2" stroke-linecap="round" ${dash ? 'stroke-dasharray="7,5"' : ""}/>`;
   const splitLine = (y) => `<path d="M5,${y} L14,${y} M20,${y} L29,${y}" stroke="${clr}" stroke-width="2.2" stroke-linecap="round"/>`;
@@ -111,15 +127,16 @@ function fogLines(type, clr) {
   if (type === "MIFG") return line(13, true) + line(21);
   if (type === "BCFG") return splitLine(11) + line(17) + splitLine(23); // oben/unten Lücke, Mitte durchgezogen
   if (type === "PRFG") return splitLine(11) + line(17) + line(23); // nur oben Lücke
-  if (type === "FZFG") return line(11) + line(17) + line(23) + `<polyline points="12,11 17,23 22,11" stroke="${clr}" stroke-width="2.2" fill="none" stroke-linejoin="round"/>`;
+  if (type === "FZFG") return `<path d="${FZFG_D}" stroke="${clr}" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`;
   return line(11) + line(17) + line(23); // normal FG
 }
 
 function freezingS(intens, isRain, clr) {
   // Liegendes S (Tilde)
-  const sPath = `<path d="M6,17 C6,7 17,7 17,17 C17,27 28,27 28,17" stroke="${clr}" stroke-width="2.2" fill="none" stroke-linecap="round"/>`;
-  const leftDrop = isRain ? dot(11.5, 12, clr) : comma(11.5, 12, clr);
-  const rightDrop = isRain ? dot(22.5, 22, clr) : comma(22.5, 22, clr);
+  const sPath = `<path d="${FREEZING_S_D}" stroke="${clr}" stroke-width="2.2" fill="none" stroke-linecap="round"/>`;
+  const [[lx, ly], [rx, ry]] = FREEZING_DROPS;
+  const leftDrop = isRain ? dot(lx, ly, clr, DROP_R) : comma(lx, ly, clr);
+  const rightDrop = isRain ? dot(rx, ry, clr, DROP_R) : comma(rx, ry, clr);
   // Bei leicht (-) nur links, bei moderat/stark beidseitig
   return sPath + leftDrop + (intens === "light" ? "" : rightDrop);
 }
@@ -286,6 +303,25 @@ export function wxSymbolMarkup(wxStr) {
   }
 
   return null;
+}
+
+/** Geometrie der Gefahren-Glyphen für Nicht-SVG-Renderer (Canvas):
+ *  `{ strokes, dots }` im `WX_SYMBOL_VIEWBOX`-Raum — `strokes` sind
+ *  `{ d, w }` (SVG-Pfaddaten + Strichstärke), `dots` gefüllte Kreise
+ *  `[cx, cy, r]`. Nur 'FZFG', '-FZRA'/'FZRA'/'+FZRA' und
+ *  '-FZDZ'/'FZDZ'/'+FZDZ' (ein Tropfen bzw. Komma bei leicht, sonst zwei, wie
+ *  `wxSymbolMarkup()`), sonst `null`. */
+export function wxHazardGlyph(wxStr) {
+  const wx = (wxStr || "").toUpperCase().trim();
+  if (wx === "FZFG") return { strokes: [{ d: FZFG_D, w: 2.2 }], dots: [] };
+  if (wx.includes("SH") || wx.includes("TS")) return null;
+  const isRain = wx.endsWith("FZRA");
+  if (!isRain && !wx.endsWith("FZDZ")) return null;
+  const drops = wx.startsWith("-") ? FREEZING_DROPS.slice(0, 1) : FREEZING_DROPS;
+  const strokes = [{ d: FREEZING_S_D, w: 2.2 }];
+  if (isRain) return { strokes, dots: drops.map(([cx, cy]) => [cx, cy, DROP_R]) };
+  for (const [cx, cy] of drops) strokes.push({ d: commaTailD(cx, cy), w: COMMA_TAIL_W });
+  return { strokes, dots: drops.map(([cx, cy]) => [cx, cy, COMMA_R]) };
 }
 
 const parser = new DOMParser();
