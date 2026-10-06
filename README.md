@@ -115,6 +115,12 @@ panel.addEventListener("close", () => host.hidden = true);
 Darstellungszustand lebt in der Komponente; **Persistenz ist Sache der Host-App**
 (`settingschange` mitschreiben, beim nächsten Öffnen über `update()` zurückgeben).
 
+Ladezustände: `panel.loading = "…"` ersetzt den Chart durch eine Meldung (auch
+für Fehler, daher ohne Spinner); `panel.loading = { text: "Lade …", spinner: true }`
+zeigt dieselbe Meldung mit Lade-Spinner. `panel.busy = "Lade …"` legt einen
+Hinweis mit Spinner ÜBER den weiterhin sichtbaren Chart; `update()` löscht
+beides.
+
 ## Eine weitere Komponente aufnehmen
 
 1. Dateien nach `src/` verschieben (Ordnerstruktur der Quell-App beibehalten,

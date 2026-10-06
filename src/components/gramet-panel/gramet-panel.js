@@ -204,20 +204,28 @@ export class GrametPanelElement extends HTMLElement {
   /** Meldetext STATT Chart -- für den Erstaufbau und für Fehler, wo es nichts
    *  Sinnvolles zu zeigen gibt. Beim Nachladen über einem bereits stehenden
    *  Chart stattdessen `busy` setzen (s. dort), sonst blinkt die Tafel bei
-   *  jedem Datenwechsel auf eine Textmeldung zurück. */
+   *  jedem Datenwechsel auf eine Textmeldung zurück.
+   *  String = reine Meldung (auch Fehler, daher bewusst OHNE Spinner);
+   *  `{ text, spinner: true }` = laufender Ladevorgang mit Spinner. Der
+   *  Getter liefert immer nur den Text. */
+  #loadingSpinner = false;
   get loading() { return this.#loading; }
   set loading(v) {
-    this.#loading = v || null;
+    const isObj = v && typeof v === "object";
+    this.#loading = (isObj ? v.text : v) || null;
+    this.#loadingSpinner = !!(isObj && v.spinner);
     if (this.#loading) this.busy = null;
     this._render();
   }
 
   /** Ladehinweis ÜBER dem weiterhin sichtbaren Chart -- für Aktualisierungen,
    *  die dauern (im Path-Modus kostet ein Datenwechsel etliche Säulenabrufe),
-   *  ohne die alte Darstellung wegzunehmen. `null` blendet ihn aus. */
+   *  ohne die alte Darstellung wegzunehmen. `null` blendet ihn aus. Meldet
+   *  per Definition einen laufenden Vorgang, deshalb immer mit Spinner. */
   get busy() { return this._busyEl.hidden ? null : this._busyEl.textContent; }
   set busy(v) {
-    this._busyEl.textContent = v || "";
+    this._busyEl.replaceChildren();
+    if (v) this._busyEl.append(spinnerEl(), document.createTextNode(v));
     this._busyEl.hidden = !v;
   }
 
@@ -334,7 +342,8 @@ export class GrametPanelElement extends HTMLElement {
       this._bodyEl.innerHTML = "";
       const msg = document.createElement("div");
       msg.className = "body-message";
-      msg.textContent = this.#loading;
+      if (this.#loadingSpinner) msg.append(spinnerEl());
+      msg.append(document.createTextNode(this.#loading));
       this._bodyEl.append(msg);
       this.#canvas = null;
       return;
@@ -406,6 +415,15 @@ export class GrametPanelElement extends HTMLElement {
     if (!(zMax > zMin)) return {};
     return { zMin, zMax };
   }
+}
+
+/** Kleiner CSS-Spinner (Animation in gramet-panel.css, `.spinner`). Rein
+ *  dekorativ -- der Text daneben trägt die Information. */
+function spinnerEl() {
+  const el = document.createElement("span");
+  el.className = "spinner";
+  el.setAttribute("aria-hidden", "true");
+  return el;
 }
 
 customElements.define("gramet-panel", GrametPanelElement);
