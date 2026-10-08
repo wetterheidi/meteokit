@@ -58,6 +58,8 @@ intern und darf sich jederzeit ändern — auch wenn die Datei im Repo sichtbar 
 | `meteokit/gramet/render` | `renderGramet`, `exportPng` — Low-Level-Zeichnen auf ein eigenes Canvas. Nur für Sonderfälle (z. B. Debug-Seiten); der empfohlene Weg ist `<gramet-panel>`. |
 | `meteokit/config` | `configure`, `getModel`, `MODELS`, `API_BASE`, `SURFACE_*` |
 | `meteokit/modelpick` | `pickModel`, `candidateModels` — bestes Modell am Punkt (feinstes zuerst, Bbox + echte Datenabdeckung geprüft) |
+| `meteokit/apifetch` | `fetchWithFallback`, `fetchJsonWithFallback` (Host-Fallback mit Cooldown; `init` für POST), `modelApiBases`, `getApiSources`/`onApiSourceChange` — welcher Host zuletzt geliefert hat |
+| `meteokit/timefmt` | Anzeige-Zeitzone (`setTimeZone`, `getTimeZone`, `zoneTag`) und Formatierer `fmtClock`, `fmtDate`, `fmtHHMM`, … — Ortszeit oder UTC, analog zu `units` |
 | `meteokit/units` | Einheiten-Singleton: `setUnits`, `fmtWind`, `fmtHeight`, … |
 | `meteokit/column` | `fetchColumn`, `buildField`, `sampleColumnAtHeight`, `sliceColumnRange`, … |
 | `meteokit/weather` | `fetchSurface`, `fetchModelRunInit`, `nearestIndex`, … |
@@ -66,6 +68,9 @@ intern und darf sich jederzeit ändern — auch wenn die Datei im Repo sichtbar 
 | `meteokit/crosssection` | `renderCrossSection` |
 | `meteokit/astro` | `sunRiseSet`, `moonPhase`, … |
 | `meteokit/windbarb` | `windBarbMarkup`, `placeWindBarb` |
+| `meteokit/wwsymbols` | WMO-Wettersymbole als SVG-Markup: `wxSymbolMarkup`, `placeWxSymbol`, `wxHazardGlyph`, `wmoWeatherCodeToWx`, `wmoWeatherCategory` |
+| `meteokit/airspace` | `createAirspaceOverlay(L, options)` — Leaflet-Overlay für openAIP-Lufträume über den eigenen Cache-Server (s. `tools/airspace-cache/`) |
+| `meteokit/fronts` | **Im Aufbau, API noch nicht stabil.** `fetchPlaneField` (Druckflächen-Feld aus Modellleveln, inkl. Orographiemaske), `thetaE`/`thetaFields`, `gaussianSmooth`, `gradient`, `isolineSegments`. Werkzeuge und Testfälle: [`tools/fronts/`](tools/fronts/README.md) |
 
 ## Datenquellen konfigurieren
 

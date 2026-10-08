@@ -106,14 +106,17 @@ export async function fetchWithFallback(bases, pathAndQuery, { fetchImpl, signal
  * kein JSON). Wirft, wenn kein Host brauchbare Daten liefert.
  * Mit `withBase: true` kommt `{ data, base }` zurück (liefernder Host) --
  * nötig, wenn parallele Abrufe den Host je Ergebnis kennen müssen.
+ * `init` geht unverändert an `fetch` (z. B. `{ method: "POST", body }` für
+ * Mehrpunkt-Abfragen, deren Koordinatenliste nicht mehr in eine URL passt).
  */
-export async function fetchJsonWithFallback(bases, pathAndQuery, { fetchImpl, signal, sourceKey, validate, withBase } = {}) {
+export async function fetchJsonWithFallback(bases, pathAndQuery, { fetchImpl, signal, sourceKey, validate, withBase, init } = {}) {
   const doFetch = fetchImpl || fetch.bind(globalThis);
   const path = pathAndQuery.split("?")[0];
+  const fetchInit = init || signal ? { ...init, ...(signal ? { signal } : {}) } : undefined;
   let lastErr = null;
   for (const base of orderBases(bases, path, sourceKey)) {
     try {
-      const resp = await doFetch(`${base}${pathAndQuery}`, signal ? { signal } : undefined);
+      const resp = await doFetch(`${base}${pathAndQuery}`, fetchInit);
       const body = await resp.text();
       let data;
       try {
