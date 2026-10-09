@@ -56,6 +56,9 @@ Es gibt aber auch **Fehltreffer ohne Wetter** über Nordafrika, Südspanien
 und dem östlichen Mittelmeer. Okklusionen erscheinen als Warmfront.
 Die Fronten des Ligurientiefs fehlen.
 
+Die synoptischen Kriterien aus den DWD-Kompendien und wie sie umgesetzt
+werden (Stand und Plan) stehen in [KRITERIEN.md](KRITERIEN.md).
+
 Noch offen:
 
 - **Wetter- und Dynamikkriterium.** Eine Front ist eine Luftmassengrenze
