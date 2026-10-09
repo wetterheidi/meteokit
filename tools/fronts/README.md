@@ -77,6 +77,13 @@ den Vortermin als `prev`. Ergebnis am Testfall: Alle Fehltreffer über
 Nordafrika und Iberien fallen weg, die Hauptfronten bleiben (Details in
 [KRITERIEN.md](KRITERIEN.md)).
 
+**Bodenposition**: Standardmäßig (`position: "surface"`) werden Kalt- und
+quasistationäre Fronten von der 850-hPa-Lage zur Bodendruckrinne auf der
+warmen Seite verschoben, Warmfronten nicht (s. KRITERIEN.md).
+`properties.level` ist dann `"surface"`, der Versatz steht in
+`surface_offset_km`. Mit `position: "analysis"` bleibt die Lage in der
+Analysefläche.
+
 **Okklusionen und Tiefs** (`src/fronts/occlusion.js`): `findLows` sucht
 Minima im geglätteten Bodendruck mit mindestens 3 hPa Tiefe gegenüber
 einem Ring von 500 km. Am Gebietsrand darf der Ring teilweise fehlen. Am
@@ -89,7 +96,9 @@ Okklusionspunkt bis vor den Tiefkern. Ohne passende Achse bleibt der
 Frontast. Die zuführende Kalt- bzw. Warmfront biegt weich
 bis an den Okklusionspunkt ein, damit sich dort alle drei Fronten treffen.
 `occlusion_character` gibt dabei an, ob er Kalt- oder Warmfrontcharakter
-hat. Die Okklusion endet 150 km vor dem Tiefkern. Die Tiefs stehen in
+hat. Die Okklusion muss zu einem Tief hin zeigen (auch zu einem Randtief
+jenseits des Gebiets), pro Tief gibt es höchstens eine. Sie endet 150 km
+vor dem Tiefkern. Die Tiefs stehen in
 `properties.lows` der FeatureCollection.
 
 Noch offen:
@@ -97,8 +106,6 @@ Noch offen:
 - Okklusionen verfeinern: Charakter aus der Verlagerung bestimmen, Knick
   am Okklusionspunkt nach Charakter, Okklusionen ohne passende TFP-Linie
   (s. KRITERIEN.md).
-- Die Frontlinie auf die geschätzte Bodenposition verschieben (der Versatz
-  ist schon als `criteria.sfc_offset_km` verfügbar).
 - Den Typ aus der Verlagerung zwischen den Terminen bestimmen.
 - Lücken zwischen Linienstücken schließen.
 - Fronten des Ligurientiefs: zu wenig θw-Gradient in 850 hPa, das Gelände

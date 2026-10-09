@@ -44,6 +44,9 @@ export const OCCLUSION_DEFAULTS = {
   endGapKm: 150,        // berührte Stelle muss so weit von deren Enden weg sein
   branchProbeKm: 300,   // Richtung eines Asts: Punkt in diesem Abstand
   lowStopKm: 150,       // Okklusion endet so weit vor dem Tiefkern
+  towardLowMin: 0.3,    // cos des Winkels zwischen Okklusionsast und Richtung zum Tief
+  edgeLowDrop: 8,       // hPa Druckfall bis zum Gebietsrand für ein Randtief
+  edgeKm: 150,          // Minimum so nah am Gebietsrand -> Randtief
   // Verlängerung entlang der Warmluftzunge (θw-Rücken, i. d. R. 700 hPa, K4)
   ridgeSmoothKm: 150,
   ridgeLambdaMin: 0.3,  // K/(100 km)², Mindestkrümmung quer zur Achse (θw)
@@ -103,7 +106,7 @@ export function findLows(field, g, opts = {}) {
  * die zuführende Kalt- bzw. Warmfront ist bis an den Okklusionspunkt
  * verlängert, so dass sich dort alle drei treffen.
  */
-export function markOcclusions(features, ff, lows, opts = {}, ridges = null) {
+export function markOcclusions(features, ff, lows, opts = {}, ridges = null, msl = null) {
   const o = { ...OCCLUSION_DEFAULTS, ...opts };
   const g = ff.g;
   const nAt = (p) => {
@@ -176,15 +179,37 @@ export function markOcclusions(features, ff, lows, opts = {}, ridges = null) {
       };
       const dPrev = probe(-1), dNext = probe(+1);
       const branch = dotV(dPrev, w) < dotV(dNext, w) ? -1 : +1;
-      cuts.push({ chain: B, idx: m, branch, dir: branch < 0 ? dPrev : dNext, P, from: i, endIdx,
+      const dir = branch < 0 ? dPrev : dNext;
+      // Eine Okklusion gehört zu einem Tief und zeigt zu ihm hin. Ohne diese
+      // Bedingung entstanden nach der Verschiebung auf die Bodenposition
+      // Scheinokklusionen an zufällig nahen Linienenden.
+      // Zugehöriges Tief: das in Reichweite, auf das der Ast am besten zuläuft
+      // (nicht einfach das nächste -- 12 UTC lag das Ostsee-Tief näher am
+      // Okklusionspunkt über der Nordsee als das Islandtief).
+      let low = null, bestDot = o.towardLowMin;
+      for (const l of lows) {
+        if (distKm(P, [l.lat, l.lon]) > o.lowRangeKm) continue;
+        const dd = dotV(dir, unitV(vecKm(P, [l.lat, l.lon])));
+        if (dd >= bestDot) { bestDot = dd; low = l; }
+      }
+      // Randtief: liegt der Kern jenseits des Modellgebiets (Islandtief am
+      // ICON-EU-Westrand um 00 UTC), genügt deutlicher Druckfall entlang des
+      // Asts bis zum Gebietsrand.
+      if (!low && msl) low = edgeLowAhead(P, dir, msl, g, o);
+      if (!low) continue;
+      cuts.push({ chain: B, idx: m, branch, dir, low, gap: best.d, P, from: i, endIdx,
         junction: { lat: +P[0].toFixed(2), lon: +P[1].toFixed(2) } });
     }
   });
 
-  // Pro Kette höchstens ein Schnitt (der erste gefundene); mehrere
-  // Okklusionspunkte auf einer Linie sind in den Testfällen nicht vorgekommen.
+  // Pro Kette und pro Tief höchstens ein Okklusionspunkt; bei mehreren
+  // Kandidaten gewinnt der engste Anschluss (kleinste Lücke Frontende <->
+  // andere Front).
   const applied = [];
-  for (const c of cuts) if (!applied.some((a) => a.chain === c.chain)) applied.push(c);
+  for (const c of cuts.sort((a, b) => a.gap - b.gap)) {
+    const key = (x) => (x.low.edge ? "edge" : x.low);
+    if (!applied.some((a) => a.chain === c.chain || key(a) === key(c))) applied.push(c);
+  }
 
   const toFeature = (i, pts, extra = {}) => ({
     type: "Feature",
@@ -257,6 +282,35 @@ function stripChain(f) {
 }
 
 const nearLow = (p, lows, km) => lows.some((l) => distKm(p, [l.lat, l.lon]) < km);
+
+// Randtief: im Sektor ±60° um die Richtung t (Strahlen bis lowRangeKm) das
+// Druckminimum suchen. Liegt es am Gebietsrand (≤ edgeKm) und mindestens
+// edgeLowDrop unter dem Druck bei P, steht dort ein Tief jenseits des
+// Gebiets -- als Pseudotief am Randpunkt zurückgegeben. Ein einzelner Strahl
+// reichte nicht: um 00 UTC lief er nördlich am Islandtief vorbei.
+function edgeLowAhead(P, t, msl, g, o) {
+  const p0 = sampleBilinear(msl, g, P[0], P[1]);
+  if (!Number.isFinite(p0)) return null;
+  const base = Math.atan2(t[1], t[0]);
+  let best = null;
+  for (let da = -60; da <= 60; da += 10) {
+    const a = base + (da * Math.PI) / 180, dx = Math.cos(a), dy = Math.sin(a);
+    for (let s = 50; s <= o.lowRangeKm; s += 50) {
+      const q = [P[0] + (s * dy) / KM_PER_DEG, P[1] + (s * dx) / (KM_PER_DEG * Math.cos(P[0] * DEG))];
+      const v = sampleBilinear(msl, g, q[0], q[1]);
+      if (!Number.isFinite(v)) break;
+      if (!best || v < best.v) best = { v, q };
+    }
+  }
+  if (!best || p0 - best.v < o.edgeLowDrop) return null;
+  const [la, lo] = best.q;
+  const edgeKm = Math.min(
+    (la - g.lat0) * KM_PER_DEG, (g.lat0 + (g.ny - 1) * g.res - la) * KM_PER_DEG,
+    (lo - g.lon0) * KM_PER_DEG * Math.cos(la * DEG), (g.lon0 + (g.nx - 1) * g.res - lo) * KM_PER_DEG * Math.cos(la * DEG));
+  if (edgeKm > o.edgeKm) return null;
+  return { lat: +la.toFixed(2), lon: +lo.toFixed(2), pressure: +best.v.toFixed(1), edge: true };
+}
+
 
 // Linienende weich an P heranbiegen statt ein gerades Stück anzuhängen: die
 // Punkte im letzten Abschnitt (doppelte Lückenlänge, mind. 150 km) werden

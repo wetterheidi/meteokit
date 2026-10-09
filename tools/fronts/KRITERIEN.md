@@ -192,7 +192,7 @@ Wetter.** Ein Gradientband allein ist noch keine Front.
 | Wetter | max. Niederschlag oder tiefe Wolken × w700 zwischen 850-Linie und Bodenposition | ✓ |
 | keine Front unter Absinkinversion | indirekt: kein Wetter, keine Rinne → Aktivität ≈ 0 | ✓ indirekt |
 | Typ | Verlagerung zwischen Terminen, sonst geostrophischer Querwind | 850-hPa-Querwind ✓, Rest geplant |
-| Bodenposition | Rinne zur warmen Seite hin suchen | Versatz als `criteria.sfc_offset_km`, Linie selbst noch nicht verschoben |
+| Bodenposition | Kalt- und quasistationäre Fronten zur stärksten Bodendruckrinne auf der warmen Seite verschieben (bei schwacher Rinne zum typischen Versatz hin gemischt, entlang der Linie geglättet), **vor** der Okklusionsanalyse; Warmfronten bleiben | ✓ `detectFronts` (`position: "surface"`) |
 | Okklusion | Okklusionspunkt (Ende einer Kalt-/Warmfront an einer Front des anderen Typs, ≤ 350 km), Okklusion entlang der **Rückenachse der Schichtdicke 500/1000** (Scheitel des Warmluftkeils) vom Okklusionspunkt bis vor den Tiefkern, sonst entlang θw 700 bzw. des Frontasts; alle drei Fronten treffen sich im Okklusionspunkt | ✓ `occlusion.js` |
 | Darstellung schwacher Fronten | `activity_class` active / weak (gestrichelt) / none (entfällt) | ✓ |
 
@@ -276,3 +276,32 @@ Dazu braucht es zusätzlich `pressure_level` etwa der Level 35–49
 - Noch offen: Knick am Okklusionspunkt nach Charakter. Bei
   Kaltfrontcharakter setzt die Okklusion die Kaltfront ohne Knick fort,
   und die Warmfront knickt ab.
+
+**Bodenposition** (Fall 2026-10-09):
+
+- Verfahren: Je Stützpunkt wird die Lage der stärksten Bodendruckrinne im
+  Fenster auf der warmen Seite bestimmt (Kaltfront 0–250 km,
+  quasistationär −100–300 km). Bei schwacher Rinne (Krümmung unter
+  0,1–0,5 hPa/(100 km)²) wird zum typischen Versatz hin gemischt
+  (Kaltfront 120 km, quasistationär 50 km). Der Versatz wird entlang der
+  ganzen Linie geglättet (400 km, stetig über Typwechsel). Dann wird jeder
+  Punkt senkrecht zur Zone verschoben, und zwar **vor** der
+  Okklusionsanalyse, damit der Okklusionspunkt aus den Bodenfronten
+  entsteht.
+- **Warmfronten werden nicht verschoben.** Der Versatz aus dem Leitfaden
+  (250–450 km) erzeugte am Testfall Haken und eine Warmfront parallel zur
+  Okklusion (Ostsee-Tief). Die warme Kante der 850-hPa-Zone lag dort schon
+  an der Bodenwarmfront der Analysen. An weiteren Fällen prüfen.
+- Ergebnis Island-System: Okklusionspunkt 00 UTC 58,8/−4,5, 06 UTC 57,6/0,
+  12 UTC 55,5/6,8 (KNMI/DWD 12 UTC etwa 54/5, vorher 57,3/5). Die Kaltfront
+  liegt um 12 UTC noch etwa 100 km nördlich der KNMI-Linie, vorher waren
+  es rund 250 km.
+- Nebenwirkung, behoben: Die verschobenen Linien kamen sich an neuen
+  Stellen nahe, dadurch entstanden Scheinokklusionen. Dagegen helfen zwei
+  Regeln. Erstens muss eine Okklusion zu einem Tief hin zeigen
+  (Winkelkosinus ≥ 0,3); maßgeblich ist das Tief, auf das sie zuläuft,
+  nicht das nächste. Zweitens gibt es pro Tief höchstens eine Okklusion
+  (engster Anschluss gewinnt). Liegt das Tief jenseits des Gebietsrands
+  (Islandtief 00 UTC), genügt ein **Randtief**: ein Druckminimum am Rand
+  im Sektor ±60° um die Okklusionsrichtung, mindestens 8 hPa unter dem
+  Okklusionspunkt.

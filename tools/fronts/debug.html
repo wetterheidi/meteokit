@@ -82,6 +82,7 @@
     <span>min. Länge km</span><input id="minLen" type="number" step="50">
     <span>Wind kalt/warm m/s</span><input id="windMin" type="number" step="0.5">
   </div>
+  <label class="chk"><input id="surface" type="checkbox" checked> auf Bodenposition verschieben (sonst Lage in der Fläche)</label>
   <label class="chk"><input id="inactive" type="checkbox"> Linien ohne Wetter zeigen (grau)</label>
   <label class="chk"><input id="ridges" type="checkbox"> Warmluftzungen (Rückenachsen Schichtdicke bzw. θw 700)</label>
   <label class="chk"><input id="cand" type="checkbox"> Kandidaten ohne Masken (grau)</label>
@@ -361,6 +362,7 @@ function detectOpts() {
   return {
     sigmaKm: Number($("sigma").value), k1: Number($("k1").value), k2: Number($("k2").value),
     minLengthKm: Number($("minLen").value), windMin: Number($("windMin").value),
+    position: $("surface").checked ? "surface" : "analysis",
   };
 }
 
@@ -408,7 +410,7 @@ function drawFronts() {
         + `<br>|∇θw| ${pr.gradient}  TFP ${pr.tfp}  Querwind ${pr.cross_wind} m/s`
         + (cr ? `<br>ΔT850 ${cr.contrast_k} K  Rinne ${cr.trough}  Konv. ${cr.convergence}  Vort. ${cr.vorticity}`
           + `<br>Tendenzsprung ${cr.tendency_jump} hPa/3h  RR ${cr.precip} mm/h  tiefe Wolken ${cr.cloud_low} %  w700 ${cr.w700} cm/s`
-          + `<br>Bodenfront ~${cr.sfc_offset_km} km zur warmen Seite` : "");
+          + `<br>Rinne ~${cr.sfc_offset_km} km zur warmen Seite` + (pr.surface_offset_km != null ? `, verschoben um ${pr.surface_offset_km} km` : "") : "");
       if (pr.activity_class === "none") {
         if ($("inactive").checked) L.polyline(ll, { pane: "lines", color: "#888", weight: 2, dashArray: "2 6" }).bindTooltip(tip).addTo(frontLayer);
         continue;
@@ -502,7 +504,7 @@ $("stepSel").onchange = selectStep;
 $("presSel").onchange = selectStep;
 $("isobars").onchange = drawIsobars;
 $("wind10").onchange = drawWind10;
-for (const id of ["k1", "k2", "minLen", "windMin"]) $(id).onchange = () => runDetection();
+for (const id of ["k1", "k2", "minLen", "windMin", "surface"]) $(id).onchange = () => runDetection();
 $("fronts").onchange = drawFronts;
 $("cand").onchange = drawFronts;
 $("inactive").onchange = drawFronts;

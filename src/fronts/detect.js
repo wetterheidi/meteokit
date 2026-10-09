@@ -33,6 +33,11 @@
  * weg, außer mit `keepInactive: true` (Debug). Braucht Oberflächenfelder
  * (Fixture v2) und für die Drucktendenz den Vortermin als `prev`.
  *
+ * Bodenposition (`position: "surface"`, Standard mit Oberflächenfeldern):
+ * Kalt- und quasistationäre Fronten werden von der 850-hPa-Lage zur
+ * Bodendruckrinne auf der warmen Seite verschoben, Warmfronten bleiben
+ * (s. DETECT_DEFAULTS.surfaceTypes). Das geschieht vor der Okklusionsanalyse.
+ *
  * Okklusionen (occlusion.js): am Okklusionspunkt, wo eine Kalt- auf eine
  * Warmfront trifft, wird der vom Warmsektor wegzeigende Ast als
  * `front_type: "occluded"` abgetrennt. Tiefzentren stehen in
@@ -63,6 +68,18 @@ export const DETECT_DEFAULTS = {
   minPieceKm: 250,    // kürzere Typ-/Aktivitäts-Stücke gehen im Nachbarn auf
   activitySmoothKm: 300, // Glättung der Aktivität entlang der Linie
   activity: {},       // überschreibt ACTIVITY_DEFAULTS (activity.js)
+  // Bodenposition: Linien von der Analysefläche auf die Bodenfront schieben.
+  // Die 850-hPa-Warmfront liegt 250–450 km vor, die Kaltfront 50–250 km
+  // hinter der Bodenfront (Leitfaden) -- beides heißt: zur warmen Seite hin.
+  position: "surface",          // "surface" | "analysis"
+  // Typen, die verschoben werden. Warmfronten nicht: am Fall 2026-10-09
+  // lag die warme Kante der 850-hPa-Zone schon an der Bodenwarmfront der
+  // Analysen (KNMI/DWD); die Verschiebung um den Leitfaden-Versatz
+  // (250–450 km) erzeugte Haken und Parallellinien zur Okklusion.
+  surfaceTypes: ["cold", "stationary"],
+  surfaceDefaultKm: { cold: 120, stationary: 50 },
+  surfaceTroughRamp: [0.1, 0.5], // hPa/(100 km)²: ab hier zählt die gefundene Rinne voll
+  surfaceSmoothKm: 400,         // Glättung des Versatzes entlang der Linie
   occlusions: true,   // Okklusionen bestimmen (occlusion.js)
   occlusion: {},      // überschreibt OCCLUSION_DEFAULTS
 };
@@ -122,17 +139,30 @@ export function detectFronts(field, opts = {}) {
     .filter((line) => lineLengthKm(line) >= o.minLengthKm);
   const af = activityFields(field, prev, g);
 
+  const surface = o.position === "surface" && af;
   const features = [];
   for (const line of lines) {
-    for (const typed of classify(line, ff, o)) {
-      for (const piece of byActivity(typed, ff, af, o)) {
+    const pieces = classify(line, ff, o).flatMap((typed) => byActivity(typed, ff, af, o));
+    // Bodenposition: ganze Linie auf einmal verschieben (stetig über
+    // Typwechsel), dann die Stücke aus der verschobenen Linie neu schneiden.
+    const shift = surface ? surfaceShift(line, pieces, ff, o) : null;
+    for (const piece of pieces) {
+      if (shift) {
+        piece.pts = piece.lineIdx.map((i) => shift.pts[i]);
+        piece.offsetKm = mean(piece.lineIdx.map((i) => shift.offset[i]));
+      }
+      {
         const crit = (key, d = 2) => round(mean(piece.assess.map((x) => x[key])), d);
         features.push({
           type: "Feature",
           geometry: { type: "LineString", coordinates: piece.pts.map(([la, lo]) => [+lo.toFixed(3), +la.toFixed(3)]) },
           properties: {
             front_type: piece.type,
-            level: field.pressure,
+            // "surface": auf die Bodenposition verschoben (Standard mit
+            // Oberflächenfeldern), sonst die Lage in der Analysefläche (hPa).
+            level: shift ? "surface" : field.pressure,
+            analysis_level: field.pressure,
+            surface_offset_km: shift ? Math.round(piece.offsetKm) : null,
             valid_time: field.validTime,
             length_km: Math.round(lineLengthKm(piece.pts)),
             gradient: round(mean(piece.pts.map(([la, lo]) => sampleBilinear(ff.G, g, la, lo))), 2),
@@ -172,7 +202,8 @@ export function detectFronts(field, opts = {}) {
   }
   // Okklusionen auf allen Stücken bestimmen, auch denen ohne Wetter: der
   // Okklusionsast ist in 850 hPa oft schwach und gehört trotzdem zur Linie.
-  const all = o.occlusions && field.sfc ? markOcclusions(features, ff, lows, oo, ridges) : features;
+  const msl = o.occlusions && field.sfc ? gaussianSmooth(Float32Array.from(field.sfc.pressure_msl, (x) => (x == null ? NaN : x)), g, oo.lowSmoothKm) : null;
+  const all = o.occlusions && field.sfc ? markOcclusions(features, ff, lows, oo, ridges, msl) : features;
   const out = keepInactive ? all : all.filter((f) => f.properties.activity_class !== "none");
   return { type: "FeatureCollection", features: out, properties: { params: o, lows, ridges, ridgeSource } };
 }
@@ -240,7 +271,7 @@ function classify(line, ff, o) {
   const typeOf = (x) => (x > o.windMin ? "cold" : x < -o.windMin ? "warm" : "stationary");
   return splitRuns(c.map(typeOf), s, o.minPieceKm).map((p) => {
     const pts = p.idx.map((m) => line[m]);
-    return { type: p.label, pts, c: p.idx.map((m) => c[m]), warmSide: warmSide(pts, ff) };
+    return { type: p.label, pts, lineIdx: p.idx, c: p.idx.map((m) => c[m]), warmSide: warmSide(pts, ff) };
   });
 }
 
@@ -255,10 +286,43 @@ function byActivity(piece, ff, af, o) {
   return splitRuns(act.map((a) => activityClass(a, o.activity)), s, o.minPieceKm).map((p) => {
     const pts = p.idx.map((m) => piece.pts[m]);
     return {
-      type: piece.type, pts, c: p.idx.map((m) => piece.c[m]), warmSide: piece.warmSide,
+      type: piece.type, pts, lineIdx: p.idx.map((m) => piece.lineIdx[m]), c: p.idx.map((m) => piece.c[m]), warmSide: piece.warmSide,
       assess: p.idx.map((m) => assess[m]), activityClass: p.label,
     };
   });
+}
+
+// Versatz 850 hPa -> Boden je Stützpunkt der ganzen Linie und die
+// verschobenen Punkte. Grundlage ist die Lage der stärksten Bodendruckrinne
+// auf der warmen Seite (activity.js, sfcOffsetKm); bei schwacher Rinne wird
+// zum typischen Versatz nach Leitfaden hin gemischt. Entlang der Linie
+// geglättet (surfaceSmoothKm), dann senkrecht zur Zone (n̂, zur warmen Seite)
+// verschoben.
+function surfaceShift(line, pieces, ff, o) {
+  const sum = new Float64Array(line.length), cnt = new Float64Array(line.length);
+  for (const piece of pieces) {
+    const shiftThis = o.surfaceTypes.includes(piece.type);
+    const def = o.surfaceDefaultKm[piece.type] ?? 0;
+    piece.assess.forEach((x, m) => {
+      if (!shiftThis) { const i = piece.lineIdx[m]; cnt[i] += 1; return; } // Versatz 0
+      if (!Number.isFinite(x.sfcOffsetKm)) return;
+      const w = Number.isFinite(x.trough)
+        ? Math.min(1, Math.max(0, (x.trough - o.surfaceTroughRamp[0]) / (o.surfaceTroughRamp[1] - o.surfaceTroughRamp[0]))) : 0;
+      const i = piece.lineIdx[m];
+      sum[i] += w * x.sfcOffsetKm + (1 - w) * def;
+      cnt[i] += 1;
+    });
+  }
+  const raw = Array.from(sum, (v, i) => (cnt[i] ? v / cnt[i] : NaN));
+  const offset = runningMean(raw, cumDist(line), o.surfaceSmoothKm).map((x) => (Number.isFinite(x) ? x : 0));
+  const pts = line.map((p, i) => {
+    const nx = sampleBilinear(ff.nx, ff.g, p[0], p[1]), ny = sampleBilinear(ff.ny, ff.g, p[0], p[1]);
+    const L = Math.hypot(nx, ny);
+    if (!(L > 0)) return p;
+    const s = offset[i];
+    return [p[0] + (s * ny) / L / 111.2, p[1] + (s * nx) / L / (111.2 * Math.cos((p[0] * Math.PI) / 180))];
+  });
+  return { pts, offset };
 }
 
 // Liegt die warme Luft links oder rechts der Linie (in Punktreihenfolge)?
