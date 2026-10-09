@@ -341,7 +341,8 @@ function byActivity(piece, ff, af, o, ends) {
   const s = cumDist(piece.pts);
   const act = runningMean(assess.map((x) => x.activity), s, o.activitySmoothKm);
   assess.forEach((x, m) => { x.activity = act[m]; });
-  // Ohne Luftmassengegensatz keine Front (Leitfaden: T850-Kontrast ≥ 4 K):
+  // Ohne Luftmassengegensatz keine Front (Leitfaden: T850-Kontrast ≥ 4 K,
+  // hier 3,5 K, damit die Mittelmeer-Kaltfront 08.10. 18–21 UTC bleibt):
   // fällt der geglättete Kontrast zu einem freien Linienende hin darunter,
   // oder ist er nicht bestimmbar (kalte Seite jenseits des Gebietsrands),
   // endet die Front dort, auch wenn es noch regnet (Ostsee-Warmfront

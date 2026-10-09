@@ -34,7 +34,12 @@
 <div id="panel">
   <h1>Fronten-Debug</h1>
   <label for="fixture">Fixture</label>
-  <div class="row"><input id="fixture" type="text"><button id="load">Laden</button></div>
+  <div class="row"><input id="fixture" type="text" list="fixtures"><button id="load">Laden</button></div>
+  <datalist id="fixtures">
+    <option value="fixtures/icon_eu_2026-10-09.json.gz">08./09.10. Island-, Ostsee-, Ligurientief</option>
+    <option value="fixtures/icon_eu_2026-10-08.json.gz">08.10. schleifende Front an den Alpen</option>
+    <option value="fixtures/icon_eu_2026-10-06.json.gz">06.10. wellende Front über Großbritannien</option>
+  </datalist>
   <div class="row" style="margin-top:6px">
     <select id="stepSel" title="Termin" style="flex:1"></select>
     <select id="presSel" title="Druckfläche"></select>

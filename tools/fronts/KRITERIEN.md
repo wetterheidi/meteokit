@@ -185,7 +185,7 @@ Wetter.** Ein Gradientband allein ist noch keine Front.
 | Kriterium | Größe im Code | Stand |
 |---|---|---|
 | warme Kante der Zone | TFP-Linie, Masken K1/K2 | ✓ `detectFronts` |
-| Kontrast ≥ 4 K | T850 an der Linie minus 300 km kälterseitig, Rampe 2–4 K, als **Faktor**; an freien Linienenden unter 4 K Schnitt | ✓ `activity.js`, `detect.js` |
+| Kontrast ≥ 4 K | T850 an der Linie minus 300 km kälterseitig, Rampe 2–4 K, als **Faktor**; an freien Linienenden unter 3,5 K Schnitt | ✓ `activity.js`, `detect.js` |
 | Rinne, zyklonale Krümmung | ∂²p/∂n² des Bodendrucks, Maximum im Fenster zur warmen Seite = Bodenposition | ✓ |
 | Konvergenz, Windsprung | Konvergenz und Vorticity des ~10-m-Winds ±100 km um die Bodenposition | ✓ |
 | Sprung der Tendenz | Δp(3 h) 150 km hinter minus 150 km vor der Bodenposition | ✓ (braucht Vortermin) |
@@ -393,11 +393,14 @@ Ergebnis 12 UTC im Vergleich zur Referenzanalyse:
   am Gebietsrand nicht mehr bestimmen. Entscheidung der Projektleitung:
   über den Kontrast abschneiden. Umsetzung (`detect.js`, `byActivity`):
   Fällt der entlang der Linie geglättete T850-Kontrast zu einem **freien**
-  Linienende hin unter 4 K (`contrastMin`) oder ist er nicht bestimmbar,
+  Linienende hin unter 3,5 K (`contrastMin`) oder ist er nicht bestimmbar,
   endet die Front dort, auch mit Wetter. Frei heißt: keine andere Rohlinie
   näher als 350 km (`contrastFreeKm`). Am Okklusionspunkt ist der Kontrast
   in 850 hPa oft klein, global angewendet zerfielen beide Okklusionen.
-  Ergebnis 12 UTC: Die Warmfront endet bei 62/38 statt 59/40.
+  Ergebnis 12 UTC: Die Warmfront endet bei 62/39 statt 59/40. Bewusst
+  unter den 4 K des Leitfadens: Mit 4 K fiele die Kaltfront Sardinien–
+  Algerien (08.10. 18/21 UTC, KNMI zeichnet sie) weg, die mit 3,8 K
+  Kontrast, 0,6 mm/h und Aktivität 0,69 klar Wetter hat.
 - **Symbole auf der falschen Seite** (Island-Kaltfront): Beim Schließen
   einer Lücke wurde die Seitenangabe falsch gespiegelt, wenn das längere
   Stück das zweite war. Behoben; eine Prüfung gegen θw bestätigt die warme

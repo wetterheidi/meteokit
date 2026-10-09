@@ -75,7 +75,7 @@ wird entlang der Linie geglättet. Die Linie wird dann in die Klassen
 `active`, `weak` und `none` geteilt. Stücke der Klasse `none` gibt
 `detectFronts` nur mit `keepInactive: true` aus. An freien Linienenden
 (keine andere Linie näher als 350 km) endet die Front, wo der Kontrast
-unter 4 K fällt. Die Drucktendenz braucht
+unter 3,5 K fällt. Die Drucktendenz braucht
 den Vortermin als `prev`. Ergebnis am Testfall: Alle Fehltreffer über
 Nordafrika und Iberien fallen weg, die Hauptfronten bleiben (Details in
 [KRITERIEN.md](KRITERIEN.md)).
@@ -177,6 +177,8 @@ Vorhandene Fälle:
 
 | Datei | Termine | Bemerkung |
 |---|---|---|
+| `icon_eu_2026-10-06.json.gz` | 06.10. 06–15 UTC, 3-stündlich | alle Termine +0 h. Wellende Front über Großbritannien. Vergleichskarten: DWD und KNMI 12 UTC |
+| `icon_eu_2026-10-08.json.gz` | 08.10. 09–21 UTC, 3-stündlich | alle Termine +0 h. Schleifende Kaltfront an den Alpen, Island- und Ostsee-Tief. Vergleichskarten: DWD und KNMI 12/18 UTC |
 | `icon_eu_2026-10-09.json.gz` | 08.10. 18 UTC – 09.10. 15 UTC, 3-stündlich | 18–12 UTC Analyse, 15 UTC +0 h aus dem 15-UTC-Lauf. Island-Tief mit Okklusion, Ostsee-Tief, Ligurien-Tief. Vergleichskarten: DWD 00/12 UTC, KNMI und GeoSphere 00/06/12 UTC |
 | `icon_eu_850_2026100900_an.json` u. a. | ein Termin | Format v1, nur 850 hPa, aus dem Spike. Die Debug-Seite liest sie weiterhin |
 

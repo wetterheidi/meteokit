@@ -34,7 +34,7 @@ const KM_PER_DEG = 111.2;
 export const ACTIVITY_DEFAULTS = {
   contrastKm: 300,          // T850-Kontrast: Linie gegen Punkt so weit auf der kalten Seite
   contrastRamp: [2, 4],     // K
-  contrastMin: 4,           // K: darunter endet die Front, auch mit Wetter
+  contrastMin: 3.5,         // K: an freien Linienenden endet die Front darunter, auch mit Wetter
   // Suchfenster der Bodenfront auf der warmen Seite der 850-hPa-Linie [km]
   sfcWindow: { warm: [0, 450], cold: [0, 250], stationary: [-100, 300] },
   curvStepKm: 150,          // Schrittweite der zweiten Ableitung des Bodendrucks
