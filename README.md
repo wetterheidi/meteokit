@@ -70,7 +70,7 @@ intern und darf sich jederzeit ändern — auch wenn die Datei im Repo sichtbar 
 | `meteokit/windbarb` | `windBarbMarkup`, `placeWindBarb` |
 | `meteokit/wwsymbols` | WMO-Wettersymbole als SVG-Markup: `wxSymbolMarkup`, `placeWxSymbol`, `wxHazardGlyph`, `wmoWeatherCodeToWx`, `wmoWeatherCategory` |
 | `meteokit/airspace` | `createAirspaceOverlay(L, options)` — Leaflet-Overlay für openAIP-Lufträume über den eigenen Cache-Server (s. `tools/airspace-cache/`) |
-| `meteokit/fronts` | **Im Aufbau, API noch nicht stabil.** `detectFronts` (TFP-Fronten als GeoJSON, `DETECT_DEFAULTS`), `frontFields`, `fetchPlaneField` (Druckflächen-Feld aus Modellleveln, inkl. Orographiemaske), `thetaE`/`thetaFields`, `gaussianSmooth`, `gradient`, `isolineSegments`. Werkzeuge und Testfälle: [`tools/fronts/`](tools/fronts/README.md) |
+| `meteokit/fronts` | **Im Aufbau, API noch nicht stabil.** `detectFronts` (TFP-Fronten als GeoJSON, `DETECT_DEFAULTS`), `frontFields`, `fetchPlaneField` (Druckflächen- und Oberflächenfelder aus Modellleveln, inkl. Orographiemaske), `fieldAt` (Termin aus einer Fixture), `thetaE`/`thetaFields`, `gaussianSmooth`, `gradient`, `isolineSegments`. Werkzeuge und Testfälle: [`tools/fronts/`](tools/fronts/README.md) |
 
 ## Datenquellen konfigurieren
 

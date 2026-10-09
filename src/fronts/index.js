@@ -6,7 +6,7 @@
  * Wetter-/Dynamikkriterium und Okklusionen folgen.
  */
 
-export { fetchPlaneField } from "./field.js";
+export { fetchPlaneField, fieldAt, DEFAULT_SURFACE } from "./field.js";
 export { thetaE, thetaWFromThetaE, thetaFields, esHpa } from "./thermo.js";
 export { gaussianSmooth, gradient, isolineSegments, chainSegments, sampleBilinear, lineLengthKm, distKm } from "./grid.js";
 export { detectFronts, frontFields, DETECT_DEFAULTS } from "./detect.js";

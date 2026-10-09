@@ -32,9 +32,13 @@
 </head>
 <body>
 <div id="panel">
-  <h1>Fronten-Debug (850 hPa)</h1>
+  <h1>Fronten-Debug</h1>
   <label for="fixture">Fixture</label>
   <div class="row"><input id="fixture" type="text"><button id="load">Laden</button></div>
+  <div class="row" style="margin-top:6px">
+    <select id="stepSel" title="Termin" style="flex:1"></select>
+    <select id="presSel" title="Druckfläche"></select>
+  </div>
 
   <label for="fieldSel">Schattierung</label>
   <select id="fieldSel">
@@ -43,6 +47,12 @@
     <option value="T">T [°C]</option>
     <option value="grad">|∇θw| [K/100 km]</option>
     <option value="tfp">TFP [K/(100 km)²]</option>
+    <option value="tend">Drucktendenz 3 h [hPa]</option>
+    <option value="precip">Niederschlag [mm/h]</option>
+    <option value="cloud">Gesamtbewölkung [%]</option>
+    <option value="cloudLow">tiefe Wolken [%]</option>
+    <option value="w700">w 700 hPa [cm/s]</option>
+    <option value="spread700">Spread 700 hPa [K]</option>
   </select>
 
   <label for="sigma">Glättung σ: <span id="sigmaVal"></span> km</label>
@@ -58,7 +68,9 @@
     alle <input id="isoStep" type="number" value="3" min="0.5" step="0.5" style="width:4em"> K
   </div>
 
-  <label class="chk"><input id="wind" type="checkbox"> Windpfeile 850 hPa</label>
+  <label class="chk"><input id="isobars" type="checkbox" checked> Isobaren (Bodendruck, 5 hPa)</label>
+  <label class="chk"><input id="wind" type="checkbox"> Windpfeile (Fläche)</label>
+  <label class="chk"><input id="wind10" type="checkbox"> Windpfeile ~10 m</label>
   <label class="chk"><input id="mask" type="checkbox" checked> Maske „unter Grund“</label>
 
   <label class="chk"><input id="fronts" type="checkbox" checked> <b>Fronten (TFP)</b></label>
@@ -84,10 +96,11 @@
 import { thetaFields } from "../../src/fronts/thermo.js";
 import { gaussianSmooth, gradient, isolineSegments, chainSegments } from "../../src/fronts/grid.js";
 import { detectFronts, frontFields, DETECT_DEFAULTS } from "../../src/fronts/detect.js";
+import { fieldAt } from "../../src/fronts/field.js";
 
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
-$("fixture").value = params.get("fixture") || "fixtures/icon_eu_850_2026100900_an.json";
+$("fixture").value = params.get("fixture") || "fixtures/icon_eu_2026-10-09.json.gz";
 $("k1").value = DETECT_DEFAULTS.k1; $("k2").value = DETECT_DEFAULTS.k2;
 $("minLen").value = DETECT_DEFAULTS.minLengthKm; $("windMin").value = DETECT_DEFAULTS.windMin;
 
@@ -101,6 +114,13 @@ const SCALES = {
   T: { min: -24, max: 24, step: 2, stops: STOPS },
   grad: { min: 0, max: 6, step: 0.5, stops: GRAD_STOPS },
   tfp: { min: -1, max: 1, step: 0.1, stops: ["#2166ac", "#92c5de", "#f7f7f7", "#f4a582", "#b2182b"] },
+  // Oberflächen- bzw. 700-hPa-Felder: keine 850-Maske (surface: true).
+  tend: { min: -4, max: 4, step: 0.5, stops: ["#b2182b", "#f4a582", "#f7f7f7", "#92c5de", "#2166ac"], surface: true },
+  precip: { min: 0, max: 4, step: 0.2, stops: ["#ffffff", "#c7e9c0", "#41ab5d", "#006d2c", "#08306b"], surface: true },
+  cloud: { min: 0, max: 100, step: 10, stops: ["#ffffff", "#d9d9d9", "#969696", "#525252"], surface: true },
+  cloudLow: { min: 0, max: 100, step: 10, stops: ["#ffffff", "#d9d9d9", "#969696", "#525252"], surface: true },
+  w700: { min: -30, max: 30, step: 2, stops: ["#8c510a", "#d8b365", "#f5f5f5", "#5ab4ac", "#01665e"], surface: true },
+  spread700: { min: 0, max: 20, step: 1, stops: ["#1a9850", "#91cf60", "#ffffbf", "#fee08b", "#d73027"], surface: true },
 };
 const hex = (h) => [1, 3, 5].map((o) => parseInt(h.slice(o, o + 2), 16));
 function colorAt(scale, value) {
@@ -131,24 +151,82 @@ fetch("https://cdn.jsdelivr.net/npm/world-atlas@2.0.2/countries-50m.json")
   .catch((err) => console.warn("Grenzen nicht geladen:", err));
 
 let F = null, G = null, TH = null, overlay = null, isoLayer = null, windLayer = null, derived = null;
-let frontLayer = null, fronts = null, FF = null;
+let frontLayer = null, fronts = null, FF = null, CASE = null, isobarLayer = null, wind10Layer = null;
+
+// Fixture v1 (ein Termin, eine Fläche) in die v2-Form heben, damit alles
+// über fieldAt() läuft.
+function asCase(fx) {
+  if (fx.version === 2) return fx;
+  return {
+    version: 2, model: fx.model, res: fx.res, lat0: fx.lat0, lon0: fx.lon0, nx: fx.nx, ny: fx.ny,
+    pressures: [fx.pressure], stepH: 3, times: [fx.validTime], lastRunAtFetch: fx.lastRunAtFetch,
+    steps: [{ validTime: fx.validTime, leadH: null, levels: { [fx.pressure]: { T: fx.T, q: fx.q, u: fx.u, v: fx.v, below: fx.below } }, psfc: fx.psfc, sfc: {} }],
+  };
+}
+
+// null -> NaN und Float32Array, einmal beim Laden (rekursiv über alle Felder).
+function toTyped(obj) {
+  for (const [k, v] of Object.entries(obj)) {
+    if (Array.isArray(v) && v.length > 1000) obj[k] = k === "below" ? Uint8Array.from(v) : Float32Array.from(v, (x) => (x == null ? NaN : x));
+    else if (v && typeof v === "object" && !Array.isArray(v)) toTyped(v);
+  }
+}
 
 async function load() {
   const url = $("fixture").value;
+  $("meta").textContent = `lade ${url} …`;
   const resp = await fetch(url);
   if (!resp.ok) { $("meta").textContent = `Fehler ${resp.status}: ${url}`; return; }
-  F = await resp.json();
-  for (const k of ["T", "q", "u", "v", "psfc"]) F[k] = Float32Array.from(F[k], (x) => (x == null ? NaN : x));
+  const body = url.endsWith(".gz") ? new Response(resp.body.pipeThrough(new DecompressionStream("gzip"))) : resp;
+  CASE = asCase(await body.json());
+  for (const st of CASE.steps) toTyped(st);
+  $("stepSel").innerHTML = CASE.steps.map((st, n) =>
+    `<option value="${n}">${st.validTime.replace("T", " ")} UTC${st.leadH ? ` (+${st.leadH} h)` : st.leadH === 0 ? " (Analyse)" : ""}</option>`).join("");
+  $("presSel").innerHTML = CASE.pressures.map((p) => `<option value="${p}">${p} hPa</option>`).join("");
+  const want = params.get("step");
+  const idx = CASE.steps.findIndex((st) => st.validTime === want);
+  $("stepSel").value = String(idx >= 0 ? idx : CASE.steps.findIndex((st) => st.validTime.endsWith("T00:00")) >= 0
+    ? CASE.steps.findIndex((st) => st.validTime.endsWith("T00:00")) : 0);
+  params.set("fixture", url); history.replaceState(null, "", `?${params}`);
+  selectStep();
+}
+
+function selectStep() {
+  const n = Number($("stepSel").value), p = Number($("presSel").value);
+  F = fieldAt(CASE, n, p);
   G = { nx: F.nx, ny: F.ny, lat0: F.lat0, lon0: F.lon0, res: F.res };
   TH = thetaFields(F);
   $("meta").textContent = [
     `${F.model}  ${F.pressure} hPa`,
     `gültig    ${F.validTime} UTC`,
-    `Lauf (bei Abruf) ${F.lastRunAtFetch?.slice(0, 16).replace("T", " ") ?? "?"}`,
+    `Lauf (bei Abruf) ${CASE.lastRunAtFetch?.slice(0, 16).replace("T", " ") ?? "?"}`,
     `Raster    ${F.res}°  ${F.nx}×${F.ny}`,
   ].join("\n");
-  params.set("fixture", url); history.replaceState(null, "", `?${params}`);
+  params.set("step", F.validTime); history.replaceState(null, "", `?${params}`);
   recompute();
+}
+
+// Taupunktdifferenz aus T [K], q [kg/kg] und p [hPa] (Magnus wie thermo.js).
+function spread(T, q, p) {
+  const r = q / (1 - q), e = (p * r) / (0.622 + r), l = Math.log(Math.max(e, 1e-4) / 6.112);
+  return T - 273.15 - (243.5 * l) / (17.67 - l);
+}
+
+function surfaceDerived() {
+  const n = Number($("stepSel").value), st = CASE.steps[n], prev = CASE.steps[n - 1];
+  const nan = () => new Float32Array(G.nx * G.ny).fill(NaN);
+  const msl = st.sfc.pressure_msl;
+  const L7 = st.levels[700];
+  return {
+    // 3-h-Tendenz rückwärts (Termin minus Vortermin), wie in der Bodenkarte.
+    tend: msl && prev?.sfc.pressure_msl && CASE.stepH === 3 ? msl.map((x, k) => x - prev.sfc.pressure_msl[k]) : nan(),
+    precip: st.sfc.precipitation || nan(),
+    cloud: st.sfc.cloud_cover || nan(),
+    cloudLow: st.sfc.cloud_cover_low || nan(),
+    w700: L7?.w ? L7.w.map((x) => x * 100) : nan(),
+    spread700: L7 ? L7.T.map((t, k) => spread(t, L7.q[k], 700)) : nan(),
+    msl: msl || nan(),
+  };
 }
 
 function recompute() {
@@ -161,10 +239,11 @@ function recompute() {
   derived = {
     thE: thE.map((x) => x - 273.15), thW: thW.map((x) => x - 273.15), T: T.map((x) => x - 273.15),
     grad: gradient(thW, G).mag,
+    ...surfaceDerived(),
   };
   runDetection(false);
   derived.tfp = FF.TFP;
-  drawField(); drawIsolines(); drawWind(); drawFronts();
+  drawField(); drawIsolines(); drawIsobars(); drawWind(); drawWind10(); drawFronts();
 }
 
 // Raster in Web-Mercator auflösen, damit das Bild-Overlay lagerichtig ist
@@ -187,7 +266,7 @@ function drawField() {
       const lon = west + ((px + 0.5) / W) * (east - west);
       const i = Math.min(nx - 1, Math.max(0, Math.round((lon - lon0) / res)));
       const k = j * nx + i, o = (py * W + px) * 4, v = fld[k];
-      if (F.below[k]) {
+      if (F.below[k] && !scale.surface) {
         if (showMask) { img.data.set([110, 110, 110, 170], o); }
         continue;
       }
@@ -231,23 +310,45 @@ function drawIsolines() {
   isoLayer.addTo(map);
 }
 
-function drawWind() {
-  windLayer?.remove(); windLayer = null;
-  if (!$("wind").checked) return;
-  windLayer = L.layerGroup();
+function drawIsobars() {
+  isobarLayer?.remove(); isobarLayer = null;
+  if (!$("isobars").checked || !derived.msl.some(Number.isFinite)) return;
+  // Leicht geglättet (60 km), damit Gitterrauschen keine Zacken erzeugt.
+  const msl = gaussianSmooth(derived.msl, G, 60);
+  isobarLayer = L.layerGroup();
+  for (let lev = 950; lev <= 1060; lev += 5) {
+    const segs = isolineSegments(msl, G, lev);
+    if (segs.length) L.polyline(segs, { pane: "lines", color: "#000", weight: lev % 10 ? 0.9 : 1.6, interactive: false }).addTo(isobarLayer);
+  }
+  isobarLayer.addTo(map);
+}
+
+function arrows(u, v, color) {
   const { nx, ny, lat0, lon0, res } = G, every = 3, s = 0.04; // Grad je m/s
   const lines = [];
   for (let j = 0; j < ny; j += every) for (let i = 0; i < nx; i += every) {
-    const k = j * nx + i, u = F.u[k], v = F.v[k];
-    if (!Number.isFinite(u) || F.below[k]) continue;
+    const k = j * nx + i, uu = u[k], vv = v[k];
+    if (!Number.isFinite(uu) || !Number.isFinite(vv)) continue;
     const lat = lat0 + j * res, lon = lon0 + i * res, c = Math.cos((lat * Math.PI) / 180);
-    const tip = [lat + v * s, lon + (u * s) / c];
-    const ang = Math.atan2(v, u / 1), hl = 0.35 * Math.hypot(u, v) * s;
+    const tip = [lat + vv * s, lon + (uu * s) / c];
+    const ang = Math.atan2(vv, uu), hl = 0.35 * Math.hypot(uu, vv) * s;
     const head = (da) => [tip[0] - hl * Math.sin(ang + da), tip[1] - (hl * Math.cos(ang + da)) / c];
     lines.push([[lat, lon], tip], [head(0.5), tip, head(-0.5)]);
   }
-  L.polyline(lines, { pane: "lines", color: "#000", weight: 1, interactive: false }).addTo(windLayer);
-  windLayer.addTo(map);
+  return L.polyline(lines, { pane: "lines", color, weight: 1, interactive: false });
+}
+
+function drawWind10() {
+  wind10Layer?.remove(); wind10Layer = null;
+  if (!$("wind10").checked || !F.u10) return;
+  wind10Layer = arrows(F.u10, F.v10, "#0a6").addTo(map);
+}
+
+function drawWind() {
+  windLayer?.remove(); windLayer = null;
+  if (!$("wind").checked) return;
+  const mask = (a) => a.map((x, k) => (F.below[k] ? NaN : x));
+  windLayer = arrows(mask(F.u), mask(F.v), "#000").addTo(map);
 }
 
 function detectOpts() {
@@ -349,6 +450,9 @@ map.on("mousemove", (e) => {
     `θe     ${f1(derived.thE[k])} °C`,
     `θw     ${f1(derived.thW[k])} °C`,
     `|∇θw|  ${f1(derived.grad[k])} K/100 km`,
+    `p_msl  ${f1(derived.msl[k])} hPa  Δ3h ${f1(derived.tend[k])}`,
+    `RR     ${f1(derived.precip[k])} mm/h  N ${f1(derived.cloud[k])} %`,
+    `w700   ${f1(derived.w700[k])} cm/s  Spread700 ${f1(derived.spread700[k])} K`,
     `TFP    ${Number.isFinite(FF?.TFP[k]) ? FF.TFP[k].toFixed(2) : "–"}  Maske ${FF?.mask[k] ? "ja" : "nein"}`,
     `Wind   ${Number.isFinite(ff) ? `${dd.toFixed(0)}° / ${(ff * 1.94384).toFixed(0)} kt` : "–"}`,
     `p_sfc  ${f1(F.psfc[k])} hPa${F.below[k] ? "  (unter Grund)" : ""}`,
@@ -356,6 +460,10 @@ map.on("mousemove", (e) => {
 });
 
 $("load").onclick = load;
+$("stepSel").onchange = selectStep;
+$("presSel").onchange = selectStep;
+$("isobars").onchange = drawIsobars;
+$("wind10").onchange = drawWind10;
 for (const id of ["k1", "k2", "minLen", "windMin"]) $(id).onchange = () => runDetection();
 $("fronts").onchange = drawFronts;
 $("cand").onchange = drawFronts;
