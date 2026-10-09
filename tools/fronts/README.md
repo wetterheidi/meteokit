@@ -200,7 +200,7 @@ stehen zur Wahl:
 - w und Spread in 700 hPa
 
 Dazu kommen Isobaren (5 hPa), Isolinien, Windpfeile auf der Fläche und bei
-~10 m, die Warmluftzungen in 700 hPa sowie die Orographiemaske. Darüber liegen die detektierten
+~10 m, die Warmluftzungen (Rückenachsen der Schichtdicke bzw. θw 700) sowie die Orographiemaske. Darüber liegen die detektierten
 Fronten mit den üblichen Symbolen. Die Schwellen K1, K2, Mindestlänge und
 Windschwelle sind live einstellbar. Optional lassen sich alle Kandidaten
 ohne Masken in Grau einblenden. Das Ergebnis kann als GeoJSON gespeichert
@@ -210,6 +210,53 @@ die Punktwerte. Als Hintergrund dienen Küsten und Ländergrenzen (Natural
 Earth über `world-atlas`), keine Kachelkarte und damit kein API-Key. Leaflet,
 `topojson-client` und die Grenzdaten kommen aus dem Netz. Das ist nur für
 diese Debug-Seite so, die Bibliothek selbst hat keine Abhängigkeiten.
+
+### Handanalyse und Vergleich
+
+Im Abschnitt „Handanalyse“ der Debug-Seite lassen sich Fronten zeichnen
+und als Referenz für den jeweiligen Termin speichern:
+
+- **Neue Front:** Typ wählen (kalt, warm, Okklusion, quasistationär,
+  wahlweise schwach), dann mit Klicks Stützpunkte setzen. Doppelklick oder
+  Enter beendet die Linie, Esc bricht ab. Gezeichnet wird ein glatter
+  Spline (centripetaler Catmull-Rom) durch die Stützpunkte.
+- **Bearbeiten:** Front anklicken. Dann lassen sich Punkte ziehen, ein
+  Klick auf die Linie fügt einen Punkt ein, ein Rechtsklick auf einen Punkt
+  löscht ihn. Typ und „schwach“ wirken auf die ausgewählte Front, „Seite ⇄“
+  dreht die Symbole um. Entf löscht die Front, Strg/Cmd+Z macht rückgängig.
+  Die Symbolseite wird beim Zeichnen aus θw bestimmt.
+- **Automatik übernehmen:** Die aktiven und schwachen Fronten der Automatik
+  werden zu bearbeitbaren Linien (Stützpunkte etwa alle 150 km), als
+  Ausgangspunkt für Korrekturen.
+- **Speichern:** Der Arbeitsstand bleibt pro Termin im Browser
+  (`localStorage`). „Referenz speichern“ lädt `<Termin>.geojson` herunter,
+  z. B. `2026-10-09T12.geojson`. Die Datei gehört nach
+  `tools/fronts/reference/`, von dort lädt die Seite sie beim Wechsel auf
+  den Termin automatisch, solange kein Browser-Entwurf existiert
+  („Entwurf verwerfen“ lädt die Datei neu). „Datei laden …“ liest auch eine
+  exportierte Automatik-Analyse.
+
+Das Format ist eine FeatureCollection wie bei `detectFronts`
+(`front_type`, `activity_class`, `warm_side`, `motion_side`), dazu die
+Stützpunkte in `control_points` und `properties.valid_time`.
+
+Unter den Knöpfen steht der Vergleich der Automatik mit der Handanalyse am
+aktuellen Termin, mit den aktuellen Reglern. Über alle Referenzen zugleich
+rechnet das Skript:
+
+```bash
+node tools/fronts/compare.mjs                  # Standardparameter
+node tools/fronts/compare.mjs '{"sigmaKm":100}' --tol 150
+```
+
+Maße (`tools/fronts/compare.js`, längengewichtet, Abtastung 25 km):
+
+- **Treffer:** Anteil der Referenzfronten, bei denen höchstens 150 km
+  entfernt eine automatische Front gleichen Typs liegt.
+- **Nur Lage:** dasselbe mit Fronten beliebigen Typs.
+- **Fehlalarm:** Anteil der automatischen Fronten ohne Referenzfront
+  gleichen Typs in 150 km.
+- **Abstand:** mittlerer Abstand der getroffenen Referenzpunkte.
 
 ## Alternative Datenquelle
 
