@@ -45,7 +45,7 @@ import {
   sampleBilinear, lineLengthKm, distKm,
 } from "./grid.js";
 import { activityFields, assessPoints, activityClass } from "./activity.js";
-import { findLows, markOcclusions, ridgeLines } from "./occlusion.js";
+import { findLows, markOcclusions, ridgeLines, OCCLUSION_DEFAULTS } from "./occlusion.js";
 
 export const DETECT_DEFAULTS = {
   sigmaKm: 120,       // Gauß-Glättung von θw (und Wind)
@@ -126,7 +126,6 @@ export function detectFronts(field, opts = {}) {
   for (const line of lines) {
     for (const typed of classify(line, ff, o)) {
       for (const piece of byActivity(typed, ff, af, o)) {
-        if (!keepInactive && piece.activityClass === "none") continue;
         const crit = (key, d = 2) => round(mean(piece.assess.map((x) => x[key])), d);
         features.push({
           type: "Feature",
@@ -160,12 +159,22 @@ export function detectFronts(field, opts = {}) {
   // Okklusionen brauchen die bewerteten Fronten (Okklusionspunkt nur
   // zwischen echten Fronten) und den Bodendruck (Tiefzentren).
   const lows = o.occlusions && field.sfc ? findLows(field, g, o.occlusion) : [];
-  // Warmluftzungen bevorzugt in 700 hPa (Isentropenanalyse 700 hPa, K4).
+  // Warmluftzungen: bevorzugt aus der Schichtdicke 500/1000 (Okklusion
+  // durch den Scheitel des Warmluftkeils, K1), sonst aus θw in 700 hPa
+  // (Isentropenanalyse 700 hPa, K4).
+  const oo = { ...OCCLUSION_DEFAULTS, ...o.occlusion };
   const L7 = field.levels?.[700];
-  const ridges = o.occlusions && L7
-    ? ridgeLines(thetaFields({ nx: g.nx, ny: g.ny, T: L7.T, q: L7.q, pressure: 700 }).thW, g, o.occlusion) : null;
-  const out = o.occlusions && field.sfc ? markOcclusions(features, ff, lows, o.occlusion, ridges) : features;
-  return { type: "FeatureCollection", features: out, properties: { params: o, lows, ridges700: ridges } };
+  let ridges = null, ridgeSource = null;
+  if (o.occlusions && field.thickness) {
+    ridges = ridgeLines(field.thickness, g, oo, oo.thicknessLambdaMin); ridgeSource = "thickness";
+  } else if (o.occlusions && L7) {
+    ridges = ridgeLines(thetaFields({ nx: g.nx, ny: g.ny, T: L7.T, q: L7.q, pressure: 700 }).thW, g, oo); ridgeSource = "theta700";
+  }
+  // Okklusionen auf allen Stücken bestimmen, auch denen ohne Wetter: der
+  // Okklusionsast ist in 850 hPa oft schwach und gehört trotzdem zur Linie.
+  const all = o.occlusions && field.sfc ? markOcclusions(features, ff, lows, oo, ridges) : features;
+  const out = keepInactive ? all : all.filter((f) => f.properties.activity_class !== "none");
+  return { type: "FeatureCollection", features: out, properties: { params: o, lows, ridges, ridgeSource } };
 }
 
 // Abstand entlang der Linie [km] je Stützpunkt.

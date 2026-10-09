@@ -193,10 +193,11 @@ Wetter.** Ein Gradientband allein ist noch keine Front.
 | keine Front unter Absinkinversion | indirekt: kein Wetter, keine Rinne → Aktivität ≈ 0 | ✓ indirekt |
 | Typ | Verlagerung zwischen Terminen, sonst geostrophischer Querwind | 850-hPa-Querwind ✓, Rest geplant |
 | Bodenposition | Rinne zur warmen Seite hin suchen | Versatz als `criteria.sfc_offset_km`, Linie selbst noch nicht verschoben |
-| Okklusion | Okklusionspunkt (Ende einer Kalt-/Warmfront an einer Front des anderen Typs, ≤ 350 km), vom Warmsektor wegzeigender Ast = Okklusion, Verlängerung entlang des θw-Rückens in 700 hPa bis vor den Tiefkern, alle drei Fronten treffen sich im Okklusionspunkt | ✓ `occlusion.js` |
+| Okklusion | Okklusionspunkt (Ende einer Kalt-/Warmfront an einer Front des anderen Typs, ≤ 350 km), Okklusion entlang der **Rückenachse der Schichtdicke 500/1000** (Scheitel des Warmluftkeils) vom Okklusionspunkt bis vor den Tiefkern, sonst entlang θw 700 bzw. des Frontasts; alle drei Fronten treffen sich im Okklusionspunkt | ✓ `occlusion.js` |
 | Darstellung schwacher Fronten | `activity_class` active / weak (gestrichelt) / none (entfällt) | ✓ |
 
-**Schichtdicke 500/1000 hPa aus Modellleveln.** Die Schichtdicke ist das
+**Schichtdicke 500/1000 hPa aus Modellleveln** (umgesetzt in
+`fetchPlaneField` mit `thickness: true`). Die Schichtdicke ist das
 Hauptkriterium für Okklusionen. Sie lässt sich ohne Geopotential
 bestimmen: ICON-Level haben feste Höhen über Grund (`height_agl_level{N}`
 ist zeitlich konstant), und z(500) − z(1000) ist die Differenz der auf die
@@ -248,3 +249,30 @@ Dazu braucht es zusätzlich `pressure_level` etwa der Level 35–49
   - Den Charakter (Kalt-/Warmfront) aus der Verlagerung bestimmen statt
     vom Ast zu übernehmen.
   - Die Schichtdicke 500/1000 hPa als eigentliches Kriterium.
+
+**Okklusion entlang der Schichtdicke** (Stand 2026-10-09, Fall bis 15 UTC):
+
+- Gegenprobe der Schichtdicke: ±6 gpm gegen die öffentlichen
+  ICON-EU-Felder, über den Alpen −43 gpm (Extrapolation bis 1000 hPa).
+- Rückenachsen: Hesse-Matrix der geglätteten Schichtdicke (σ 150 km),
+  λ₁ < −6 gpm/(100 km)². Achsenstücke, deren Enden höchstens 80 km
+  auseinanderliegen und ohne Knick ineinander übergehen, werden
+  zusammengefügt. Ohne das zerfiel die Okklusionsachse um 12 UTC an einem
+  Vorzeichenwechsel der Eigenvektoren in zwei Teile.
+- Die Okklusion läuft vom Okklusionspunkt entlang der Achse, beginnend beim
+  ersten Achsenpunkt in Laufrichtung, bis 150 km vor das Tief. Das Tief
+  darf bis 1600 km entfernt sein; 1200 km waren für das Islandtief um
+  12 UTC zu wenig.
+- Die Geometrie wird auf der **ganzen Linie** bestimmt, also auch auf
+  Stücken ohne Wetter. Der Okklusionsast ist in 850 hPa oft schwach (12 UTC
+  als `none` eingestuft) und wurde vorher weggefiltert, bevor der
+  Okklusionspunkt gesucht war.
+- Ergebnis 12 UTC: Die Okklusion läuft von der nördlichen Nordsee über die
+  Färöer nach Nordwesten, wie bei KNMI. Der Okklusionspunkt liegt aber bei
+  57,3/5 statt bei etwa 54/5 (KNMI, DWD). Er wird aus der 850-hPa-Kaltfront
+  bestimmt, und die liegt 50–250 km hinter der Bodenkaltfront. Die
+  Schichtdickenachse reicht bis 54/6, folgt also dem Analytiker →
+  Verschiebung auf die Bodenposition (offen).
+- Noch offen: Knick am Okklusionspunkt nach Charakter. Bei
+  Kaltfrontcharakter setzt die Okklusion die Kaltfront ohne Knick fort,
+  und die Warmfront knickt ab.

@@ -46,11 +46,17 @@ export const OCCLUSION_DEFAULTS = {
   lowStopKm: 150,       // Okklusion endet so weit vor dem Tiefkern
   // Verlängerung entlang der Warmluftzunge (θw-Rücken, i. d. R. 700 hPa, K4)
   ridgeSmoothKm: 150,
-  ridgeLambdaMin: 0.3,  // K/(100 km)², Mindestkrümmung quer zur Achse
+  ridgeLambdaMin: 0.3,  // K/(100 km)², Mindestkrümmung quer zur Achse (θw)
+  // Dasselbe für die Schichtdicke 500/1000: 40 gpm ≈ 2 K Schichtmittel,
+  // also 0,3 K ≈ 6 gpm. Erste Annahme, am Fall zu prüfen.
+  thicknessLambdaMin: 6,  // gpm/(100 km)²
   ridgeMinKm: 200,      // kürzere Rückenstücke verwerfen
+  ridgeJoinKm: 80,      // Achsenstücke mit so nahen Enden zusammenfügen
   ridgeSnapKm: 200,     // Abstand Okklusionsende <-> Rückenachse
   ridgeMaxKm: 1200,     // höchstens so weit verlängern
-  lowRangeKm: 1200,     // nur im Bereich eines Tiefs
+  // nur im Bereich eines Tiefs. 1200 km war für das großräumige Islandtief
+  // (2026-10-09 12 UTC: Okklusionspunkt 1300 km vom Kern) zu knapp.
+  lowRangeKm: 1600,
 };
 
 /** Tiefzentren als lokale Minima des geglätteten Bodendrucks mit Mindesttiefe. */
@@ -105,24 +111,51 @@ export function markOcclusions(features, ff, lows, opts = {}, ridges = null) {
     const L = Math.hypot(nx, ny);
     return L > 0 ? [nx / L, ny / L] : null;
   };
-  // Lokaler Ost-/Nord-Vektor (km) von a nach b.
-  const vec = (a, b) => [(b[1] - a[1]) * KM_PER_DEG * Math.cos(((a[0] + b[0]) / 2) * DEG), (b[0] - a[0]) * KM_PER_DEG];
-  const unit = (v) => { const L = Math.hypot(v[0], v[1]); return L > 0 ? [v[0] / L, v[1] / L] : [0, 0]; };
+  const props = (i) => features[i].properties;
+  const active = (i) => props(i).activity_class !== "none";
+  const isFrontType = (t) => t === "cold" || t === "warm" || t === "stationary";
 
-  const lines = features.map((f) => ({ f, pts: f.geometry.coordinates.map(([lo, la]) => [la, lo]) }));
-  const isFront = (f) => ["cold", "warm", "stationary"].includes(f.properties.front_type)
-    && f.properties.activity_class !== "none";
-  const cuts = []; // { line, idx, branch: +1|-1, junction }
+  // Ketten: aufeinanderfolgende Stücke derselben Linie (detectFronts teilt
+  // nach Typ und Aktivität, die Stücke teilen sich den Randpunkt). Die
+  // Geometrie wird auf der ganzen Kette bestimmt -- der Okklusionsast hat in
+  // 850 hPa oft wenig Wetter und ist als "none" eingestuft (12 UTC Island).
+  const same = (a, b) => Math.abs(a[0] - b[0]) < 1e-6 && Math.abs(a[1] - b[1]) < 1e-6;
+  const chains = [], range = [];
+  features.forEach((f, i) => {
+    const pts = f.geometry.coordinates.map(([lo, la]) => [la, lo]);
+    const last = chains[chains.length - 1];
+    if (last && same(last.pts[last.pts.length - 1], pts[0])) {
+      const base = last.pts.length - 1;
+      for (let q = 1; q < pts.length; q++) { last.pts.push(pts[q]); last.owner.push(i); }
+      last.feats.push(i); range[i] = [base, base + pts.length - 1]; f._chain = last;
+    } else {
+      const c = { pts: pts.slice(), owner: pts.map(() => i), feats: [i] };
+      chains.push(c); range[i] = [0, pts.length - 1]; f._chain = c;
+    }
+  });
+  const chainOf = (i) => features[i]._chain;
+  const segOwner = (C, q, dir) => C.owner[dir > 0 ? Math.min(q + 1, C.pts.length - 1) : q];
+  const along = (C, from, to) => { let s = 0; const st = from < to ? 1 : -1; for (let q = from; q !== to; q += st) s += distKm(C.pts[q], C.pts[q + st]); return s; };
 
-  for (const A of lines) {
-    if (!isFront(A.f) || A.f.properties.front_type === "stationary") continue;
-    for (const endIdx of [0, A.pts.length - 1]) {
-      const E = A.pts[endIdx];
-      // Nächstgelegene Stelle auf einer Front des anderen Typs (stationär zählt mit).
+  const cuts = [];
+  features.forEach((fa, i) => {
+    const t = props(i).front_type;
+    if ((t !== "cold" && t !== "warm") || !active(i)) return;
+    const C = chainOf(i);
+    for (const endIdx of range[i]) {
+      // Freies Ende: Kettenende oder Übergang zu einem Stück ohne Wetter.
+      const inner = endIdx > 0 && endIdx < C.pts.length - 1;
+      if (inner) {
+        const other = endIdx === range[i][0] ? C.owner[endIdx] : C.owner[endIdx + 1];
+        if (other !== i && active(other)) continue;
+      }
+      const E = C.pts[endIdx];
       let best = null;
-      for (const B of lines) {
-        if (B === A || !isFront(B.f) || B.f.properties.front_type === A.f.properties.front_type) continue;
+      for (const B of chains) {
+        if (B === C) continue;
         for (let m = 0; m < B.pts.length; m++) {
+          const j = B.owner[m], tj = props(j).front_type;
+          if (!active(j) || !isFrontType(tj) || tj === t) continue;
           const d = distKm(E, B.pts[m]);
           if (d <= o.junctionKm && (!best || d < best.d)) best = { B, m, d };
         }
@@ -130,78 +163,97 @@ export function markOcclusions(features, ff, lows, opts = {}, ridges = null) {
       if (!best) continue;
       const { B, m } = best;
       const P = B.pts[m];
-      // Berührt das Ende nur das Ende der anderen Linie, stoßen zwei Fronten
+      // Berührt das Ende nur das Ende der anderen Kette, stoßen zwei Fronten
       // aneinander -- kein Okklusionspunkt.
-      const along = (from, to) => { let s = 0; const st = from < to ? 1 : -1; for (let q = from; q !== to; q += st) s += distKm(B.pts[q], B.pts[q + st]); return s; };
-      const toStart = along(m, 0), toEnd = along(m, B.pts.length - 1);
-      if (Math.min(toStart, toEnd) < o.endGapKm) continue;
-
-      // Warmsektor-Richtung: Mittel der n̂ beider Fronten am Okklusionspunkt.
+      if (Math.min(along(B, m, 0), along(B, m, B.pts.length - 1)) < o.endGapKm) continue;
       const nA = nAt(E), nB = nAt(P);
       if (!nA || !nB) continue;
-      const w = unit([nA[0] + nB[0], nA[1] + nB[1]]);
-      // Die beiden Äste von B ab P: Richtung über branchProbeKm.
+      const w = unitV([nA[0] + nB[0], nA[1] + nB[1]]);
       const probe = (dir) => {
         let s = 0, q = m;
         while (q + dir >= 0 && q + dir < B.pts.length && s < o.branchProbeKm) { s += distKm(B.pts[q], B.pts[q + dir]); q += dir; }
-        return unit(vec(P, B.pts[q]));
+        return unitV(vecKm(P, B.pts[q]));
       };
       const dPrev = probe(-1), dNext = probe(+1);
-      const dot = (u, v) => u[0] * v[0] + u[1] * v[1];
-      const branch = dot(dPrev, w) < dot(dNext, w) ? -1 : +1;
-      cuts.push({ line: B, idx: m, branch, P, from: A, endIdx, junction: { lat: +P[0].toFixed(2), lon: +P[1].toFixed(2) } });
+      const branch = dotV(dPrev, w) < dotV(dNext, w) ? -1 : +1;
+      cuts.push({ chain: B, idx: m, branch, dir: branch < 0 ? dPrev : dNext, P, from: i, endIdx,
+        junction: { lat: +P[0].toFixed(2), lon: +P[1].toFixed(2) } });
     }
-  }
-
-  // Pro Linie höchstens ein Schnitt (der erste gefundene); mehrere
-  // Okklusionspunkte auf einer Linie sind im Testfall nicht vorgekommen.
-  const applied = [];
-  for (const c of cuts) if (!applied.some((a) => a.line === c.line)) applied.push(c);
-  const toFeature = (L, pts, props) => ({
-    type: "Feature",
-    geometry: { type: "LineString", coordinates: pts.map(([la, lo]) => [+lo.toFixed(3), +la.toFixed(3)]) },
-    properties: { ...L.f.properties, length_km: Math.round(lineLengthKm(pts)), ...props },
   });
 
+  // Pro Kette höchstens ein Schnitt (der erste gefundene); mehrere
+  // Okklusionspunkte auf einer Linie sind in den Testfällen nicht vorgekommen.
+  const applied = [];
+  for (const c of cuts) if (!applied.some((a) => a.chain === c.chain)) applied.push(c);
+
+  const toFeature = (i, pts, extra = {}) => ({
+    type: "Feature",
+    geometry: { type: "LineString", coordinates: pts.map(([la, lo]) => [+lo.toFixed(3), +la.toFixed(3)]) },
+    properties: { ...props(i), length_km: Math.round(lineLengthKm(pts)), ...extra },
+  });
+  // Punkte eines Stücks, ggf. mit weich an den Okklusionspunkt gebogenem Ende.
+  const featPts = (i) => {
+    const C = chainOf(i), [a, b] = range[i];
+    let pts = C.pts.slice(a, b + 1);
+    for (const j of applied.filter((c) => c.from === i)) pts = bendTo(pts, j.endIdx === a, j.P);
+    return pts;
+  };
+
   const out = [];
-  for (const L of lines) {
-    const cut = applied.find((c) => c.line === L);
+  for (const C of chains) {
+    const cut = applied.find((c) => c.chain === C);
     if (!cut) {
-      // Freies Ende einer Kalt-/Warmfront bis an den Okklusionspunkt
-      // verlängern, damit sich dort alle drei Fronten treffen.
-      const joins = applied.filter((c) => c.from === L);
-      if (!joins.length) { out.push(L.f); continue; }
-      let pts = L.pts.slice();
-      for (const j of joins) pts = bendTo(pts, j.endIdx === 0, j.P);
-      out.push(toFeature(L, pts, { occlusion_point: joins[0].junction }));
+      for (const i of C.feats) {
+        const joins = applied.filter((c) => c.from === i);
+        out.push(joins.length ? toFeature(i, featPts(i), { occlusion_point: joins[0].junction }) : stripChain(features[i]));
+      }
       continue;
     }
-    const { idx, branch } = cut;
-    const occPts = branch < 0 ? L.pts.slice(0, idx + 1).reverse() : L.pts.slice(idx);
-    const restPts = branch < 0 ? L.pts.slice(idx) : L.pts.slice(0, idx + 1);
-    // Vor dem Tiefkern enden (spiralig herum statt hinein, K4).
-    let end = occPts.length;
-    for (let q = 1; q < occPts.length; q++) {
-      if (nearLow(occPts[q], lows, o.lowStopKm)) { end = q + 1; break; }
+    const { idx: m, branch } = cut;
+    const last = C.pts.length - 1;
+    const [r0, r1] = branch < 0 ? [m, last] : [0, m]; // Rest (Warm-/Kaltfront)
+    for (const i of C.feats) {
+      const [a, b] = range[i];
+      const s0 = Math.max(a, r0), s1 = Math.min(b, r1);
+      if (s1 - s0 < 1) continue; // ganz auf der Okklusionsseite
+      const pts = featPts(i).slice(s0 - a, s1 - a + 1);
+      const extra = s0 === m || s1 === m ? { occlusion_point: cut.junction } : {};
+      out.push(s0 === a && s1 === b && !extra.occlusion_point ? stripChain(features[i]) : toFeature(i, pts, extra));
     }
-    let occ = occPts.slice(0, end);
-    // Hört die Okklusion vor dem Kern auf, entlang der Warmluftzunge
-    // (θw-Rücken in 700 hPa) weiterführen.
-    if (ridges?.length && end === occPts.length) occ = extendAlongRidge(occ, ridges, lows, o);
-    if (restPts.length >= 2) out.push(toFeature(L, restPts, { occlusion_point: cut.junction }));
+    // Okklusion: bevorzugt entlang der Rückenachse des Warmluftkeils vom
+    // Okklusionspunkt bis vor den Kern (K1: durch den Scheitel des Keils der
+    // Schichtdicke 500/1000). Sonst der Kettenast, vor dem Kern gekappt bzw.
+    // entlang der Achse verlängert.
+    const occPts = branch < 0 ? C.pts.slice(0, m + 1).reverse() : C.pts.slice(m);
+    let end = occPts.length;
+    for (let q = 1; q < occPts.length; q++) if (nearLow(occPts[q], lows, o.lowStopKm)) { end = q + 1; break; }
+    let occ = occPts.slice(0, end), geometry = "front_branch";
+    const onRidge = ridges?.length ? occlusionAlongRidge(cut.P, cut.dir, ridges, lows, o) : null;
+    if (onRidge) { occ = onRidge; geometry = "ridge"; }
+    else if (ridges?.length && end === occPts.length) occ = extendAlongRidge(occ, ridges, lows, o);
+    // Eigenschaften vom aktiven Stück am Okklusionspunkt.
+    const near = [segOwner(C, m, branch), segOwner(C, m, -branch)];
+    const src = near.find((i) => active(i)) ?? near[0];
     if (occ.length >= 2) {
-      out.push(toFeature(L, occ, {
+      out.push(toFeature(src, occ, {
         front_type: "occluded",
-        occlusion_character: L.f.properties.front_type,
+        occlusion_character: props(src).front_type,
         occlusion_point: cut.junction,
-        // Symbole: Okklusion zieht wie ihr Ast; Seite unverändert übernommen,
-        // aber Punktreihenfolge kann umgedreht sein -> Seite spiegeln.
-        motion_side: flipIf(L.f.properties.motion_side, branch < 0),
-        warm_side: flipIf(L.f.properties.warm_side, branch < 0),
+        occlusion_geometry: geometry,
+        activity_class: props(src).activity_class === "none" ? "weak" : props(src).activity_class,
+        // Symbole: Seite wie das Stück, bei umgekehrter Punktreihenfolge gespiegelt.
+        motion_side: flipIf(props(src).motion_side, branch < 0),
+        warm_side: flipIf(props(src).warm_side, branch < 0),
       }));
     }
   }
+  features.forEach((f) => { delete f._chain; });
   return out;
+}
+
+function stripChain(f) {
+  const { _chain, ...rest } = f;
+  return rest;
 }
 
 const nearLow = (p, lows, km) => lows.some((l) => distKm(p, [l.lat, l.lon]) < km);
@@ -228,7 +280,8 @@ function bendTo(pts, atStart, P) {
 }
 
 /**
- * Achsen von Warmluftzungen: Rückenlinien von θw (geglättet). Ein Rücken
+ * Achsen von Warmluftzungen: Rückenlinien eines Felds (θw oder Schichtdicke
+ * 500/1000, geglättet); `lambdaMin` in Feldeinheit/(100 km)². Ein Rücken
  * liegt dort, wo die Krümmung quer zur Achse stark negativ ist (kleinster
  * Eigenwert der Hesse-Matrix λ₁ < −lambdaMin) und der Gradient entlang des
  * zugehörigen Eigenvektors verschwindet. Die Vorzeichen der Eigenvektoren
@@ -236,9 +289,10 @@ function bendTo(pts, atStart, P) {
  * Vorzeichenwechseln Scheinlinien.
  * @returns {number[][][]} Polylinien aus [lat, lon]
  */
-export function ridgeLines(thetaW, g, opts = {}) {
+export function ridgeLines(values, g, opts = {}, lambdaMin = null) {
   const o = { ...OCCLUSION_DEFAULTS, ...opts };
-  const th = gaussianSmooth(thetaW, g, o.ridgeSmoothKm);
+  const lam = lambdaMin ?? o.ridgeLambdaMin;
+  const th = gaussianSmooth(Float32Array.from(values, (x) => (x == null ? NaN : x)), g, o.ridgeSmoothKm);
   const d1 = gradient(th, g), dX = gradient(d1.gx, g), dY = gradient(d1.gy, g);
   const n = g.nx * g.ny;
   const l1 = new Float32Array(n), ex = new Float32Array(n), ey = new Float32Array(n);
@@ -255,7 +309,7 @@ export function ridgeLines(thetaW, g, opts = {}) {
   for (let j = 0; j < g.ny - 1; j++) {
     for (let i = 0; i < g.nx - 1; i++) {
       const ks = [j * g.nx + i, j * g.nx + i + 1, (j + 1) * g.nx + i + 1, (j + 1) * g.nx + i];
-      if (!ks.every((k) => l1[k] < -o.ridgeLambdaMin)) continue;
+      if (!ks.every((k) => l1[k] < -lam)) continue;
       const e0x = ex[ks[0]], e0y = ey[ks[0]];
       const d = ks.map((k) => (Math.sign(ex[k] * e0x + ey[k] * e0y) || 1) * (d1.gx[k] * ex[k] + d1.gy[k] * ey[k]));
       if (!d.every(Number.isFinite)) continue;
@@ -269,23 +323,56 @@ export function ridgeLines(thetaW, g, opts = {}) {
       if (cr.length === 2) segs.push(cr);
     }
   }
-  return chainSegments(segs).filter((l) => lineLengthKm(l) >= o.ridgeMinKm);
+  return joinLines(chainSegments(segs), o.ridgeJoinKm).filter((l) => lineLengthKm(l) >= o.ridgeMinKm);
 }
 
-// Okklusion ab ihrem Ende entlang der nächstgelegenen Rückenachse
-// fortsetzen: Richtung wie das Okklusionsende, bis vor den Tiefkern, bis
-// die Achse endet, scharf abknickt oder ridgeMaxKm erreicht sind. Nur im
-// Bereich eines Tiefs (lowRangeKm) -- ohne Zyklone keine Okklusion.
-function extendAlongRidge(occ, ridges, lows, o) {
-  const Q = occ[occ.length - 1];
-  if (!lows.some((l) => distKm(Q, [l.lat, l.lon]) <= o.lowRangeKm)) return occ;
-  const vec = (a, b) => [(b[1] - a[1]) * KM_PER_DEG * Math.cos(((a[0] + b[0]) / 2) * DEG), (b[0] - a[0]) * KM_PER_DEG];
-  const unit = (v) => { const L = Math.hypot(v[0], v[1]); return L > 0 ? [v[0] / L, v[1] / L] : [0, 0]; };
-  const dot = (u, v) => u[0] * v[0] + u[1] * v[1];
-  let back = occ.length - 1, s = 0;
-  while (back > 0 && s < 150) { s += distKm(occ[back - 1], occ[back]); back--; }
-  const t = unit(vec(occ[back], Q));
+// Polylinien zusammenfügen, deren Enden näher als tolKm beieinander liegen
+// und die dort ohne scharfen Knick ineinander übergehen. Nötig, weil die
+// zellweise Ausrichtung der Eigenvektoren an Vorzeichenwechseln keine
+// bitgleichen Kreuzungspunkte liefert und chainSegments dort abreißt.
+function joinLines(lines, tolKm) {
+  const ls = lines.map((l) => l.slice());
+  const endDir = (l, atEnd) => {
+    // Richtung, in die die Linie an diesem Ende hinausläuft (über ~100 km).
+    const n = l.length;
+    let q = atEnd ? n - 1 : 0, s = 0;
+    const st = atEnd ? -1 : 1;
+    while (q + st >= 0 && q + st < n && s < 100) { s += distKm(l[q], l[q + st]); q += st; }
+    return unitV(vecKm(l[q], l[atEnd ? n - 1 : 0]));
+  };
+  for (let merged = true; merged;) {
+    merged = false;
+    outer: for (let a = 0; a < ls.length; a++) {
+      for (let b = a + 1; b < ls.length; b++) {
+        for (const ea of [true, false]) {
+          for (const eb of [true, false]) {
+            const pa = ea ? ls[a][ls[a].length - 1] : ls[a][0];
+            const pb = eb ? ls[b][ls[b].length - 1] : ls[b][0];
+            if (distKm(pa, pb) > tolKm) continue;
+            // Weiterlaufen: Richtung aus a heraus muss zur Richtung in b hinein passen.
+            if (dotV(endDir(ls[a], ea), unitV(vecKm(pb, eb ? ls[b][0] : ls[b][ls[b].length - 1]))) < 0) continue;
+            const A = ea ? ls[a] : ls[a].slice().reverse();
+            const B = eb ? ls[b].slice().reverse() : ls[b];
+            ls[a] = [...A, ...B];
+            ls.splice(b, 1);
+            merged = true;
+            break outer;
+          }
+        }
+      }
+    }
+  }
+  return ls;
+}
 
+const vecKm = (a, b) => [(b[1] - a[1]) * KM_PER_DEG * Math.cos(((a[0] + b[0]) / 2) * DEG), (b[0] - a[0]) * KM_PER_DEG];
+const unitV = (v) => { const L = Math.hypot(v[0], v[1]); return L > 0 ? [v[0] / L, v[1] / L] : [0, 0]; };
+const dotV = (u, v) => u[0] * v[0] + u[1] * v[1];
+
+// Nächste Rückenachse zu Q (≤ ridgeSnapKm) und die Laufrichtung darauf, die
+// am besten zu t passt. null, wenn keine Achse nah genug ist oder alle
+// Richtungen zurücklaufen.
+function snapRidge(Q, t, ridges, o) {
   let best = null;
   for (const R of ridges) {
     for (let r = 0; r < R.length; r++) {
@@ -293,23 +380,32 @@ function extendAlongRidge(occ, ridges, lows, o) {
       if (d <= o.ridgeSnapKm && (!best || d < best.d)) best = { R, r, d };
     }
   }
-  if (!best) return occ;
+  if (!best) return null;
   const { R, r } = best;
   const ahead = (dir) => { let q = r, a = 0; while (q + dir >= 0 && q + dir < R.length && a < 150) { a += distKm(R[q], R[q + dir]); q += dir; } return q; };
   const qF = ahead(+1), qB = ahead(-1);
-  const sF = qF !== r ? dot(unit(vec(R[r], R[qF])), t) : -2;
-  const sB = qB !== r ? dot(unit(vec(R[r], R[qB])), t) : -2;
-  const dir = sF >= sB ? +1 : -1;
-  if (Math.max(sF, sB) < 0) return occ; // Achse läuft zurück, nicht weiter
+  const sF = qF !== r ? dotV(unitV(vecKm(R[r], R[qF])), t) : -2;
+  const sB = qB !== r ? dotV(unitV(vecKm(R[r], R[qB])), t) : -2;
+  if (Math.max(sF, sB) < 0) return null;
+  return { R, r, dir: sF >= sB ? +1 : -1 };
+}
 
+// Entlang einer Achse laufen: bis vor den Tiefkern, bis die Achse endet,
+// scharf abknickt, ridgeMaxKm erreicht sind oder kein Tief mehr nah ist.
+function walkRidge({ R, r, dir }, from, t, lows, o) {
   const ext = [];
-  let len = 0, lastDir = t, anchor = Q;
+  let len = 0, lastDir = t, anchor = from, started = false;
   for (let q = r; q >= 0 && q < R.length; q += dir) {
     const p = R[q];
     const step = distKm(anchor, p);
     if (step < 25) continue; // dichte Stützpunkte zusammenfassen
-    const dv = unit(vec(anchor, p));
-    if (dot(dv, lastDir) < Math.cos((100 * Math.PI) / 180)) break; // scharfer Knick
+    const dv = unitV(vecKm(anchor, p));
+    // Einstieg: erst ab dem ersten Achsenpunkt, der in Laufrichtung vor dem
+    // Startpunkt liegt (der nächstgelegene liegt oft seitlich dahinter).
+    if (!started) {
+      if (dotV(dv, t) < 0.3) continue;
+      started = true;
+    } else if (dotV(dv, lastDir) < Math.cos((100 * Math.PI) / 180)) break; // scharfer Knick
     len += step;
     if (len > o.ridgeMaxKm) break;
     ext.push(p);
@@ -317,7 +413,34 @@ function extendAlongRidge(occ, ridges, lows, o) {
     if (nearLow(p, lows, o.lowStopKm)) break;
     if (!lows.some((l) => distKm(p, [l.lat, l.lon]) <= o.lowRangeKm)) break;
   }
+  return ext;
+}
+
+// Okklusion ab ihrem Ende entlang der nächstgelegenen Rückenachse
+// fortsetzen. Nur im Bereich eines Tiefs (lowRangeKm) -- ohne Zyklone keine
+// Okklusion.
+function extendAlongRidge(occ, ridges, lows, o) {
+  const Q = occ[occ.length - 1];
+  if (!lows.some((l) => distKm(Q, [l.lat, l.lon]) <= o.lowRangeKm)) return occ;
+  let back = occ.length - 1, s = 0;
+  while (back > 0 && s < 150) { s += distKm(occ[back - 1], occ[back]); back--; }
+  const t = unitV(vecKm(occ[back], Q));
+  const snap = snapRidge(Q, t, ridges, o);
+  if (!snap) return occ;
+  const ext = walkRidge(snap, Q, t, lows, o);
   return ext.length ? [...occ, ...ext] : occ;
+}
+
+// Okklusion ganz entlang der Achse: vom Okklusionspunkt P in Richtung t (vom
+// Warmsektor weg) bis vor den Tiefkern. Der Anfang biegt weich in P ein.
+// null, wenn keine Achse nah ist oder das Stück kürzer als ridgeMinKm wäre.
+function occlusionAlongRidge(P, t, ridges, lows, o) {
+  if (!lows.some((l) => distKm(P, [l.lat, l.lon]) <= o.lowRangeKm)) return null;
+  const snap = snapRidge(P, t, ridges, o);
+  if (!snap) return null;
+  const ext = walkRidge(snap, P, t, lows, o);
+  if (ext.length < 2 || lineLengthKm(ext) < o.ridgeMinKm) return null;
+  return bendTo(ext, true, P);
 }
 
 function flipIf(side, cond) {

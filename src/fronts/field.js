@@ -29,6 +29,11 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // etwa 550–960 hPa ab. Das unterste Level (nLevels) kommt immer dazu: sein
 // Druck ist der Bodendruck der Maske, sein Wind der "10-m-Wind".
 const DEFAULT_LEVELS = { icon_eu: [50, 70] };
+// Zusätzliche Level für die Schichtdicke 500/1000 hPa (nur Druck und Höhe):
+// 500 hPa liegt bei ICON-EU etwa bei Level 44–48 (Stichprobe 2026-10-09:
+// Level 48 ≈ 530 hPa, Level 38 ≈ 350 hPa).
+const THICKNESS_LEVELS = { icon_eu: [40, 49] };
+const RD = 287.05, G0 = 9.80665;
 
 // Felder je Druckfläche: API-Name -> [Schlüssel, Faktor]. w kommt nativ in m/s.
 const LEVEL_VARS = {
@@ -55,6 +60,10 @@ export const DEFAULT_SURFACE = [
  * @param {number[]} [opts.pressures=[850]] Zielflächen in hPa.
  * @param {string[]} [opts.surface=[]]     Oberflächenvariablen (API-Namen).
  * @param {[number,number]} [opts.levels]  Levelbereich [oben, unten] (API-Zählung).
+ * @param {boolean} [opts.thickness=false] Schichtdicke 500/1000 hPa berechnen
+ *   (holt zusätzlich Druck der oberen Level und die Levelhöhen über Grund).
+ * @param {object} [opts.heights]          Levelhöhen aus einem früheren Abruf
+ *   (`out.heights`) -- in ICON zeitlich konstant, spart Variablen je Termin.
  * @param {number} [opts.batchSize=400]    Punkte je Request.
  * @param {number} [opts.concurrency=3]
  * @param {Function} [opts.onProgress]     (fertig, gesamt) => void
@@ -64,18 +73,27 @@ export const DEFAULT_SURFACE = [
  *   - `levels[p]` = { T [K], q [kg/kg], u, v, w [m/s], below (1 = unter Grund) }
  *   - `psfc` [hPa], `u10`/`v10` [m/s] (unterstes Modelllevel)
  *   - `sfc[name]` in API-Einheiten (hPa, mm, %, °C, J/kg)
+ *   - mit `thickness`: `thickness` [gpm] und `heights` (Levelhöhen, für Folgeabrufe)
  *   - Für die erste Fläche zusätzlich `pressure`, `T`, `q`, `u`, `v`, `below`
  *     auf oberster Ebene (Form, die `detectFronts` erwartet).
  */
 export async function fetchPlaneField({
   model: modelKey = "icon_eu", bbox, res = 0.5, time, pressures = [850], surface = [],
-  levels, batchSize = 400, concurrency = 3, onProgress, fetchImpl,
+  levels, thickness = false, heights = null, batchSize = 400, concurrency = 3, onProgress, fetchImpl,
 } = {}) {
   const model = getModel(modelKey);
   const [lTop, lBot] = levels || DEFAULT_LEVELS[modelKey] || [1, model.nLevels];
   const levelList = [];
   for (let l = lTop; l <= lBot; l++) levelList.push(l);
   if (!levelList.includes(model.nLevels)) levelList.push(model.nLevels);
+  // Level nur für die Schichtdicke (Druck + Höhe), oberhalb des Hauptbereichs.
+  const thkList = [];
+  if (thickness) {
+    const [t0, t1] = THICKNESS_LEVELS[modelKey] || [Math.max(1, lTop - 10), lTop - 1];
+    for (let l = t0; l <= t1; l++) if (!levelList.includes(l)) thkList.push(l);
+  }
+  const zLevels = [...thkList, ...levelList]; // oben -> unten
+  const needHeights = thickness && !heights;
 
   const nx = Math.round((bbox.lonMax - bbox.lonMin) / res) + 1;
   const ny = Math.round((bbox.latMax - bbox.latMin) / res) + 1;
@@ -88,6 +106,8 @@ export async function fetchPlaneField({
     vars.push(`pressure_level${l}`);
     for (const name of Object.keys(LEVEL_VARS)) vars.push(`${name}_level${l}`);
   }
+  for (const l of thkList) vars.push(`pressure_level${l}`);
+  if (needHeights) for (const l of zLevels) vars.push(`height_agl_level${l}`);
 
   const nanArr = () => new Float32Array(n).fill(NaN);
   const out = {
@@ -100,6 +120,10 @@ export async function fetchPlaneField({
     for (const [key] of Object.values(LEVEL_VARS)) out.levels[p][key] = nanArr();
   }
   for (const name of surface) out.sfc[name] = nanArr();
+  if (thickness) {
+    out.thickness = nanArr();
+    out.heights = heights || Object.fromEntries(zLevels.map((l) => [l, nanArr()]));
+  }
 
   const batches = [];
   for (let k = 0; k < n; k += batchSize) batches.push([k, Math.min(n, k + batchSize)]);
@@ -148,6 +172,33 @@ export async function fetchPlaneField({
     out.u10[k] = (at(`wind_u_component_level${model.nLevels}`) ?? NaN) * KMH_TO_MS;
     out.v10[k] = (at(`wind_v_component_level${model.nLevels}`) ?? NaN) * KMH_TO_MS;
     for (const p of pressures) interpolate(at, k, p, pSfc);
+    if (thickness) {
+      if (needHeights) for (const l of zLevels) out.heights[l][k] = at(`height_agl_level${l}`) ?? NaN;
+      out.thickness[k] = layerThickness(at, k);
+    }
+  }
+
+  // Schichtdicke z(500) − z(1000) aus den Levelhöhen über Grund: die
+  // Geländehöhe hebt sich weg. z(p) linear in ln p zwischen den Leveln;
+  // liegt 1000 hPa unter Grund, hypsometrisch mit der virtuellen Temperatur
+  // des untersten Levels extrapoliert (über Hochgebirge daher ungenau,
+  // Stichprobe Alpen −43 gpm, sonst ±6 gpm gegen die öffentlichen Felder).
+  function layerThickness(at, k) {
+    const zp = zLevels.map((l) => [at(`pressure_level${l}`), out.heights[l][k]]);
+    const zAt = (p) => {
+      for (let m = 0; m < zp.length - 1; m++) {
+        const [p1, z1] = zp[m], [p2, z2] = zp[m + 1];
+        if (p1 <= p && p <= p2) return z1 + (Math.log(p / p1) / Math.log(p2 / p1)) * (z2 - z1);
+      }
+      const [pb, zb] = zp[zp.length - 1];
+      if (p > pb) {
+        const T = at(`temperature_level${model.nLevels}`) + 273.15;
+        const q = (at(`specific_humidity_level${model.nLevels}`) ?? 0) * 1e-3;
+        return zb - ((RD * T * (1 + 0.61 * q)) / G0) * Math.log(p / pb);
+      }
+      return NaN;
+    };
+    return zAt(500) - zAt(1000);
   }
 
   function interpolate(at, k, pressure, pSfc) {
@@ -190,6 +241,6 @@ export function fieldAt(fixture, stepIndex = 0, pressure = fixture.pressures[0])
     nx: fixture.nx, ny: fixture.ny, pressures: fixture.pressures,
     validTime: s.validTime, pressure, levels: s.levels,
     T: L.T, q: L.q, u: L.u, v: L.v, w: L.w, below: L.below,
-    psfc: s.psfc, u10: s.u10, v10: s.v10, sfc: s.sfc,
+    psfc: s.psfc, u10: s.u10, v10: s.v10, sfc: s.sfc, thickness: s.thickness,
   };
 }

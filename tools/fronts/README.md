@@ -82,9 +82,11 @@ Minima im geglätteten Bodendruck mit mindestens 3 hPa Tiefe gegenüber
 einem Ring von 500 km. Am Gebietsrand darf der Ring teilweise fehlen. Am
 Okklusionspunkt trifft das Ende einer Kalt- oder Warmfront (höchstens
 350 km entfernt) auf eine Front des anderen Typs. Dort wird der Ast, der
-vom Warmsektor wegzeigt, als `front_type: "occluded"` abgetrennt. Endet er
-vor dem Tiefkern, wird er entlang der Warmluftzunge verlängert (θw-Rücken
-in 700 hPa, `ridgeLines`). Die zuführende Kalt- bzw. Warmfront biegt weich
+vom Warmsektor wegzeigt, als `front_type: "occluded"` abgetrennt. Seine
+Geometrie folgt der Rückenachse des Warmluftkeils (`ridgeLines`): bevorzugt
+aus der Schichtdicke 500/1000, sonst aus θw in 700 hPa. Sie reicht vom
+Okklusionspunkt bis vor den Tiefkern. Ohne passende Achse bleibt der
+Frontast. Die zuführende Kalt- bzw. Warmfront biegt weich
 bis an den Okklusionspunkt ein, damit sich dort alle drei Fronten treffen.
 `occlusion_character` gibt dabei an, ob er Kalt- oder Warmfrontcharakter
 hat. Die Okklusion endet 150 km vor dem Tiefkern. Die Tiefs stehen in
@@ -92,8 +94,8 @@ hat. Die Okklusion endet 150 km vor dem Tiefkern. Die Tiefs stehen in
 
 Noch offen:
 
-- Okklusionen verfeinern: Charakter aus der Verlagerung bestimmen,
-  Okklusionen ohne passende TFP-Linie, Schichtdicke 500/1000 hPa
+- Okklusionen verfeinern: Charakter aus der Verlagerung bestimmen, Knick
+  am Okklusionspunkt nach Charakter, Okklusionen ohne passende TFP-Linie
   (s. KRITERIEN.md).
 - Die Frontlinie auf die geschätzte Bodenposition verschieben (der Versatz
   ist schon als `criteria.sfc_offset_km` verfügbar).
@@ -108,7 +110,7 @@ Ein Testfall umfasst mehrere Termine, Druckflächen und Oberflächenfelder.
 Mehrere Termine braucht es für Drucktendenz und Frontverlagerung.
 
 ```bash
-node tools/fronts/fetch-case.mjs --start 2026-10-08T18:00 --end 2026-10-09T12:00 --name 2026-10-09
+node tools/fronts/fetch-case.mjs --start 2026-10-08T18:00 --end 2026-10-09T15:00 --name 2026-10-09
 ```
 
 Das Skript schreibt nach `fixtures/<model>_<name>.json.gz` (gzip, Format v2).
@@ -119,9 +121,10 @@ Optionen:
 - `--pressures`, Default `850,700`
 - `--model`, `--res`, `--bbox latMin,latMax,lonMin,lonMax`, `--out`
 
-**Dauer:** Ein Termin umfasst rund 140 Variablen je Punkt (Level 50–70 plus
-Oberfläche) und braucht etwa **2,5 min**. Der Fall oben mit 7 Terminen hat
-19 min gedauert. Zum Vergleich: 80 Variablen je Punkt brauchten 8 s. Für
+**Dauer:** Ein Termin umfasst rund 150 Variablen je Punkt (Level 50–70 plus
+Oberfläche, Druck der Level 40–49 für die Schichtdicke) und braucht etwa
+**3 min**. Die Levelhöhen über Grund sind zeitlich konstant und werden nur
+beim ersten Termin geholt. Zum Vergleich: 80 Variablen je Punkt brauchten 8 s. Für
 einen Betrieb im Cron ist der Weg über Modelllevel daher zu teuer. Dort
 wären Druckflächen auf dem Server oder die `.om`-Dateien auf S3 besser
 (s. unten). Der Server hält nur etwa eine Woche Historie, Fälle also
@@ -135,6 +138,7 @@ Format v2:
   steps: [ { validTime, leadH,           // leadH 0 = aus dem Lauf zu diesem Termin
              levels: { 850: {T,q,u,v,w,below}, 700: {…} },
              psfc, u10, v10,             // unterstes Modelllevel (~10 m)
+             thickness,                  // Schichtdicke 500/1000 hPa [gpm]
              sfc: { pressure_msl, precipitation, rain, showers, cloud_cover,
                     cloud_cover_low/mid/high, temperature_2m, dew_point_2m, cape } } ] }
 ```
@@ -147,7 +151,7 @@ Vorhandene Fälle:
 
 | Datei | Termine | Bemerkung |
 |---|---|---|
-| `icon_eu_2026-10-09.json.gz` | 08.10. 18 UTC – 09.10. 12 UTC, 3-stündlich | 18–06 UTC Analyse, 09 und 12 UTC +3/+6 h. Island-Tief mit Okklusion, Ostsee-Tief, Ligurien-Tief. Vergleichskarten: DWD 00 UTC, KNMI und GeoSphere 00/06 UTC |
+| `icon_eu_2026-10-09.json.gz` | 08.10. 18 UTC – 09.10. 15 UTC, 3-stündlich | 18–12 UTC Analyse, 15 UTC +0 h aus dem 15-UTC-Lauf. Island-Tief mit Okklusion, Ostsee-Tief, Ligurien-Tief. Vergleichskarten: DWD 00/12 UTC, KNMI und GeoSphere 00/06/12 UTC |
 | `icon_eu_850_2026100900_an.json` u. a. | ein Termin | Format v1, nur 850 hPa, aus dem Spike. Die Debug-Seite liest sie weiterhin |
 
 ## Debug-Seite
@@ -162,6 +166,7 @@ stehen zur Wahl:
 
 - θe, θw, T, |∇θw|, TFP
 - 3-h-Drucktendenz
+- Schichtdicke 500/1000 hPa
 - Niederschlag
 - Gesamtbewölkung und tiefe Wolken
 - w und Spread in 700 hPa

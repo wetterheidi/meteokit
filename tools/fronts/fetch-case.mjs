@@ -46,11 +46,14 @@ const DIGITS = { T: 2, q: 6, u: 2, v: 2, w: 3, psfc: 1, u10: 2, v10: 2 };
 const SFC_DIGITS = { pressure_msl: 1, temperature_2m: 1, dew_point_2m: 1 }; // sonst 1 bzw. ganzzahlig
 const steps = [];
 const t0 = Date.now();
+let heights = null; // Levelhöhen: zeitlich konstant, nur beim ersten Termin holen
 for (const time of times) {
   const f = await fetchPlaneField({
     model, bbox: { latMin, latMax, lonMin, lonMax }, res, time, pressures, surface: DEFAULT_SURFACE,
+    thickness: true, heights,
     onProgress: (d, n) => process.stderr.write(`\r${time}: ${d}/${n} Blöcke   `),
   });
+  heights = f.heights;
   const levels = {};
   for (const p of pressures) {
     const L = f.levels[p];
@@ -65,6 +68,7 @@ for (const time of times) {
   steps.push({
     validTime: time, leadH: leadH != null && leadH > 0 ? leadH : 0,
     levels, psfc: round(f.psfc, DIGITS.psfc), u10: round(f.u10, 2), v10: round(f.v10, 2), sfc,
+    thickness: round(f.thickness, 0),
   });
 }
 process.stderr.write(`\n${((Date.now() - t0) / 1000).toFixed(1)} s\n`);
@@ -78,7 +82,7 @@ const fixture = {
   units: {
     T: "K", q: "kg/kg", u: "m/s", v: "m/s", w: "m/s", psfc: "hPa", u10: "m/s", v10: "m/s",
     pressure_msl: "hPa", precipitation: "mm/h", rain: "mm/h", showers: "mm/h",
-    cloud_cover: "%", temperature_2m: "°C", dew_point_2m: "°C", cape: "J/kg",
+    cloud_cover: "%", temperature_2m: "°C", dew_point_2m: "°C", cape: "J/kg", thickness: "gpm (500/1000 hPa)",
   },
   steps,
 };
