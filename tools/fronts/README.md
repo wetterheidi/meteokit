@@ -84,8 +84,8 @@ Okklusionspunkt trifft das Ende einer Kalt- oder Warmfront (höchstens
 350 km entfernt) auf eine Front des anderen Typs. Dort wird der Ast, der
 vom Warmsektor wegzeigt, als `front_type: "occluded"` abgetrennt. Endet er
 vor dem Tiefkern, wird er entlang der Warmluftzunge verlängert (θw-Rücken
-in 700 hPa, `ridgeLines`). Die zuführende Kalt- bzw. Warmfront wird bis an
-den Okklusionspunkt verlängert, damit sich dort alle drei Fronten treffen.
+in 700 hPa, `ridgeLines`). Die zuführende Kalt- bzw. Warmfront biegt weich
+bis an den Okklusionspunkt ein, damit sich dort alle drei Fronten treffen.
 `occlusion_character` gibt dabei an, ob er Kalt- oder Warmfrontcharakter
 hat. Die Okklusion endet 150 km vor dem Tiefkern. Die Tiefs stehen in
 `properties.lows` der FeatureCollection.
@@ -93,8 +93,8 @@ hat. Die Okklusion endet 150 km vor dem Tiefkern. Die Tiefs stehen in
 Noch offen:
 
 - Okklusionen verfeinern: Charakter aus der Verlagerung bestimmen,
-  Okklusionen ohne passende TFP-Linie, Schichtdicke 500/1000 hPa,
-  glatterer Anschluss der Kaltfront (s. KRITERIEN.md).
+  Okklusionen ohne passende TFP-Linie, Schichtdicke 500/1000 hPa
+  (s. KRITERIEN.md).
 - Die Frontlinie auf die geschätzte Bodenposition verschieben (der Versatz
   ist schon als `criteria.sfc_offset_km` verfügbar).
 - Den Typ aus der Verlagerung zwischen den Terminen bestimmen.

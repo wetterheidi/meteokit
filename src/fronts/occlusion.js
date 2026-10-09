@@ -172,10 +172,7 @@ export function markOcclusions(features, ff, lows, opts = {}, ridges = null) {
       const joins = applied.filter((c) => c.from === L);
       if (!joins.length) { out.push(L.f); continue; }
       let pts = L.pts.slice();
-      for (const j of joins) {
-        if (distKm(j.endIdx === 0 ? pts[0] : pts[pts.length - 1], j.P) < 1) continue;
-        pts = j.endIdx === 0 ? [j.P, ...pts] : [...pts, j.P];
-      }
+      for (const j of joins) pts = bendTo(pts, j.endIdx === 0, j.P);
       out.push(toFeature(L, pts, { occlusion_point: joins[0].junction }));
       continue;
     }
@@ -208,6 +205,27 @@ export function markOcclusions(features, ff, lows, opts = {}, ridges = null) {
 }
 
 const nearLow = (p, lows, km) => lows.some((l) => distKm(p, [l.lat, l.lon]) < km);
+
+// Linienende weich an P heranbiegen statt ein gerades Stück anzuhängen: die
+// Punkte im letzten Abschnitt (doppelte Lückenlänge, mind. 150 km) werden
+// um einen mit der Nähe zum Ende wachsenden Anteil der Lücke verschoben
+// (glatt, 0 -> 1), der Endpunkt landet genau auf P.
+function bendTo(pts, atStart, P) {
+  const line = atStart ? pts.slice().reverse() : pts.slice();
+  const E = line[line.length - 1];
+  const gap = distKm(E, P);
+  if (gap < 1) return pts;
+  const span = Math.max(150, 2 * gap);
+  const dLat = P[0] - E[0], dLon = P[1] - E[1];
+  let s = 0;
+  for (let q = line.length - 1; q >= 0; q--) {
+    if (q < line.length - 1) s += distKm(line[q], line[q + 1]);
+    if (s > span) break;
+    const x = 1 - s / span, w = x * x * (3 - 2 * x); // smoothstep
+    line[q] = [line[q][0] + w * dLat, line[q][1] + w * dLon];
+  }
+  return atStart ? line.reverse() : line;
+}
 
 /**
  * Achsen von Warmluftzungen: Rückenlinien von θw (geglättet). Ein Rücken

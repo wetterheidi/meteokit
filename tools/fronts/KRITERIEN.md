@@ -238,9 +238,10 @@ Dazu braucht es zusätzlich `pressure_level` etwa der Level 35–49
   ohne scharfe Knicke. Am Islandtief reicht die Okklusion so bis an die
   Nordostküste Islands (06 UTC 1086 km statt 527 km).
 - Die zuführende Kalt- bzw. Warmfront wird bis an den Okklusionspunkt
-  verlängert, dort treffen sich alle drei Fronten. Liegt ihr Ende weit
-  entfernt (bis 350 km), entsteht ein sichtbarer Knick im
-  Verbindungsstück. Das ist kosmetisch und noch offen.
+  geführt, dort treffen sich alle drei Fronten. Dazu biegt das Linienende
+  weich ein: Die Punkte im letzten Abschnitt (doppelte Lückenlänge,
+  mindestens 150 km) werden mit einem Smoothstep-Gewicht verschoben. Es
+  wird also kein gerades, abknickendes Verbindungsstück angehängt.
 - Noch offen:
   - Okklusionen ohne passende TFP-Linie, etwa um den Kern des
     Ostsee-Tiefs um 00 UTC.
