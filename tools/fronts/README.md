@@ -97,15 +97,24 @@ Frontast. Die zuführende Kalt- bzw. Warmfront biegt weich
 bis an den Okklusionspunkt ein, damit sich dort alle drei Fronten treffen.
 `occlusion_character` gibt dabei an, ob er Kalt- oder Warmfrontcharakter
 hat. Die Okklusion muss zu einem Tief hin zeigen (auch zu einem Randtief
-jenseits des Gebiets), pro Tief gibt es höchstens eine. Sie endet 150 km
-vor dem Tiefkern. Die Tiefs stehen in
+jenseits des Gebiets), pro Tief gibt es höchstens eine.
+
+Am Okklusionspunkt gelten die Zeichenregeln der Referenzanalyse
+(KRITERIEN.md, Abschnitt 10):
+
+- Der Punkt sitzt am stärksten 3-h-Druckfall entlang des Warmluftkeils.
+- Die Okklusion setzt die Kaltfront ohne Knick fort, die Warmfront knickt
+  ab.
+- Die Okklusion läuft spiralig gegen den Uhrzeigersinn bis 80 km vor den
+  Kern, der Druck fällt dabei zum Kern hin.
+- Fronten machen keine Kehrtwenden („wie Segel“). Die Tiefs stehen in
 `properties.lows` der FeatureCollection.
 
 Noch offen:
 
-- Okklusionen verfeinern: Charakter aus der Verlagerung bestimmen, Knick
-  am Okklusionspunkt nach Charakter, Okklusionen ohne passende TFP-Linie
-  (s. KRITERIEN.md).
+- Okklusionen verfeinern: Charakter aus der Verlagerung bestimmen
+  (bisher wird immer Kaltfrontcharakter gezeichnet), Okklusionen ohne
+  passende TFP-Linie (s. KRITERIEN.md).
 - Den Typ aus der Verlagerung zwischen den Terminen bestimmen.
 - Lücken zwischen Linienstücken schließen.
 - Fronten des Ligurientiefs: zu wenig θw-Gradient in 850 hPa, das Gelände

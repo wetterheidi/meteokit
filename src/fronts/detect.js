@@ -66,6 +66,7 @@ export const DETECT_DEFAULTS = {
   windMin: 2,         // m/s, Schwelle Kalt-/Warmfront vs. quasistationär
   windSmoothKm: 300,  // Glättung von c entlang der Linie (laufendes Mittel)
   minPieceKm: 250,    // kürzere Typ-/Aktivitäts-Stücke gehen im Nachbarn auf
+  hairpinDeg: 100,    // Rohlinien an Richtungsänderungen über diesem Wert (±60 km) teilen
   activitySmoothKm: 300, // Glättung der Aktivität entlang der Linie
   activity: {},       // überschreibt ACTIVITY_DEFAULTS (activity.js)
   // Bodenposition: Linien von der Analysefläche auf die Bodenfront schieben.
@@ -136,6 +137,7 @@ export function detectFronts(field, opts = {}) {
   const { g, F, mask } = ff;
   const Fm = Float32Array.from(F, (x, k) => (mask[k] ? x : NaN));
   const lines = chainSegments(isolineSegments(Fm, g, 0))
+    .flatMap((line) => splitAtHairpins(line, o.hairpinDeg))
     .filter((line) => lineLengthKm(line) >= o.minLengthKm);
   const af = activityFields(field, prev, g);
 
@@ -203,9 +205,47 @@ export function detectFronts(field, opts = {}) {
   // Okklusionen auf allen Stücken bestimmen, auch denen ohne Wetter: der
   // Okklusionsast ist in 850 hPa oft schwach und gehört trotzdem zur Linie.
   const msl = o.occlusions && field.sfc ? gaussianSmooth(Float32Array.from(field.sfc.pressure_msl, (x) => (x == null ? NaN : x)), g, oo.lowSmoothKm) : null;
-  const all = o.occlusions && field.sfc ? markOcclusions(features, ff, lows, oo, ridges, msl) : features;
+  const tend = o.occlusions && prev?.sfc?.pressure_msl
+    ? gaussianSmooth(Float32Array.from(field.sfc.pressure_msl, (x, k) => x - prev.sfc.pressure_msl[k]), g, 100) : null;
+  const all = o.occlusions && field.sfc ? markOcclusions(features, ff, lows, oo, ridges, { msl, tend }) : features;
   const out = keepInactive ? all : all.filter((f) => f.properties.activity_class !== "none");
   return { type: "FeatureCollection", features: out, properties: { params: o, lows, ridges, ridgeSource } };
+}
+
+// Fronten spannen sich "wie Segel" im Wind auf: eine Kehrtwende gibt es
+// nicht. Rohlinien (TFP-Nulllinien) machen gelegentlich Haarnadeln
+// (2026-10-08 21 UTC: 172°); dort teilen. Gemessen wird die Richtungs-
+// änderung an jedem Stützpunkt zwischen den Sehnen ~60 km zurück und voraus.
+function splitAtHairpins(line, maxDeg) {
+  const s = cumDist(line);
+  const v = (a, b) => [(b[1] - a[1]) * Math.cos((a[0] * Math.PI) / 180), b[0] - a[0]];
+  // Richtungsänderung an jedem Stützpunkt: Sehne ~60 km zurück gegen ~60 km voraus.
+  const turn = line.map((p, i) => {
+    let a = i, b = i;
+    while (a > 0 && s[i] - s[a] < 60) a--;
+    while (b < line.length - 1 && s[b] - s[i] < 60) b++;
+    if (a === i || b === i) return 0;
+    const u = v(line[a], p), w = v(p, line[b]);
+    const c = (u[0] * w[0] + u[1] * w[1]) / (Math.hypot(u[0], u[1]) * Math.hypot(w[0], w[1]));
+    return (Math.acos(Math.max(-1, Math.min(1, c))) * 180) / Math.PI;
+  });
+  // Je Überschreitungsbereich an der stärksten Stelle teilen.
+  const cuts = [];
+  for (let i = 1; i < line.length - 1; i++) {
+    if (turn[i] <= maxDeg) continue;
+    let j = i;
+    while (j + 1 < line.length - 1 && turn[j + 1] > maxDeg) j++;
+    let k = i;
+    for (let q = i; q <= j; q++) if (turn[q] > turn[k]) k = q;
+    cuts.push(k);
+    i = j;
+  }
+  if (!cuts.length) return [line];
+  const parts = [];
+  let start = 0;
+  for (const c of cuts) { parts.push(line.slice(start, c + 1)); start = c; }
+  parts.push(line.slice(start));
+  return parts.filter((p) => p.length >= 2);
 }
 
 // Abstand entlang der Linie [km] je Stützpunkt.

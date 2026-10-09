@@ -273,9 +273,8 @@ Dazu braucht es zusätzlich `pressure_level` etwa der Level 35–49
   bestimmt, und die liegt 50–250 km hinter der Bodenkaltfront. Die
   Schichtdickenachse reicht bis 54/6, folgt also dem Analytiker →
   Verschiebung auf die Bodenposition (offen).
-- Noch offen: Knick am Okklusionspunkt nach Charakter. Bei
-  Kaltfrontcharakter setzt die Okklusion die Kaltfront ohne Knick fort,
-  und die Warmfront knickt ab.
+- Knick am Okklusionspunkt: Die Okklusion setzt die Kaltfront fort, die
+  Warmfront setzt mit Knick an (s. unten).
 
 **Bodenposition** (Fall 2026-10-09):
 
@@ -305,3 +304,50 @@ Dazu braucht es zusätzlich `pressure_level` etwa der Level 35–49
   (Islandtief 00 UTC), genügt ein **Randtief**: ein Druckminimum am Rand
   im Sektor ±60° um die Okklusionsrichtung, mindestens 8 hPa unter dem
   Okklusionspunkt.
+
+## 10 Zeichenregeln aus der Referenzanalyse (2026-10-09 12 UTC)
+
+Die Projektleitung hat die Fronten für 12 UTC selbst analysiert. Daraus
+und aus ihren Anmerkungen stammen diese Regeln:
+
+- **„Fronten spannen sich wie Segel im Wind auf.“** Kehrtwenden und
+  Zickzack gibt es nicht.
+  - Rohlinien werden an Richtungsänderungen über 100° geteilt (Sehnen
+    ±60 km um jeden Stützpunkt). Am Testfall entfernt das Haarnadeln von
+    172° und 117°.
+  - Die Okklusion wird geglättet (laufendes Mittel 150 km, zwei Durchgänge).
+  - Zur Kontrolle dient die stärkste Richtungsänderung je 75 km. Übrig sind
+    41–61°, nur noch am Okklusionspunkt und am Spiralende.
+- **Okklusionspunkt am stärksten Druckfall** (vgl. K1: Zentrum des
+  isallobarischen Tiefs) **und an der Warmluftschale.** Er wird zum Minimum
+  der 3-h-Tendenz verschoben. Dabei gelten drei Bedingungen:
+  - Kandidaten liegen höchstens 100 km von der Keilachse, der die
+    Okklusion folgt.
+  - Sie liegen nicht mehr als 30 km hinter dem Okklusionsbeginn.
+  - Es gibt einen Abstandsmalus von 0,15 hPa/3 h je 100 km.
+
+  Ohne die Achsenbindung sprang der Punkt am Ostsee-Tief in den
+  Druckfall vor der Warmfront bzw. auf die Achse des Warmsektors. Liegt
+  der neue Punkt nahe an einer Front, wird diese gekürzt, statt
+  zurückgebogen zu werden (sonst entsteht ein Haken).
+- **Okklusion setzt die Kaltfront ohne Knick fort, die Warmfront knickt
+  ab.** Der Okklusionsast stammt aus derselben TFP-Linie wie die Warmfront
+  und setzte deshalb diese fort, der Knick zur Kaltfront lag bei
+  44–104°. Jetzt verlässt die Okklusion den Punkt in Richtung der
+  Kaltfront-Tangente und geht über 300 km weich in den Keilverlauf über.
+  Kaltfront und Okklusion werden um den Punkt gemeinsam geglättet
+  (±500 km), die Warmfront biegt danach in den neuen Punkt ein.
+- **Okklusion spiralig bis an den Kern, Druck zum Kern hin fallend.** Ab
+  dem Ende der Keilachse geht es in 50-km-Schritten weiter. Jeder Schritt
+  nimmt die kleinste Linksdrehung (gegen den Uhrzeigersinn, höchstens 60°),
+  bei der der Bodendruck fällt und der Abstand zum Kern um mindestens 8 km
+  abnimmt. Insgesamt sind höchstens 200° Drehung erlaubt, Schluss ist
+  80 km vor dem Kern. Läuft die Keilachse am Kern vorbei, endet der Lauf
+  dort, wo sie sich wieder entfernt, und die Spirale übernimmt.
+
+Ergebnis 12 UTC im Vergleich zur Referenzanalyse:
+
+| | Okklusionspunkt | Bemerkung |
+|---|---|---|
+| Island-System | 57,6/5,1 (Referenz ≈ 57/2–5) | Okklusion über die Färöer und um den Kern ✓ |
+| Ostsee-Tief | 62,4/26,2 (Referenz ≈ 62,5/25) | Okklusion um die Nordseite in den Kern ✓ |
