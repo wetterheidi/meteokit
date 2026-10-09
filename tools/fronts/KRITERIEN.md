@@ -351,3 +351,45 @@ Ergebnis 12 UTC im Vergleich zur Referenzanalyse:
 |---|---|---|
 | Island-System | 57,6/5,1 (Referenz ≈ 57/2–5) | Okklusion über die Färöer und um den Kern ✓ |
 | Ostsee-Tief | 62,4/26,2 (Referenz ≈ 62,5/25) | Okklusion um die Nordseite in den Kern ✓ |
+
+### Zweite Rückmeldung zur Referenzanalyse (12 UTC)
+
+- **Glättung 90 km** statt 120 km trifft den Fall am besten. Das ist jetzt
+  der Standard (`sigmaKm`). Fronten und Aktivitätsklassen bleiben dabei
+  stabil, alle Fehltreffer im Süden bleiben `none`.
+- **Charakter der Okklusion:** Er ist in der Praxis kaum bestimmbar.
+  Synoptiker zeichnen einheitlich so, dass die Kaltfront kontinuierlich in
+  die Okklusion übergeht und die Warmfront abknickt. Das ist die einzige
+  Zeichenweise, eine Bestimmung des Charakters entfällt.
+- **Kaltfront durchzeichnen, wo noch Niederschlag fällt:** Lücken zwischen
+  Fronten gleichen Typs werden geschlossen (`postprocess.js`, `closeGaps`),
+  wenn drei Bedingungen gelten: höchstens 600 km Lücke, die Enden zeigen
+  aufeinander zu (cos ≥ 0,6), entlang der Lücke fallen mindestens 0,1 mm/h.
+  Das Verbindungsstück ist ein kubischer Bogen entlang beider
+  Endtangenten. Am Testfall schließt das die 450-km-Lücke südlich von
+  Großbritannien; die Kaltfront läuft durchgehend 2500 km vom Atlantik bis
+  zum Okklusionspunkt.
+- **Segelform:** Rohlinien werden schon an scharfen Ecken geteilt (über 70°
+  auf ±100 km), nicht erst an Kehrtwenden. Zum Schluss werden alle Fronten
+  geglättet (laufendes Mittel 150 km, zwei Durchgänge, Endpunkte fest).
+- **Ostsee-Warmfront knickt am Okklusionspunkt zu heftig:** Es gab drei
+  Ursachen, alle behoben.
+  1. Die Verschiebung des Punkts zum stärksten Druckfall zog ihn um 250 km
+     nach Südosten. Sie ist jetzt **standardmäßig aus** (`opRefine`), denn
+     mit 90 km Glättung liegt der geometrisch bestimmte Punkt ohnehin am
+     stärksten Druckfall (Island 57/5,4, Tendenzminimum 57,5/5).
+  2. Eine freie gemeinsame Glättung von Kaltfront und Okklusion verschob den
+     Punkt in die Innenseite des Winkels. Jetzt bleibt er dabei fest
+     (`smoothAroundFixed`).
+  3. Die Warmfront wurde als Ganzes zum Punkt gebogen. Jetzt wird sie am
+     nächstgelegenen Punkt gekürzt und mit einem kurzen Bogen angeschlossen
+     (`attach`).
+
+  Ergebnis: Der Ostsee-Okklusionspunkt liegt um 12 UTC bei 62,5/25,1
+  (Referenz ≈ 62,5/25).
+- **Ostsee-Warmfront biegt im Osten nach Süden ab:** Die Biegung ist ein
+  allmählicher 90°-Bogen über rund 350 km. Der Südast hat Niederschlag
+  (≈ 1 mm/h) und eine Rinne, nur der T850-Kontrast nimmt ab und lässt sich
+  am Gebietsrand nicht mehr bestimmen. Offen, ob der Südast wegfallen soll
+  (z. B. über den Kontrast) -- Rückfrage an die Projektleitung.
+- **Ligurientief:** Referenz ist die KNMI-Analyse.

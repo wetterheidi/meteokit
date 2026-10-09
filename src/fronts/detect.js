@@ -51,9 +51,12 @@ import {
 } from "./grid.js";
 import { activityFields, assessPoints, activityClass } from "./activity.js";
 import { findLows, markOcclusions, ridgeLines, OCCLUSION_DEFAULTS } from "./occlusion.js";
+import { closeGaps, smoothFeatures } from "./postprocess.js";
 
 export const DETECT_DEFAULTS = {
-  sigmaKm: 120,       // Gauß-Glättung von θw (und Wind)
+  // Gauß-Glättung von θw (und Wind). 90 km trifft den Fall 2026-10-09 am
+  // besten (Urteil der Referenzanalyse); 120 km war die erste Annahme.
+  sigmaKm: 90,
   // Erste Kalibrierung am Fall 2026-10-09 00/06 UTC (gegen DWD, KNMI,
   // GeoSphere): 0.3/1.5 fand nur die zwei stärksten Fronten; 0.1/0.8 trifft
   // alle Hauptfronten, liefert aber auch Gradientbänder ohne Wetter (z. B.
@@ -66,7 +69,9 @@ export const DETECT_DEFAULTS = {
   windMin: 2,         // m/s, Schwelle Kalt-/Warmfront vs. quasistationär
   windSmoothKm: 300,  // Glättung von c entlang der Linie (laufendes Mittel)
   minPieceKm: 250,    // kürzere Typ-/Aktivitäts-Stücke gehen im Nachbarn auf
-  hairpinDeg: 100,    // Rohlinien an Richtungsänderungen über diesem Wert (±60 km) teilen
+  cornerDeg: 70,      // Rohlinien an Richtungsänderungen über diesem Wert teilen ...
+  cornerChordKm: 100, // ... gemessen über Sehnen ±100 km
+  post: {},           // überschreibt POSTPROCESS_DEFAULTS (Lücken, Glättung)
   activitySmoothKm: 300, // Glättung der Aktivität entlang der Linie
   activity: {},       // überschreibt ACTIVITY_DEFAULTS (activity.js)
   // Bodenposition: Linien von der Analysefläche auf die Bodenfront schieben.
@@ -137,7 +142,7 @@ export function detectFronts(field, opts = {}) {
   const { g, F, mask } = ff;
   const Fm = Float32Array.from(F, (x, k) => (mask[k] ? x : NaN));
   const lines = chainSegments(isolineSegments(Fm, g, 0))
-    .flatMap((line) => splitAtHairpins(line, o.hairpinDeg))
+    .flatMap((line) => splitAtCorners(line, o.cornerDeg, o.cornerChordKm))
     .filter((line) => lineLengthKm(line) >= o.minLengthKm);
   const af = activityFields(field, prev, g);
 
@@ -188,6 +193,9 @@ export function detectFronts(field, opts = {}) {
       }
     }
   }
+  // Lücken zwischen Fronten gleichen Typs schließen, wo Niederschlag fällt
+  // (Kaltfront südlich Großbritanniens 12 UTC), vor der Okklusionsanalyse.
+  const joined = closeGaps(features, af, g, o.post);
   // Okklusionen brauchen die bewerteten Fronten (Okklusionspunkt nur
   // zwischen echten Fronten) und den Bodendruck (Tiefzentren).
   const lows = o.occlusions && field.sfc ? findLows(field, g, o.occlusion) : [];
@@ -207,23 +215,27 @@ export function detectFronts(field, opts = {}) {
   const msl = o.occlusions && field.sfc ? gaussianSmooth(Float32Array.from(field.sfc.pressure_msl, (x) => (x == null ? NaN : x)), g, oo.lowSmoothKm) : null;
   const tend = o.occlusions && prev?.sfc?.pressure_msl
     ? gaussianSmooth(Float32Array.from(field.sfc.pressure_msl, (x, k) => x - prev.sfc.pressure_msl[k]), g, 100) : null;
-  const all = o.occlusions && field.sfc ? markOcclusions(features, ff, lows, oo, ridges, { msl, tend }) : features;
+  const marked = o.occlusions && field.sfc ? markOcclusions(joined, ff, lows, oo, ridges, { msl, tend }) : joined;
+  // Abschließend alle Fronten glätten ("wie Segel"), Endpunkte fest.
+  const all = smoothFeatures(marked, o.post);
   const out = keepInactive ? all : all.filter((f) => f.properties.activity_class !== "none");
   return { type: "FeatureCollection", features: out, properties: { params: o, lows, ridges, ridgeSource } };
 }
 
-// Fronten spannen sich "wie Segel" im Wind auf: eine Kehrtwende gibt es
-// nicht. Rohlinien (TFP-Nulllinien) machen gelegentlich Haarnadeln
-// (2026-10-08 21 UTC: 172°); dort teilen. Gemessen wird die Richtungs-
-// änderung an jedem Stützpunkt zwischen den Sehnen ~60 km zurück und voraus.
-function splitAtHairpins(line, maxDeg) {
+// Fronten spannen sich "wie Segel" im Wind auf: Kehrtwenden und scharfe
+// Ecken gibt es nicht. Rohlinien (TFP-Nulllinien) machen gelegentlich
+// Haarnadeln (2026-10-08 21 UTC: 172°) oder biegen abrupt ab (Ostsee-
+// Warmfront 12 UTC nach Süden); dort teilen, zu kurze Reste fallen über
+// die Mindestlänge weg. Gemessen wird die Richtungsänderung an jedem
+// Stützpunkt zwischen den Sehnen chordKm zurück und voraus.
+function splitAtCorners(line, maxDeg, chordKm) {
   const s = cumDist(line);
   const v = (a, b) => [(b[1] - a[1]) * Math.cos((a[0] * Math.PI) / 180), b[0] - a[0]];
   // Richtungsänderung an jedem Stützpunkt: Sehne ~60 km zurück gegen ~60 km voraus.
   const turn = line.map((p, i) => {
     let a = i, b = i;
-    while (a > 0 && s[i] - s[a] < 60) a--;
-    while (b < line.length - 1 && s[b] - s[i] < 60) b++;
+    while (a > 0 && s[i] - s[a] < chordKm) a--;
+    while (b < line.length - 1 && s[b] - s[i] < chordKm) b++;
     if (a === i || b === i) return 0;
     const u = v(line[a], p), w = v(p, line[b]);
     const c = (u[0] * w[0] + u[1] * w[1]) / (Math.hypot(u[0], u[1]) * Math.hypot(w[0], w[1]));

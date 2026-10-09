@@ -28,13 +28,14 @@ Debug-Seite und Testfälle.
 
 1. θw berechnen und maskieren, wo die Fläche unter Grund liegt oder weniger
    als 25 hPa darüber.
-2. θw mit einer Gauß-Glättung von σ = 120 km glätten.
+2. θw mit einer Gauß-Glättung von σ = 90 km glätten.
 3. TFP = −∇|∇θw|·n̂ berechnen.
 4. Die Frontlinie ist die Nulllinie von ∇TFP·n̂, also die warme Kante der
    Frontalzone.
 5. Masken anwenden: K1 verlangt TFP > 0,1 K/(100 km)², K2 verlangt
    |∇θw| + m/√2·TFP > 0,8 K/100 km.
-6. Linien verketten und alles unter 400 km verwerfen.
+6. Linien verketten, an scharfen Ecken teilen („wie Segel“) und alles unter
+   400 km verwerfen.
 7. Den Typ aus dem Querwind in 850 hPa bestimmen: über +2 m/s Kaltfront,
    unter −2 m/s Warmfront, dazwischen quasistationär. Eine Linie, deren Typ
    wechselt, wird in Stücke zerlegt.
@@ -96,13 +97,18 @@ Okklusionspunkt bis vor den Tiefkern. Ohne passende Achse bleibt der
 Frontast. Die zuführende Kalt- bzw. Warmfront biegt weich
 bis an den Okklusionspunkt ein, damit sich dort alle drei Fronten treffen.
 `occlusion_character` gibt dabei an, ob er Kalt- oder Warmfrontcharakter
-hat. Die Okklusion muss zu einem Tief hin zeigen (auch zu einem Randtief
+hat. **Nachbearbeitung** (`src/fronts/postprocess.js`): Lücken zwischen Fronten
+gleichen Typs werden geschlossen, wenn entlang der Lücke Niederschlag
+fällt. Zum Schluss werden alle Fronten geglättet.
+
+Die Okklusion muss zu einem Tief hin zeigen (auch zu einem Randtief
 jenseits des Gebiets), pro Tief gibt es höchstens eine.
 
 Am Okklusionspunkt gelten die Zeichenregeln der Referenzanalyse
 (KRITERIEN.md, Abschnitt 10):
 
-- Der Punkt sitzt am stärksten 3-h-Druckfall entlang des Warmluftkeils.
+- Optional (`opRefine`, standardmäßig aus): den Punkt zum stärksten
+  3-h-Druckfall entlang des Warmluftkeils verschieben.
 - Die Okklusion setzt die Kaltfront ohne Knick fort, die Warmfront knickt
   ab.
 - Die Okklusion läuft spiralig gegen den Uhrzeigersinn bis 80 km vor den
@@ -112,13 +118,14 @@ Am Okklusionspunkt gelten die Zeichenregeln der Referenzanalyse
 
 Noch offen:
 
-- Okklusionen verfeinern: Charakter aus der Verlagerung bestimmen
-  (bisher wird immer Kaltfrontcharakter gezeichnet), Okklusionen ohne
-  passende TFP-Linie (s. KRITERIEN.md).
-- Den Typ aus der Verlagerung zwischen den Terminen bestimmen.
-- Lücken zwischen Linienstücken schließen.
-- Fronten des Ligurientiefs: zu wenig θw-Gradient in 850 hPa, das Gelände
-  ist maskiert.
+- Fronten des Ligurientiefs (Referenz: KNMI-Analyse). Zu wenig
+  θw-Gradient in 850 hPa, das Gelände ist maskiert.
+- Okklusionen ohne passende TFP-Linie.
+- Zurückgestellt: den Typ aus der Verlagerung zwischen den Terminen
+  bestimmen. Die Bestimmung über den Querwind in 850 hPa trifft den
+  Testfall, hilfreich wäre die Verlagerung vor allem bei schleifenden
+  Fronten.
+- Zweiter Testfall.
 
 ## Testfälle (Fixtures)
 

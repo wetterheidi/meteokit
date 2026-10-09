@@ -50,10 +50,17 @@ export const OCCLUSION_DEFAULTS = {
   // Okklusionspunkt zum stärksten 3-h-Druckfall entlang der Achse des
   // Warmluftkeils (K1: Zentrum des isallobarischen Tiefs; so orientiert sich
   // auch die synoptische Referenzanalyse 2026-10-09 12 UTC)
+  // Standardmäßig AUS: mit 90 km Glättung liegt der geometrisch bestimmte
+  // Punkt schon am stärksten Druckfall (Island 12 UTC 57/5,4 ≈ Minimum der
+  // Tendenz 57,5/5), die Verschiebung zog den Ostsee-Punkt dagegen um
+  // 250 km von der Referenzanalyse weg.
+  opRefine: false,
   opSearchKm: 300,
   opRidgeKm: 100,       // Kandidaten so nah an der Achse, der die Okklusion folgt
   opTrimKm: 150,        // liegt der neue Punkt so nah an einer Front, wird sie dort gekürzt
   opBackKm: 30,         // höchstens so weit entgegen der Okklusionsrichtung
+  cornerOpKm: 350,      // Ecke der Restfront so nah am Punkt -> Punkt dorthin
+  cornerOpDeg: 60,
   opDistPenalty: 0.15,  // hPa/3 h je 100 km Verschiebung
   opMinGain: 0.3,       // hPa/3 h: nur bei deutlich stärkerem Fall verschieben
   // Spirale um den Kern (gegen den Uhrzeigersinn, Druck fallend)
@@ -66,8 +73,8 @@ export const OCCLUSION_DEFAULTS = {
   spiralMaxStepTurn: 60, // Grad je Schritt -- enger wird es zur Zacke
   // Glättung ("Fronten spannen sich wie Segel")
   occSmoothKm: 150,     // Okklusion insgesamt
-  junctionSmoothKm: 500, // Kaltfront + Okklusion um den Okklusionspunkt (Drehung auf beide verteilen)
-  occBlendKm: 300,      // Okklusion verlässt den Punkt in Kaltfrontrichtung, Übergang über diese Länge
+  junctionSmoothKm: 400, // gemeinsame Glättung Kaltfront + Okklusion um den (festen) Punkt
+  occBlendKm: 150,      // Okklusion verlässt den Punkt in Kaltfrontrichtung, Übergang über diese Länge (länger: schießt hinaus)
   // Verlängerung entlang der Warmluftzunge (θw-Rücken, i. d. R. 700 hPa, K4)
   ridgeSmoothKm: 150,
   ridgeLambdaMin: 0.3,  // K/(100 km)², Mindestkrümmung quer zur Achse (θw)
@@ -244,12 +251,17 @@ export function markOcclusions(features, ff, lows, opts = {}, ridges = null, ctx
   // je Stück (newPts), weggefallene Stücke (drop), Zusatzattribute (extra).
   const newPts = new Map(), drop = new Set(), extra = new Map(), occFeatures = [];
   for (const cut of applied) {
-    const C = cut.chain, m = cut.idx, branch = cut.branch, last = C.pts.length - 1;
+    const C = cut.chain, branch = cut.branch, last = C.pts.length - 1;
+    // Ecke der Restlinie nahe am Punkt: dort beginnt die eigentliche Front,
+    // der Okklusionspunkt rückt dorthin (Ostsee-Tief 12 UTC: die Warmfront
+    // lief vom Punkt erst 190 km nach Norden und knickte dann nach Osten).
+    const m = cornerNear(C.pts, cut.idx, -branch, o);
+    if (m !== cut.idx) cut.P = C.pts[m];
     // 1. Okklusionspunkt zum stärksten Druckfall (isallobarisches Tief, K1).
     // Nur entlang der Achse, der auch die Okklusion folgt -- sonst springt der
     // Punkt auf die Achse des Warmsektors (Ostsee-Tief 12 UTC).
     const occRidge = ridges?.length ? snapRidge(cut.P, cut.dir, ridges, o) : null;
-    const P2 = ctx?.tend && occRidge ? refineJunction(cut.P, ctx.tend, g, o, [occRidge.R], cut.dir) : cut.P;
+    const P2 = o.opRefine && ctx?.tend && occRidge ? refineJunction(cut.P, ctx.tend, g, o, [occRidge.R], cut.dir) : cut.P;
 
     // 2. Zuführende Front A und Rest der Kette, beide mit dem Punkt am Ende.
     const A = cut.from;
@@ -259,8 +271,14 @@ export function markOcclusions(features, ff, lows, opts = {}, ridges = null, ctx
     let rest = C.pts.slice(r0, r1 + 1); if (branch < 0) rest.reverse();
     // Liegt der neue Punkt nahe an einer der beiden Linien, wird sie dort
     // gekürzt statt zurückgebogen (sonst entsteht ein Haken).
-    aPts = bendTo(trimToward(aPts, P2, o.opTrimKm), false, P2);
-    rest = bendTo(trimToward(rest, P2, o.opTrimKm), false, P2);
+    const coldIsA = props(A).front_type === "cold";
+    // Die Kaltfront wird weich in den Punkt gebogen (sie läuft in die
+    // Okklusion weiter). Die andere Front darf abknicken: sie wird am
+    // nächstgelegenen Punkt gekürzt und mit einem kurzen Bogen angeschlossen
+    // -- Biegen zog sonst ihren ganzen Anfang mit (Ostsee-Warmfront 12 UTC
+    // lief erst 190 km nach Norden).
+    if (coldIsA) { aPts = bendTo(trimToward(aPts, P2, o.opTrimKm), false, P2); rest = attach(rest, P2); }
+    else { rest = bendTo(trimToward(rest, P2, o.opTrimKm), false, P2); aPts = attach(aPts, P2); }
 
     // 3. Okklusion ab dem Punkt: bevorzugt entlang der Rückenachse des
     // Warmluftkeils (K1: durch den Scheitel des Keils der Schichtdicke
@@ -287,19 +305,22 @@ export function markOcclusions(features, ff, lows, opts = {}, ridges = null, ctx
 
     // 5. Kaltfront und Okklusion als ein durchgehender Bogen (die Okklusion
     // setzt die Kaltfront ohne Knick fort, die Warmfront setzt mit Knick an).
-    const coldIsA = props(A).front_type === "cold";
     const cold = coldIsA ? aPts : rest;
     // Der Okklusionsast stammt aus derselben Linie wie die Warmfront und setzt
     // daher sie fort statt der Kaltfront. Anfang neu führen: tangential aus
     // der Kaltfront heraus, über occBlendKm weich in den Keilverlauf.
+    // Die Drehung zwischen Kaltfront und Okklusion auf beide verteilen
+    // (gemeinsame Glättung um den Punkt), den Punkt dabei aber festhalten:
+    // eine freie Glättung zog ihn in die Innenseite des Winkels (Ostsee-Tief
+    // 12 UTC um 250 km), und die Warmfront musste mit Haken nachgezogen werden.
     occ = continueFrom(cold, occ, o.occBlendKm);
     const J = cold.length - 1;
-    const comp = smoothAround([...cold, ...occ.slice(1)], J, o.junctionSmoothKm);
+    const comp = smoothAroundFixed([...cold, ...occ.slice(1)], J, o.junctionSmoothKm);
     const coldNew = comp.slice(0, J + 1);
     occ = comp.slice(J);
     const Q = comp[J];
-    if (coldIsA) { aPts = coldNew; rest = bendTo(rest, false, Q); }
-    else { rest = coldNew; aPts = bendTo(aPts, false, Q); }
+    if (coldIsA) { aPts = coldNew; rest = attach(rest, Q); }
+    else { rest = coldNew; aPts = attach(aPts, Q); }
     const junction = { lat: +Q[0].toFixed(2), lon: +Q[1].toFixed(2) };
 
     // Zurückschreiben: A als ganzes Stück, der Rest stückweise über die
@@ -411,6 +432,51 @@ function spiralToLow(occ, low, msl, g, o) {
   return ext.length ? [...occ, ...ext] : occ;
 }
 
+// Auf der Kette ab Index m in Richtung dir (zur Restfront hin) innerhalb von
+// cornerOpKm die schärfste Ecke suchen (Richtungsänderung zwischen Sehnen
+// ±100 km). Ist sie schärfer als cornerOpDeg, wird ihr Index zurückgegeben,
+// sonst m.
+function cornerNear(pts, m, dir, o) {
+  const v = (a, b) => [(b[1] - a[1]) * Math.cos((a[0] * Math.PI) / 180), b[0] - a[0]];
+  const along = (from, km, st) => { let q = from, s = 0; while (q + st >= 0 && q + st < pts.length && s < km) { s += distKm(pts[q], pts[q + st]); q += st; } return q; };
+  let best = { a: o.cornerOpDeg, q: m }, s = 0;
+  for (let q = m; q >= 0 && q < pts.length && s <= o.cornerOpKm; q += dir) {
+    if (q !== m) s += distKm(pts[q - dir], pts[q]);
+    const a0 = along(q, 100, -dir), b0 = along(q, 100, dir);
+    if (a0 === q || b0 === q) continue;
+    const u = v(pts[a0], pts[q]), w = v(pts[q], pts[b0]);
+    const c = (u[0] * w[0] + u[1] * w[1]) / (Math.hypot(u[0], u[1]) * Math.hypot(w[0], w[1]));
+    const ang = (Math.acos(Math.max(-1, Math.min(1, c))) * 180) / Math.PI;
+    if (ang > best.a) best = { a: ang, q };
+  }
+  return best.q;
+}
+
+// Linie (Anschlusspunkt am Ende) an P anschließen, ohne ihren Verlauf zu
+// verschieben: am P nächstgelegenen Punkt k kürzen und von dort einen
+// kubischen Bogen nach P legen (verlässt k in Linienrichtung). Die Punktzahl
+// bleibt gleich (die Punkte nach k werden zum Bogen), damit das
+// Zurückschreiben über Kettenindizes funktioniert.
+function attach(pts, P) {
+  const n = pts.length;
+  let k = n - 1, best = distKm(pts[k], P);
+  for (let q = 0; q < n; q++) { const d = distKm(pts[q], P); if (d < best) { best = d; k = q; } }
+  const tail = n - 1 - k;
+  if (best < 20 || tail < 1) { const out = pts.slice(); out[n - 1] = P; return out; }
+  const A = pts[k];
+  const tA = k > 0 ? unitV(vecKm(pts[Math.max(0, k - 3)], A)) : unitV(vecKm(A, P));
+  const tB = unitV(vecKm(P, A));
+  const L = distKm(A, P), c = L / 3;
+  const off = (p, t, s) => [p[0] + (s * t[1]) / KM_PER_DEG, p[1] + (s * t[0]) / (KM_PER_DEG * Math.cos(p[0] * DEG))];
+  const c1 = off(A, tA, c), c2 = off(P, tB, c);
+  const out = pts.slice(0, k + 1);
+  for (let i = 1; i <= tail; i++) {
+    const t = i / tail, u = 1 - t;
+    out.push([0, 1].map((d) => u * u * u * A[d] + 3 * u * u * t * c1[d] + 3 * u * t * t * c2[d] + t * t * t * P[d]));
+  }
+  return out;
+}
+
 // Linie (Okklusionspunkt am Ende) am Punkt kürzen, der P am nächsten liegt,
 // falls dieser näher als km ist und nicht schon das Ende ist. Die
 // Punktzahl bleibt gleich: die abgeschnittenen Punkte fallen auf den
@@ -444,6 +510,21 @@ function continueFrom(cold, occ, blendKm) {
   return out;
 }
 
+// Glättung um den Index J (±windowKm, zum Rand hin ausgeblendet), wobei der
+// Punkt J an seiner Stelle bleibt: die geglättete Kurve wird um die
+// Verschiebung von J zurückgesetzt, mit demselben Gewicht. Punktzahl und
+// Endpunkte bleiben gleich.
+function smoothAroundFixed(pts, J, windowKm) {
+  const sm = smoothLine(pts, windowKm / 2, 3);
+  const s = [0];
+  for (let q = 1; q < pts.length; q++) s.push(s[q - 1] + distKm(pts[q - 1], pts[q]));
+  const d = [pts[J][0] - sm[J][0], pts[J][1] - sm[J][1]];
+  return pts.map((p, q) => {
+    const w = Math.max(0, 1 - Math.abs(s[q] - s[J]) / windowKm);
+    return [p[0] + w * (sm[q][0] + d[0] - p[0]), p[1] + w * (sm[q][1] + d[1] - p[1])];
+  });
+}
+
 // Laufendes Mittel entlang der Linie (Fenster ±km/2), Endpunkte fest.
 function smoothLine(pts, km, passes = 1) {
   let cur = pts.map((p) => p.slice());
@@ -462,17 +543,6 @@ function smoothLine(pts, km, passes = 1) {
   return cur;
 }
 
-// Glättung nur um den Index J (±windowKm), zum Rand hin ausgeblendet; die
-// Punktzahl bleibt gleich, die Endpunkte bleiben fest.
-function smoothAround(pts, J, windowKm) {
-  const sm = smoothLine(pts, windowKm / 2, 3);
-  const s = [0];
-  for (let q = 1; q < pts.length; q++) s.push(s[q - 1] + distKm(pts[q - 1], pts[q]));
-  return pts.map((p, q) => {
-    const w = Math.max(0, 1 - Math.abs(s[q] - s[J]) / windowKm);
-    return [p[0] + w * (sm[q][0] - p[0]), p[1] + w * (sm[q][1] - p[1])];
-  });
-}
 
 function stripChain(f) {
   const { _chain, ...rest } = f;
