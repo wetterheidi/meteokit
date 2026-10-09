@@ -49,7 +49,7 @@ import {
   gaussianSmooth, gradient, isolineSegments, chainSegments,
   sampleBilinear, lineLengthKm, distKm,
 } from "./grid.js";
-import { activityFields, assessPoints, activityClass } from "./activity.js";
+import { activityFields, assessPoints, activityClass, ACTIVITY_DEFAULTS } from "./activity.js";
 import { findLows, markOcclusions, ridgeLines, OCCLUSION_DEFAULTS } from "./occlusion.js";
 import { closeGaps, smoothFeatures } from "./postprocess.js";
 
@@ -86,6 +86,7 @@ export const DETECT_DEFAULTS = {
   surfaceDefaultKm: { cold: 120, stationary: 50 },
   surfaceTroughRamp: [0.1, 0.5], // hPa/(100 km)²: ab hier zählt die gefundene Rinne voll
   surfaceSmoothKm: 400,         // Glättung des Versatzes entlang der Linie
+  contrastFreeKm: 350,          // Linienende "frei", wenn keine andere Linie so nah ist
   occlusions: true,   // Okklusionen bestimmen (occlusion.js)
   occlusion: {},      // überschreibt OCCLUSION_DEFAULTS
 };
@@ -148,8 +149,12 @@ export function detectFronts(field, opts = {}) {
 
   const surface = o.position === "surface" && af;
   const features = [];
+  // Freie Linienenden: keine andere Linie in Reichweite (dort könnte ein
+  // Okklusionspunkt liegen). Nur an ihnen greift der Kontrastschnitt.
+  const freeEnd = (line, p) => !lines.some((other) => other !== line && other.some((q) => distKm(p, q) < o.contrastFreeKm));
   for (const line of lines) {
-    const pieces = classify(line, ff, o).flatMap((typed) => byActivity(typed, ff, af, o));
+    const ends = { first: 0, last: line.length - 1, free: [freeEnd(line, line[0]), freeEnd(line, line[line.length - 1])] };
+    const pieces = classify(line, ff, o).flatMap((typed) => byActivity(typed, ff, af, o, ends));
     // Bodenposition: ganze Linie auf einmal verschieben (stetig über
     // Typwechsel), dann die Stücke aus der verschobenen Linie neu schneiden.
     const shift = surface ? surfaceShift(line, pieces, ff, o) : null;
@@ -224,9 +229,10 @@ export function detectFronts(field, opts = {}) {
 
 // Fronten spannen sich "wie Segel" im Wind auf: Kehrtwenden und scharfe
 // Ecken gibt es nicht. Rohlinien (TFP-Nulllinien) machen gelegentlich
-// Haarnadeln (2026-10-08 21 UTC: 172°) oder biegen abrupt ab (Ostsee-
-// Warmfront 12 UTC nach Süden); dort teilen, zu kurze Reste fallen über
-// die Mindestlänge weg. Gemessen wird die Richtungsänderung an jedem
+// Haarnadeln (2026-10-08 21 UTC: 172°) oder biegen abrupt ab; dort
+// teilen, zu kurze Reste fallen über die Mindestlänge weg. (Der Südast der
+// Ostsee-Warmfront 12 UTC ist ein allmählicher Bogen und fällt erst über
+// den Kontrastschnitt in byActivity weg.) Gemessen wird die Richtungsänderung an jedem
 // Stützpunkt zwischen den Sehnen chordKm zurück und voraus.
 function splitAtCorners(line, maxDeg, chordKm) {
   const s = cumDist(line);
@@ -329,13 +335,25 @@ function classify(line, ff, o) {
 
 // Typreines Stück nach Aktivitätsklasse weiter teilen (aktiv / schwach /
 // keine Front). Ohne Oberflächenfelder bleibt es ein Stück ohne Bewertung.
-function byActivity(piece, ff, af, o) {
+function byActivity(piece, ff, af, o, ends) {
   if (!af) return [{ ...piece, assess: [], activityClass: null }];
   const assess = assessPoints(piece.pts, piece.type, ff, af, o.activity);
   const s = cumDist(piece.pts);
   const act = runningMean(assess.map((x) => x.activity), s, o.activitySmoothKm);
   assess.forEach((x, m) => { x.activity = act[m]; });
-  return splitRuns(act.map((a) => activityClass(a, o.activity)), s, o.minPieceKm).map((p) => {
+  // Ohne Luftmassengegensatz keine Front (Leitfaden: T850-Kontrast ≥ 4 K):
+  // fällt der geglättete Kontrast zu einem freien Linienende hin darunter,
+  // oder ist er nicht bestimmbar (kalte Seite jenseits des Gebietsrands),
+  // endet die Front dort, auch wenn es noch regnet (Ostsee-Warmfront
+  // 12 UTC, Südast). Nicht an Enden nahe anderen Linien: am Okklusionspunkt
+  // ist der Kontrast in 850 hPa oft klein, die Linie gehört trotzdem dazu.
+  const cmin = o.activity.contrastMin ?? ACTIVITY_DEFAULTS.contrastMin;
+  const con = runningMean(assess.map((x) => x.contrast), s, o.activitySmoothKm);
+  const label = act.map((a) => activityClass(a, o.activity));
+  const n = label.length;
+  if (ends?.free[0] && piece.lineIdx[0] === ends.first) for (let m = 0; m < n && !(con[m] >= cmin); m++) label[m] = "none";
+  if (ends?.free[1] && piece.lineIdx[n - 1] === ends.last) for (let m = n - 1; m >= 0 && !(con[m] >= cmin); m--) label[m] = "none";
+  return splitRuns(label, s, o.minPieceKm).map((p) => {
     const pts = p.idx.map((m) => piece.pts[m]);
     return {
       type: piece.type, pts, lineIdx: p.idx.map((m) => piece.lineIdx[m]), c: p.idx.map((m) => piece.c[m]), warmSide: piece.warmSide,

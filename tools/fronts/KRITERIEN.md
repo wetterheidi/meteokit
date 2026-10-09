@@ -185,7 +185,7 @@ Wetter.** Ein Gradientband allein ist noch keine Front.
 | Kriterium | Größe im Code | Stand |
 |---|---|---|
 | warme Kante der Zone | TFP-Linie, Masken K1/K2 | ✓ `detectFronts` |
-| Kontrast ≥ 4 K | T850 an der Linie minus 300 km kälterseitig, Rampe 2–4 K, als **Faktor** | ✓ `activity.js` |
+| Kontrast ≥ 4 K | T850 an der Linie minus 300 km kälterseitig, Rampe 2–4 K, als **Faktor**; an freien Linienenden unter 4 K Schnitt | ✓ `activity.js`, `detect.js` |
 | Rinne, zyklonale Krümmung | ∂²p/∂n² des Bodendrucks, Maximum im Fenster zur warmen Seite = Bodenposition | ✓ |
 | Konvergenz, Windsprung | Konvergenz und Vorticity des ~10-m-Winds ±100 km um die Bodenposition | ✓ |
 | Sprung der Tendenz | Δp(3 h) 150 km hinter minus 150 km vor der Bodenposition | ✓ (braucht Vortermin) |
@@ -390,6 +390,16 @@ Ergebnis 12 UTC im Vergleich zur Referenzanalyse:
 - **Ostsee-Warmfront biegt im Osten nach Süden ab:** Die Biegung ist ein
   allmählicher 90°-Bogen über rund 350 km. Der Südast hat Niederschlag
   (≈ 1 mm/h) und eine Rinne, nur der T850-Kontrast nimmt ab und lässt sich
-  am Gebietsrand nicht mehr bestimmen. Offen, ob der Südast wegfallen soll
-  (z. B. über den Kontrast) -- Rückfrage an die Projektleitung.
+  am Gebietsrand nicht mehr bestimmen. Entscheidung der Projektleitung:
+  über den Kontrast abschneiden. Umsetzung (`detect.js`, `byActivity`):
+  Fällt der entlang der Linie geglättete T850-Kontrast zu einem **freien**
+  Linienende hin unter 4 K (`contrastMin`) oder ist er nicht bestimmbar,
+  endet die Front dort, auch mit Wetter. Frei heißt: keine andere Rohlinie
+  näher als 350 km (`contrastFreeKm`). Am Okklusionspunkt ist der Kontrast
+  in 850 hPa oft klein, global angewendet zerfielen beide Okklusionen.
+  Ergebnis 12 UTC: Die Warmfront endet bei 62/38 statt 59/40.
+- **Symbole auf der falschen Seite** (Island-Kaltfront): Beim Schließen
+  einer Lücke wurde die Seitenangabe falsch gespiegelt, wenn das längere
+  Stück das zweite war. Behoben; eine Prüfung gegen θw bestätigt die warme
+  Seite aller Fronten an allen Terminen.
 - **Ligurientief:** Referenz ist die KNMI-Analyse.

@@ -89,8 +89,9 @@ export function closeGaps(features, af, g, opts = {}) {
     const pts = [...aPts, ...bridge(best.pa, best.tA, best.pb, best.tB), ...bPts];
     const main = lineLengthKm(A.pts) >= lineLengthKm(B.pts) ? A : B;
     // Seitenangaben gelten in Punktreihenfolge: übernimmt das Hauptstück eine
-    // umgekehrte Richtung, spiegeln.
-    const reversed = main === A ? !best.ea : !best.eb;
+    // umgekehrte Richtung, spiegeln. A läuft umgekehrt, wenn die Lücke an
+    // seinem Anfang liegt, B, wenn sie an seinem Ende liegt.
+    const reversed = main === A ? !best.ea : best.eb;
     const flip = (s) => (s && reversed ? (s === "left" ? "right" : "left") : s);
     const props = { ...main.f.properties, warm_side: flip(main.f.properties.warm_side), motion_side: flip(main.f.properties.motion_side) };
     const gaps = [...A.gaps, ...B.gaps, Math.round(best.d)];

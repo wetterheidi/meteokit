@@ -73,7 +73,9 @@ werden (Stand und Plan) stehen in [KRITERIEN.md](KRITERIEN.md).
 Daraus ergibt sich `activity = Kontrast · (½ Wetter + ½ Dynamik)`. Der Wert
 wird entlang der Linie geglättet. Die Linie wird dann in die Klassen
 `active`, `weak` und `none` geteilt. Stücke der Klasse `none` gibt
-`detectFronts` nur mit `keepInactive: true` aus. Die Drucktendenz braucht
+`detectFronts` nur mit `keepInactive: true` aus. An freien Linienenden
+(keine andere Linie näher als 350 km) endet die Front, wo der Kontrast
+unter 4 K fällt. Die Drucktendenz braucht
 den Vortermin als `prev`. Ergebnis am Testfall: Alle Fehltreffer über
 Nordafrika und Iberien fallen weg, die Hauptfronten bleiben (Details in
 [KRITERIEN.md](KRITERIEN.md)).
@@ -96,8 +98,9 @@ aus der Schichtdicke 500/1000, sonst aus θw in 700 hPa. Sie reicht vom
 Okklusionspunkt bis vor den Tiefkern. Ohne passende Achse bleibt der
 Frontast. Die zuführende Kalt- bzw. Warmfront biegt weich
 bis an den Okklusionspunkt ein, damit sich dort alle drei Fronten treffen.
-`occlusion_character` gibt dabei an, ob er Kalt- oder Warmfrontcharakter
-hat. **Nachbearbeitung** (`src/fronts/postprocess.js`): Lücken zwischen Fronten
+`occlusion_character` nennt nur den Typ des Stücks, von dem die
+Okklusion ihre Eigenschaften übernimmt; den Charakter bestimmt die Analyse
+nicht (Zeichenregel, s. KRITERIEN.md). **Nachbearbeitung** (`src/fronts/postprocess.js`): Lücken zwischen Fronten
 gleichen Typs werden geschlossen, wenn entlang der Lücke Niederschlag
 fällt. Zum Schluss werden alle Fronten geglättet.
 
