@@ -82,16 +82,19 @@ Minima im geglätteten Bodendruck mit mindestens 3 hPa Tiefe gegenüber
 einem Ring von 500 km. Am Gebietsrand darf der Ring teilweise fehlen. Am
 Okklusionspunkt trifft das Ende einer Kalt- oder Warmfront (höchstens
 350 km entfernt) auf eine Front des anderen Typs. Dort wird der Ast, der
-vom Warmsektor wegzeigt, als `front_type: "occluded"` abgetrennt.
+vom Warmsektor wegzeigt, als `front_type: "occluded"` abgetrennt. Endet er
+vor dem Tiefkern, wird er entlang der Warmluftzunge verlängert (θw-Rücken
+in 700 hPa, `ridgeLines`). Die zuführende Kalt- bzw. Warmfront wird bis an
+den Okklusionspunkt verlängert, damit sich dort alle drei Fronten treffen.
 `occlusion_character` gibt dabei an, ob er Kalt- oder Warmfrontcharakter
 hat. Die Okklusion endet 150 km vor dem Tiefkern. Die Tiefs stehen in
 `properties.lows` der FeatureCollection.
 
 Noch offen:
 
-- Okklusionen verfeinern: entlang der Warmluftzunge um den Tiefkern
-  herum verlängern, Charakter aus der Verlagerung bestimmen, Schichtdicke
-  500/1000 hPa nutzen (s. KRITERIEN.md).
+- Okklusionen verfeinern: Charakter aus der Verlagerung bestimmen,
+  Okklusionen ohne passende TFP-Linie, Schichtdicke 500/1000 hPa,
+  glatterer Anschluss der Kaltfront (s. KRITERIEN.md).
 - Die Frontlinie auf die geschätzte Bodenposition verschieben (der Versatz
   ist schon als `criteria.sfc_offset_km` verfügbar).
 - Den Typ aus der Verlagerung zwischen den Terminen bestimmen.
@@ -164,7 +167,7 @@ stehen zur Wahl:
 - w und Spread in 700 hPa
 
 Dazu kommen Isobaren (5 hPa), Isolinien, Windpfeile auf der Fläche und bei
-~10 m sowie die Orographiemaske. Darüber liegen die detektierten
+~10 m, die Warmluftzungen in 700 hPa sowie die Orographiemaske. Darüber liegen die detektierten
 Fronten mit den üblichen Symbolen. Die Schwellen K1, K2, Mindestlänge und
 Windschwelle sind live einstellbar. Optional lassen sich alle Kandidaten
 ohne Masken in Grau einblenden. Das Ergebnis kann als GeoJSON gespeichert

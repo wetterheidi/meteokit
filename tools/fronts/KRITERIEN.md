@@ -193,7 +193,7 @@ Wetter.** Ein Gradientband allein ist noch keine Front.
 | keine Front unter Absinkinversion | indirekt: kein Wetter, keine Rinne → Aktivität ≈ 0 | ✓ indirekt |
 | Typ | Verlagerung zwischen Terminen, sonst geostrophischer Querwind | 850-hPa-Querwind ✓, Rest geplant |
 | Bodenposition | Rinne zur warmen Seite hin suchen | Versatz als `criteria.sfc_offset_km`, Linie selbst noch nicht verschoben |
-| Okklusion | Okklusionspunkt (Ende einer Kalt-/Warmfront an einer Front des anderen Typs, ≤ 350 km), vom Warmsektor wegzeigender Ast = Okklusion, endet vor dem Tiefkern | ✓ `occlusion.js` (Grundfassung) |
+| Okklusion | Okklusionspunkt (Ende einer Kalt-/Warmfront an einer Front des anderen Typs, ≤ 350 km), vom Warmsektor wegzeigender Ast = Okklusion, Verlängerung entlang des θw-Rückens in 700 hPa bis vor den Tiefkern, alle drei Fronten treffen sich im Okklusionspunkt | ✓ `occlusion.js` |
 | Darstellung schwacher Fronten | `activity_class` active / weak (gestrichelt) / none (entfällt) | ✓ |
 
 **Schichtdicke 500/1000 hPa aus Modellleveln.** Die Schichtdicke ist das
@@ -230,10 +230,18 @@ Dazu braucht es zusätzlich `pressure_level` etwa der Level 35–49
 - Ein **Zungentest** (θw steigt auf der warmen Seite an und fällt danach
   wieder ab) wurde verworfen. Er schlägt auch an Kaltfronten an, weil auch
   Warmsektoren begrenzt sind.
+- Verlängerung entlang der Warmluftzunge: Endet der Okklusionsast vor dem
+  Kern, geht es weiter entlang der nächsten θw-Rückenachse in 700 hPa. Die
+  Achsen kommen aus der Hesse-Matrix: λ₁ < −0,3 K/(100 km)², Gradient
+  entlang des Eigenvektors gleich null. Die Verlängerung läuft in
+  Fortsetzungsrichtung bis 150 km vor das Tief, höchstens 1200 km weit und
+  ohne scharfe Knicke. Am Islandtief reicht die Okklusion so bis an die
+  Nordostküste Islands (06 UTC 1086 km statt 527 km).
+- Die zuführende Kalt- bzw. Warmfront wird bis an den Okklusionspunkt
+  verlängert, dort treffen sich alle drei Fronten. Liegt ihr Ende weit
+  entfernt (bis 350 km), entsteht ein sichtbarer Knick im
+  Verbindungsstück. Das ist kosmetisch und noch offen.
 - Noch offen:
-  - Die Okklusion entlang der Warmluftzunge (θw-Rücken in 700 hPa) um den
-    Kern herum verlängern. KNMI zeichnet sie um Island herum, wir enden
-    bei etwa 63° N.
   - Okklusionen ohne passende TFP-Linie, etwa um den Kern des
     Ostsee-Tiefs um 00 UTC.
   - Den Charakter (Kalt-/Warmfront) aus der Verlagerung bestimmen statt

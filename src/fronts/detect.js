@@ -45,7 +45,7 @@ import {
   sampleBilinear, lineLengthKm, distKm,
 } from "./grid.js";
 import { activityFields, assessPoints, activityClass } from "./activity.js";
-import { findLows, markOcclusions } from "./occlusion.js";
+import { findLows, markOcclusions, ridgeLines } from "./occlusion.js";
 
 export const DETECT_DEFAULTS = {
   sigmaKm: 120,       // Gauß-Glättung von θw (und Wind)
@@ -160,8 +160,12 @@ export function detectFronts(field, opts = {}) {
   // Okklusionen brauchen die bewerteten Fronten (Okklusionspunkt nur
   // zwischen echten Fronten) und den Bodendruck (Tiefzentren).
   const lows = o.occlusions && field.sfc ? findLows(field, g, o.occlusion) : [];
-  const out = o.occlusions && field.sfc ? markOcclusions(features, ff, lows, o.occlusion) : features;
-  return { type: "FeatureCollection", features: out, properties: { params: o, lows } };
+  // Warmluftzungen bevorzugt in 700 hPa (Isentropenanalyse 700 hPa, K4).
+  const L7 = field.levels?.[700];
+  const ridges = o.occlusions && L7
+    ? ridgeLines(thetaFields({ nx: g.nx, ny: g.ny, T: L7.T, q: L7.q, pressure: 700 }).thW, g, o.occlusion) : null;
+  const out = o.occlusions && field.sfc ? markOcclusions(features, ff, lows, o.occlusion, ridges) : features;
+  return { type: "FeatureCollection", features: out, properties: { params: o, lows, ridges700: ridges } };
 }
 
 // Abstand entlang der Linie [km] je Stützpunkt.

@@ -81,6 +81,7 @@
     <span>Wind kalt/warm m/s</span><input id="windMin" type="number" step="0.5">
   </div>
   <label class="chk"><input id="inactive" type="checkbox"> Linien ohne Wetter zeigen (grau)</label>
+  <label class="chk"><input id="ridges" type="checkbox"> Warmluftzungen 700 hPa (θw-Rücken)</label>
   <label class="chk"><input id="cand" type="checkbox"> Kandidaten ohne Masken (grau)</label>
   <div class="row"><button id="export">GeoJSON speichern</button> <span id="nFronts"></span></div>
 
@@ -440,6 +441,9 @@ function drawFronts() {
       }
     }
   }
+  if ($("ridges").checked && fronts?.properties?.ridges700) {
+    L.polyline(fronts.properties.ridges700, { pane: "lines", color: "#8e24aa", weight: 1.5, dashArray: "1 5", interactive: false }).addTo(frontLayer);
+  }
   // Tiefzentren (Bodendruck) als rotes T mit Kerndruck.
   if ($("fronts").checked) {
     for (const l of fronts?.properties?.lows || []) {
@@ -455,7 +459,8 @@ function drawFronts() {
 
 function exportGeoJSON() {
   if (!fronts) return;
-  const out = { ...fronts, features: fronts.features.filter((f) => f.properties.activity_class !== "none") };
+  const { ridges700, ...props } = fronts.properties;
+  const out = { ...fronts, properties: props, features: fronts.features.filter((f) => f.properties.activity_class !== "none") };
   const blob = new Blob([JSON.stringify(out, null, 1)], { type: "application/geo+json" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
@@ -496,6 +501,7 @@ for (const id of ["k1", "k2", "minLen", "windMin"]) $(id).onchange = () => runDe
 $("fronts").onchange = drawFronts;
 $("cand").onchange = drawFronts;
 $("inactive").onchange = drawFronts;
+$("ridges").onchange = drawFronts;
 $("export").onclick = exportGeoJSON;
 $("sigma").oninput = recompute;
 $("fieldSel").onchange = drawField;
