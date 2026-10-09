@@ -22,8 +22,48 @@ Debug-Seite und Testfälle.
 - θe nach Bolton (1980). θw wird exakt als Umkehrung von θe bei
   Sättigung in 1000 hPa berechnet (s. `src/fronts/thermo.js`).
 
-Noch offen: TFP, Frontlinien, Masken, Klassifikation, GeoJSON-Ausgabe und
-der Vergleich mit den Analysekarten von DWD, GeoSphere und KNMI.
+## Detektion (`detectFronts`, Stand 2026-10-09)
+
+`src/fronts/detect.js` arbeitet in diesen Schritten:
+
+1. θw berechnen und maskieren, wo die Fläche unter Grund liegt oder weniger
+   als 25 hPa darüber.
+2. θw mit einer Gauß-Glättung von σ = 120 km glätten.
+3. TFP = −∇|∇θw|·n̂ berechnen.
+4. Die Frontlinie ist die Nulllinie von ∇TFP·n̂, also die warme Kante der
+   Frontalzone.
+5. Masken anwenden: K1 verlangt TFP > 0,1 K/(100 km)², K2 verlangt
+   |∇θw| + m/√2·TFP > 0,8 K/100 km.
+6. Linien verketten und alles unter 400 km verwerfen.
+7. Den Typ aus dem Querwind in 850 hPa bestimmen: über +2 m/s Kaltfront,
+   unter −2 m/s Warmfront, dazwischen quasistationär. Eine Linie, deren Typ
+   wechselt, wird in Stücke zerlegt.
+
+Die Ausgabe ist eine GeoJSON-FeatureCollection. Jedes Feature trägt
+`front_type`, `level`, `valid_time`, `length_km`, `gradient`, `tfp`,
+`cross_wind` sowie `warm_side` und `motion_side` für die Symbole.
+
+**Erste Kalibrierung** am Fall 2026-10-09 00/06 UTC gegen die Karten von
+DWD, KNMI und GeoSphere. Die Startschwellen 0,3/1,5 fanden nur zwei Fronten.
+Mit 0,1/0,8 werden gefunden:
+
+- die Warmfront Schottland–England–Kanal bzw. Nordsee–Belgien–Bretagne,
+- die atlantische Kaltfront,
+- die Warmfront über Finnland,
+- die Kaltfront Ostsee–Polen–Alpen.
+
+Es gibt aber auch **Fehltreffer ohne Wetter** über Nordafrika, Südspanien
+und dem östlichen Mittelmeer. Okklusionen erscheinen als Warmfront.
+Die Fronten des Ligurientiefs fehlen.
+
+Noch offen:
+
+- **Wetter- und Dynamikkriterium.** Eine Front ist eine Luftmassengrenze
+  *mit Wetter*, deshalb sollen keine Linien quer durch Hochs laufen.
+  Geplant sind Niederschlag, Bewölkung, w in 700 hPa, Konvergenz und
+  Bodendruckrinne, als Attribut `activity` je Segment.
+- Schließen von Lücken zwischen Linienstücken.
+- Okklusionen.
 
 ## Testfall sichern
 
@@ -45,8 +85,12 @@ python3 -m http.server 8765    # im Repo-Root
 # http://127.0.0.1:8765/tools/fronts/debug.html?fixture=fixtures/icon_eu_850_2026100900_fc06.json
 ```
 
-Die Seite zeigt θe, θw, T oder |∇θw| als Schattierung, wahlweise mit
-Isolinien, Windpfeilen und Orographiemaske. Glättung σ und Deckkraft lassen
+Die Seite zeigt θe, θw, T, |∇θw| oder TFP als Schattierung, wahlweise mit
+Isolinien, Windpfeilen und Orographiemaske. Darüber liegen die detektierten
+Fronten mit den üblichen Symbolen. Die Schwellen K1, K2, Mindestlänge und
+Windschwelle sind live einstellbar. Optional lassen sich alle Kandidaten
+ohne Masken in Grau einblenden. Das Ergebnis kann als GeoJSON gespeichert
+werden. Glättung σ und Deckkraft lassen
 sich per Schieberegler einstellen, beim Überfahren mit der Maus erscheinen
 die Punktwerte. Als Hintergrund dienen Küsten und Ländergrenzen (Natural
 Earth über `world-atlas`), keine Kachelkarte und damit kein API-Key. Leaflet,

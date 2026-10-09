@@ -22,6 +22,8 @@
   #legend canvas { width: 100%; height: 14px; display: block; }
   #legend .ticks { display: flex; justify-content: space-between; font-size: 11px; }
   .chk { font-weight: 400 !important; }
+  .params { display: grid; grid-template-columns: 1fr 5em; gap: 3px 6px; align-items: center; margin: 4px 0 4px 20px; }
+  .params input { width: 100%; box-sizing: border-box; }
   @media (max-width: 700px) {
     #panel { inset: auto 0 0 0; width: auto; height: 45%; border-right: 0; border-top: 1px solid #ccc; }
     #map { inset: 0 0 45% 0; }
@@ -40,10 +42,11 @@
     <option value="thW">θw [°C]</option>
     <option value="T">T [°C]</option>
     <option value="grad">|∇θw| [K/100 km]</option>
+    <option value="tfp">TFP [K/(100 km)²]</option>
   </select>
 
   <label for="sigma">Glättung σ: <span id="sigmaVal"></span> km</label>
-  <div class="row"><input id="sigma" type="range" min="0" max="300" step="10" value="0"></div>
+  <div class="row"><input id="sigma" type="range" min="0" max="300" step="10" value="120"></div>
 
   <label for="isoSel">Isolinien</label>
   <div class="row">
@@ -57,6 +60,17 @@
 
   <label class="chk"><input id="wind" type="checkbox"> Windpfeile 850 hPa</label>
   <label class="chk"><input id="mask" type="checkbox" checked> Maske „unter Grund“</label>
+
+  <label class="chk"><input id="fronts" type="checkbox" checked> <b>Fronten (TFP)</b></label>
+  <div class="params">
+    <span>K1 TFP</span><input id="k1" type="number" step="0.05">
+    <span>K2 |∇θw|</span><input id="k2" type="number" step="0.1">
+    <span>min. Länge km</span><input id="minLen" type="number" step="50">
+    <span>Wind kalt/warm m/s</span><input id="windMin" type="number" step="0.5">
+  </div>
+  <label class="chk"><input id="cand" type="checkbox"> Kandidaten ohne Masken (grau)</label>
+  <div class="row"><button id="export">GeoJSON speichern</button> <span id="nFronts"></span></div>
+
   <label for="opacity">Deckkraft</label>
   <div class="row"><input id="opacity" type="range" min="0" max="1" step="0.05" value="0.75"></div>
 
@@ -68,11 +82,14 @@
 
 <script type="module">
 import { thetaFields } from "../../src/fronts/thermo.js";
-import { gaussianSmooth, gradient, isolineSegments } from "../../src/fronts/grid.js";
+import { gaussianSmooth, gradient, isolineSegments, chainSegments } from "../../src/fronts/grid.js";
+import { detectFronts, frontFields, DETECT_DEFAULTS } from "../../src/fronts/detect.js";
 
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
-$("fixture").value = params.get("fixture") || "fixtures/icon_eu_850_2026100900_fc06.json";
+$("fixture").value = params.get("fixture") || "fixtures/icon_eu_850_2026100900_an.json";
+$("k1").value = DETECT_DEFAULTS.k1; $("k2").value = DETECT_DEFAULTS.k2;
+$("minLen").value = DETECT_DEFAULTS.minLengthKm; $("windMin").value = DETECT_DEFAULTS.windMin;
 
 // Farbskala angelehnt an die gängigen θe-Karten (violett kalt -> rot warm).
 const STOPS = ["#6a1b9a", "#d81bd0", "#2a2ad0", "#3a78ff", "#6cc8ff", "#3fd0b0",
@@ -83,6 +100,7 @@ const SCALES = {
   thW: { min: -12, max: 24, step: 1, stops: STOPS },
   T: { min: -24, max: 24, step: 2, stops: STOPS },
   grad: { min: 0, max: 6, step: 0.5, stops: GRAD_STOPS },
+  tfp: { min: -1, max: 1, step: 0.1, stops: ["#2166ac", "#92c5de", "#f7f7f7", "#f4a582", "#b2182b"] },
 };
 const hex = (h) => [1, 3, 5].map((o) => parseInt(h.slice(o, o + 2), 16));
 function colorAt(scale, value) {
@@ -113,6 +131,7 @@ fetch("https://cdn.jsdelivr.net/npm/world-atlas@2.0.2/countries-50m.json")
   .catch((err) => console.warn("Grenzen nicht geladen:", err));
 
 let F = null, G = null, TH = null, overlay = null, isoLayer = null, windLayer = null, derived = null;
+let frontLayer = null, fronts = null, FF = null;
 
 async function load() {
   const url = $("fixture").value;
@@ -143,7 +162,9 @@ function recompute() {
     thE: thE.map((x) => x - 273.15), thW: thW.map((x) => x - 273.15), T: T.map((x) => x - 273.15),
     grad: gradient(thW, G).mag,
   };
-  drawField(); drawIsolines(); drawWind();
+  runDetection(false);
+  derived.tfp = FF.TFP;
+  drawField(); drawIsolines(); drawWind(); drawFronts();
 }
 
 // Raster in Web-Mercator auflösen, damit das Bild-Overlay lagerichtig ist
@@ -229,6 +250,91 @@ function drawWind() {
   windLayer.addTo(map);
 }
 
+function detectOpts() {
+  return {
+    sigmaKm: Number($("sigma").value), k1: Number($("k1").value), k2: Number($("k2").value),
+    minLengthKm: Number($("minLen").value), windMin: Number($("windMin").value),
+  };
+}
+
+function runDetection(redraw = true) {
+  if (!F) return;
+  const o = detectOpts();
+  FF = frontFields(F, o);
+  fronts = detectFronts(F, o);
+  $("nFronts").textContent = `${fronts.features.length} Linien`;
+  if (redraw) { derived.tfp = FF.TFP; drawFronts(); if ($("fieldSel").value === "tfp") drawField(); }
+}
+
+// Frontsymbole in km-Geometrie um einen Punkt (lat, lon): t = Tangente,
+// nrm = Normale zur Symbolseite, beide als Einheitsvektoren (Ost, Nord).
+const KM_PER_DEG = 111.2;
+const offset = (p, dxKm, dyKm) => [p[0] + dyKm / KM_PER_DEG, p[1] + dxKm / (KM_PER_DEG * Math.cos((p[0] * Math.PI) / 180))];
+function triangle(p, t, nrm, size) {
+  return [offset(p, -t[0] * size * 0.6, -t[1] * size * 0.6), offset(p, t[0] * size * 0.6, t[1] * size * 0.6), offset(p, nrm[0] * size, nrm[1] * size)];
+}
+function semicircle(p, t, nrm, size) {
+  const r = size * 0.55, pts = [];
+  for (let a = 0; a <= Math.PI + 1e-9; a += Math.PI / 10) {
+    pts.push(offset(p, r * (Math.cos(a) * t[0] + Math.sin(a) * nrm[0]), r * (Math.cos(a) * t[1] + Math.sin(a) * nrm[1])));
+  }
+  return pts;
+}
+
+function drawFronts() {
+  frontLayer?.remove(); frontLayer = L.layerGroup();
+  if ($("cand").checked && FF) {
+    const segs = chainSegments(isolineSegments(FF.F, FF.g, 0));
+    L.polyline(segs, { pane: "lines", color: "#777", weight: 0.8, interactive: false }).addTo(frontLayer);
+  }
+  if ($("fronts").checked && fronts) {
+    const RED = "#d7191c", BLUE = "#1f4fd8";
+    for (const f of fronts.features) {
+      const pr = f.properties, ll = f.geometry.coordinates.map(([lo, la]) => [la, lo]);
+      const tip = `${pr.front_type}  ${pr.length_km} km<br>|∇θw| ${pr.gradient}  TFP ${pr.tfp}  Querwind ${pr.cross_wind} m/s`;
+      const base = { pane: "lines", weight: 3 };
+      if (pr.front_type === "stationary") {
+        L.polyline(ll, { ...base, color: RED }).bindTooltip(tip).addTo(frontLayer);
+        L.polyline(ll, { ...base, color: BLUE, dashArray: "14 14", interactive: false }).addTo(frontLayer);
+      } else {
+        L.polyline(ll, { ...base, color: pr.front_type === "cold" ? BLUE : RED }).bindTooltip(tip).addTo(frontLayer);
+      }
+      // Symbole alle ~250 km, Seite aus motion_side bzw. warm_side.
+      const sideSign = (side) => (side === "left" ? 1 : -1);
+      let acc = 125, n = 0;
+      for (let m = 1; m < ll.length; m++) {
+        const a = ll[m - 1], b = ll[m], c = Math.cos((a[0] * Math.PI) / 180);
+        const dx = (b[1] - a[1]) * KM_PER_DEG * c, dy = (b[0] - a[0]) * KM_PER_DEG, d = Math.hypot(dx, dy);
+        if (!(d > 0)) continue;
+        const t = [dx / d, dy / d], left = [-t[1], t[0]];
+        for (; acc <= d; acc += 250, n++) {
+          const p = [a[0] + (b[0] - a[0]) * (acc / d), a[1] + (b[1] - a[1]) * (acc / d)];
+          let kind = pr.front_type, side = pr.motion_side;
+          if (kind === "stationary") {
+            kind = n % 2 ? "warm" : "cold";
+            side = kind === "cold" ? pr.warm_side : (pr.warm_side === "left" ? "right" : "left");
+          }
+          const s = sideSign(side), nrm = [left[0] * s, left[1] * s];
+          const poly = kind === "cold" ? triangle(p, t, nrm, 55) : semicircle(p, t, nrm, 55);
+          L.polygon(poly, { pane: "lines", stroke: false, fillColor: kind === "cold" ? BLUE : RED, fillOpacity: 1, interactive: false }).addTo(frontLayer);
+        }
+        acc -= d;
+      }
+    }
+  }
+  frontLayer.addTo(map);
+}
+
+function exportGeoJSON() {
+  if (!fronts) return;
+  const blob = new Blob([JSON.stringify(fronts, null, 1)], { type: "application/geo+json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `fronts_${F.model}_${F.pressure}_${F.validTime.replace(/[-:]/g, "").slice(0, 11)}.geojson`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
 map.on("mousemove", (e) => {
   if (!F) return;
   const { nx, ny, lat0, lon0, res } = G;
@@ -243,12 +349,17 @@ map.on("mousemove", (e) => {
     `θe     ${f1(derived.thE[k])} °C`,
     `θw     ${f1(derived.thW[k])} °C`,
     `|∇θw|  ${f1(derived.grad[k])} K/100 km`,
+    `TFP    ${Number.isFinite(FF?.TFP[k]) ? FF.TFP[k].toFixed(2) : "–"}  Maske ${FF?.mask[k] ? "ja" : "nein"}`,
     `Wind   ${Number.isFinite(ff) ? `${dd.toFixed(0)}° / ${(ff * 1.94384).toFixed(0)} kt` : "–"}`,
     `p_sfc  ${f1(F.psfc[k])} hPa${F.below[k] ? "  (unter Grund)" : ""}`,
   ].join("\n");
 });
 
 $("load").onclick = load;
+for (const id of ["k1", "k2", "minLen", "windMin"]) $(id).onchange = () => runDetection();
+$("fronts").onchange = drawFronts;
+$("cand").onchange = drawFronts;
+$("export").onclick = exportGeoJSON;
 $("sigma").oninput = recompute;
 $("fieldSel").onchange = drawField;
 $("mask").onchange = drawField;

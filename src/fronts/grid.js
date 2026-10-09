@@ -112,3 +112,64 @@ export function isolineSegments(field, g, level) {
   }
   return segs;
 }
+
+/**
+ * Lose Segmente (aus `isolineSegments`) zu Polylinien verketten. Ein innerer
+ * Kreuzungspunkt wird von beiden Nachbarzellen aus denselben Eckwerten in
+ * derselben Richtung berechnet -> bitgleich, ein String-Schlüssel reicht.
+ */
+export function chainSegments(segs) {
+  const key = (p) => `${p[0]}|${p[1]}`;
+  const ends = new Map();
+  segs.forEach((s, si) => {
+    for (const e of [0, 1]) {
+      const k = key(s[e]);
+      if (!ends.has(k)) ends.set(k, []);
+      ends.get(k).push({ si, e });
+    }
+  });
+  const used = new Uint8Array(segs.length);
+  const next = (pt) => (ends.get(key(pt)) || []).find(({ si }) => !used[si]);
+  const lines = [];
+  for (let s0 = 0; s0 < segs.length; s0++) {
+    if (used[s0]) continue;
+    used[s0] = 1;
+    const line = [segs[s0][0], segs[s0][1]];
+    for (const forward of [true, false]) {
+      for (;;) {
+        const tip = forward ? line[line.length - 1] : line[0];
+        const n = next(tip);
+        if (!n) break;
+        used[n.si] = 1;
+        const other = segs[n.si][1 - n.e];
+        if (forward) line.push(other); else line.unshift(other);
+      }
+    }
+    lines.push(line);
+  }
+  return lines;
+}
+
+/** Bilineare Interpolation an [lat, lon]; NaN außerhalb oder bei NaN-Ecken. */
+export function sampleBilinear(field, g, lat, lon) {
+  const x = (lon - g.lon0) / g.res, y = (lat - g.lat0) / g.res;
+  const i = Math.floor(x), j = Math.floor(y);
+  if (i < 0 || j < 0 || i >= g.nx - 1 || j >= g.ny - 1) return NaN;
+  const fx = x - i, fy = y - j, k = j * g.nx + i;
+  return (field[k] * (1 - fx) + field[k + 1] * fx) * (1 - fy)
+    + (field[k + g.nx] * (1 - fx) + field[k + g.nx + 1] * fx) * fy;
+}
+
+/** Großkreisabstand in km zwischen [lat, lon]-Punkten. */
+export function distKm(a, b) {
+  const p1 = a[0] * DEG, p2 = b[0] * DEG;
+  const h = Math.sin((p2 - p1) / 2) ** 2 + Math.cos(p1) * Math.cos(p2) * Math.sin(((b[1] - a[1]) * DEG) / 2) ** 2;
+  return 2 * R_KM * Math.asin(Math.sqrt(h));
+}
+
+/** Länge einer Polylinie aus [lat, lon]-Punkten in km. */
+export function lineLengthKm(line) {
+  let s = 0;
+  for (let m = 1; m < line.length; m++) s += distKm(line[m - 1], line[m]);
+  return s;
+}
