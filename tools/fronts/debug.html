@@ -80,6 +80,7 @@
     <span>min. Länge km</span><input id="minLen" type="number" step="50">
     <span>Wind kalt/warm m/s</span><input id="windMin" type="number" step="0.5">
   </div>
+  <label class="chk"><input id="inactive" type="checkbox"> Linien ohne Wetter zeigen (grau)</label>
   <label class="chk"><input id="cand" type="checkbox"> Kandidaten ohne Masken (grau)</label>
   <div class="row"><button id="export">GeoJSON speichern</button> <span id="nFronts"></span></div>
 
@@ -362,8 +363,13 @@ function runDetection(redraw = true) {
   if (!F) return;
   const o = detectOpts();
   FF = frontFields(F, o);
-  fronts = detectFronts(F, o);
-  $("nFronts").textContent = `${fronts.features.length} Linien`;
+  const n = Number($("stepSel").value);
+  const prev = n > 0 && CASE.stepH === 3 ? fieldAt(CASE, n - 1, F.pressure) : undefined;
+  fronts = detectFronts(F, { ...o, prev, keepInactive: true });
+  const cnt = (c) => fronts.features.filter((f) => f.properties.activity_class === c).length;
+  $("nFronts").textContent = fronts.features[0]?.properties.activity_class != null
+    ? `${cnt("active")} aktiv, ${cnt("weak")} schwach, ${cnt("none")} ohne Wetter`
+    : `${fronts.features.length} Linien (ohne Bewertung)`;
   if (redraw) { derived.tfp = FF.TFP; drawFronts(); if ($("fieldSel").value === "tfp") drawField(); }
 }
 
@@ -392,8 +398,17 @@ function drawFronts() {
     const RED = "#d7191c", BLUE = "#1f4fd8";
     for (const f of fronts.features) {
       const pr = f.properties, ll = f.geometry.coordinates.map(([lo, la]) => [la, lo]);
-      const tip = `${pr.front_type}  ${pr.length_km} km<br>|∇θw| ${pr.gradient}  TFP ${pr.tfp}  Querwind ${pr.cross_wind} m/s`;
-      const base = { pane: "lines", weight: 3 };
+      const cr = pr.criteria;
+      const tip = `${pr.front_type}  ${pr.length_km} km` + (pr.activity_class ? `  <b>${pr.activity_class}</b> (Aktivität ${pr.activity})` : "")
+        + `<br>|∇θw| ${pr.gradient}  TFP ${pr.tfp}  Querwind ${pr.cross_wind} m/s`
+        + (cr ? `<br>ΔT850 ${cr.contrast_k} K  Rinne ${cr.trough}  Konv. ${cr.convergence}  Vort. ${cr.vorticity}`
+          + `<br>Tendenzsprung ${cr.tendency_jump} hPa/3h  RR ${cr.precip} mm/h  tiefe Wolken ${cr.cloud_low} %  w700 ${cr.w700} cm/s`
+          + `<br>Bodenfront ~${cr.sfc_offset_km} km zur warmen Seite` : "");
+      if (pr.activity_class === "none") {
+        if ($("inactive").checked) L.polyline(ll, { pane: "lines", color: "#888", weight: 2, dashArray: "2 6" }).bindTooltip(tip).addTo(frontLayer);
+        continue;
+      }
+      const base = { pane: "lines", weight: 3, ...(pr.activity_class === "weak" ? { dashArray: "10 8" } : {}) };
       if (pr.front_type === "stationary") {
         L.polyline(ll, { ...base, color: RED }).bindTooltip(tip).addTo(frontLayer);
         L.polyline(ll, { ...base, color: BLUE, dashArray: "14 14", interactive: false }).addTo(frontLayer);
@@ -428,7 +443,8 @@ function drawFronts() {
 
 function exportGeoJSON() {
   if (!fronts) return;
-  const blob = new Blob([JSON.stringify(fronts, null, 1)], { type: "application/geo+json" });
+  const out = { ...fronts, features: fronts.features.filter((f) => f.properties.activity_class !== "none") };
+  const blob = new Blob([JSON.stringify(out, null, 1)], { type: "application/geo+json" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
   a.download = `fronts_${F.model}_${F.pressure}_${F.validTime.replace(/[-:]/g, "").slice(0, 11)}.geojson`;
@@ -467,6 +483,7 @@ $("wind10").onchange = drawWind10;
 for (const id of ["k1", "k2", "minLen", "windMin"]) $(id).onchange = () => runDetection();
 $("fronts").onchange = drawFronts;
 $("cand").onchange = drawFronts;
+$("inactive").onchange = drawFronts;
 $("export").onclick = exportGeoJSON;
 $("sigma").oninput = recompute;
 $("fieldSel").onchange = drawField;

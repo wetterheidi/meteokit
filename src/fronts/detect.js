@@ -27,8 +27,13 @@
  * Entlang einer Linie kann der Typ wechseln (z. B. Kaltfront, die in eine
  * Warmfront übergeht); die Linie wird dann in typreine Stücke geteilt.
  *
- * Bewusst noch NICHT enthalten: Okklusionen und das Wetter-/Dynamik-
- * Kriterium („Front = Luftmassengrenze mit Wetter“) -- folgt als Attribut.
+ * Wetter-/Dynamikkriterium („Front = Luftmassengrenze mit Wetter“): je
+ * Stützpunkt in activity.js bewertet, entlang der Linie geglättet und in
+ * Klassen aktiv / schwach / keine Front geteilt. Stücke ohne Front fallen
+ * weg, außer mit `keepInactive: true` (Debug). Braucht Oberflächenfelder
+ * (Fixture v2) und für die Drucktendenz den Vortermin als `prev`.
+ *
+ * Bewusst noch NICHT enthalten: Okklusionen.
  */
 
 import { thetaFields } from "./thermo.js";
@@ -36,6 +41,7 @@ import {
   gaussianSmooth, gradient, isolineSegments, chainSegments,
   sampleBilinear, lineLengthKm, distKm,
 } from "./grid.js";
+import { activityFields, assessPoints, activityClass } from "./activity.js";
 
 export const DETECT_DEFAULTS = {
   sigmaKm: 120,       // Gauß-Glättung von θw (und Wind)
@@ -50,7 +56,9 @@ export const DETECT_DEFAULTS = {
   sfcMarginHpa: 25,   // Fläche weniger als so tief über Grund -> maskiert
   windMin: 2,         // m/s, Schwelle Kalt-/Warmfront vs. quasistationär
   windSmoothKm: 300,  // Glättung von c entlang der Linie (laufendes Mittel)
-  minPieceKm: 250,    // kürzere Typ-Stücke gehen im Nachbarn auf
+  minPieceKm: 250,    // kürzere Typ-/Aktivitäts-Stücke gehen im Nachbarn auf
+  activitySmoothKm: 300, // Glättung der Aktivität entlang der Linie
+  activity: {},       // überschreibt ACTIVITY_DEFAULTS (activity.js)
 };
 
 /**
@@ -94,77 +102,91 @@ export function frontFields(field, opts = {}) {
 /**
  * Fronten als GeoJSON-FeatureCollection (Koordinaten [lon, lat]).
  * @param {object} field  `fetchPlaneField`-Ergebnis bzw. Fixture.
- * @param {object} [opts] Überschreibt `DETECT_DEFAULTS`.
+ * @param {object} [opts] Überschreibt `DETECT_DEFAULTS`, dazu:
+ * @param {object} [opts.prev]          Vortermin (3 h früher, gleiche Form) für die Drucktendenz.
+ * @param {boolean} [opts.keepInactive] Auch Stücke ohne Wetter ausgeben (activity_class "none").
  */
 export function detectFronts(field, opts = {}) {
-  const o = { ...DETECT_DEFAULTS, ...opts };
+  const { prev, keepInactive = false, ...rest } = opts;
+  const o = { ...DETECT_DEFAULTS, ...rest };
   const ff = frontFields(field, o);
   const { g, F, mask } = ff;
   const Fm = Float32Array.from(F, (x, k) => (mask[k] ? x : NaN));
   const lines = chainSegments(isolineSegments(Fm, g, 0))
     .filter((line) => lineLengthKm(line) >= o.minLengthKm);
+  const af = activityFields(field, prev, g);
 
   const features = [];
   for (const line of lines) {
-    for (const piece of classify(line, ff, o)) {
-      features.push({
-        type: "Feature",
-        geometry: { type: "LineString", coordinates: piece.pts.map(([la, lo]) => [+lo.toFixed(3), +la.toFixed(3)]) },
-        properties: {
-          front_type: piece.type,
-          level: field.pressure,
-          valid_time: field.validTime,
-          length_km: Math.round(lineLengthKm(piece.pts)),
-          gradient: round2(mean(piece.pts.map(([la, lo]) => sampleBilinear(ff.G, g, la, lo)))),
-          tfp: round2(mean(piece.pts.map(([la, lo]) => sampleBilinear(ff.TFP, g, la, lo)))),
-          cross_wind: round2(mean(piece.c)),
-          // Seite (in Linienrichtung), auf der die warme Luft liegt, und die
-          // Zugrichtung der Front -- für die Symbole (Dreiecke/Halbkreise).
-          warm_side: piece.warmSide,
-          motion_side: piece.type === "cold" ? piece.warmSide
-            : piece.type === "warm" ? flip(piece.warmSide) : null,
-        },
-      });
+    for (const typed of classify(line, ff, o)) {
+      for (const piece of byActivity(typed, ff, af, o)) {
+        if (!keepInactive && piece.activityClass === "none") continue;
+        const crit = (key, d = 2) => round(mean(piece.assess.map((x) => x[key])), d);
+        features.push({
+          type: "Feature",
+          geometry: { type: "LineString", coordinates: piece.pts.map(([la, lo]) => [+lo.toFixed(3), +la.toFixed(3)]) },
+          properties: {
+            front_type: piece.type,
+            level: field.pressure,
+            valid_time: field.validTime,
+            length_km: Math.round(lineLengthKm(piece.pts)),
+            gradient: round(mean(piece.pts.map(([la, lo]) => sampleBilinear(ff.G, g, la, lo))), 2),
+            tfp: round(mean(piece.pts.map(([la, lo]) => sampleBilinear(ff.TFP, g, la, lo))), 2),
+            cross_wind: round(mean(piece.c), 2),
+            // Wetter-/Dynamikkriterium (activity.js); null ohne Oberflächenfelder.
+            activity: af ? crit("activity") : null,
+            activity_class: af ? piece.activityClass : null,
+            criteria: af ? {
+              contrast_k: crit("contrast", 1), trough: crit("trough"), convergence: crit("conv"),
+              vorticity: crit("vort"), tendency_jump: crit("tendJump"), precip: crit("precip"),
+              cloud_low: crit("cloudLow", 0), w700: crit("w700", 1), sfc_offset_km: crit("sfcOffsetKm", 0),
+            } : null,
+            // Seite (in Linienrichtung), auf der die warme Luft liegt, und die
+            // Zugrichtung der Front -- für die Symbole (Dreiecke/Halbkreise).
+            warm_side: piece.warmSide,
+            motion_side: piece.type === "cold" ? piece.warmSide
+              : piece.type === "warm" ? flip(piece.warmSide) : null,
+          },
+        });
+      }
     }
   }
   return { type: "FeatureCollection", features, properties: { params: o } };
 }
 
-// Typ je Stützpunkt aus dem entlang der Linie geglätteten Querwind, dann in
-// typreine Stücke teilen; zu kurze Stücke gehen im längeren Nachbarn auf.
-function classify(line, ff, o) {
-  const { g } = ff;
-  const at = (f, p) => sampleBilinear(f, g, p[0], p[1]);
-  const cRaw = line.map((p) => {
-    const nx = at(ff.nx, p), ny = at(ff.ny, p), len = Math.hypot(nx, ny);
-    return (at(ff.u, p) * nx + at(ff.v, p) * ny) / len;
-  });
-  // Laufendes Mittel über windSmoothKm (Abstand entlang der Linie).
+// Abstand entlang der Linie [km] je Stützpunkt.
+function cumDist(line) {
   const s = [0];
   for (let m = 1; m < line.length; m++) s.push(s[m - 1] + distKm(line[m - 1], line[m]));
-  const c = cRaw.map((_, m) => {
+  return s;
+}
+
+// Laufendes Mittel über widthKm entlang der Linie (NaN werden übergangen).
+function runningMean(values, s, widthKm) {
+  return values.map((_, m) => {
     let sum = 0, cnt = 0;
-    for (let q = 0; q < line.length; q++) {
-      if (Math.abs(s[q] - s[m]) <= o.windSmoothKm / 2 && Number.isFinite(cRaw[q])) { sum += cRaw[q]; cnt++; }
+    for (let q = 0; q < values.length; q++) {
+      if (Math.abs(s[q] - s[m]) <= widthKm / 2 && Number.isFinite(values[q])) { sum += values[q]; cnt++; }
     }
     return cnt ? sum / cnt : NaN;
   });
-  const typeOf = (x) => (x > o.windMin ? "cold" : x < -o.windMin ? "warm" : "stationary");
+}
 
+// Linie nach Label je Stützpunkt in Stücke teilen. Stücke schließen
+// lückenlos aneinander an (gemeinsamer Punkt); zu kurze gehen im längeren
+// Nachbarn auf, gleichartige Nachbarn verschmelzen.
+function splitRuns(labels, s, minPieceKm) {
   let pieces = [];
-  for (let m = 0; m < line.length; m++) {
-    const t = typeOf(c[m]);
+  for (let m = 0; m < labels.length; m++) {
     const last = pieces[pieces.length - 1];
-    if (last && last.type === t) { last.idx.push(m); continue; }
-    // Neues Stück beginnt am letzten Punkt des vorigen -> lückenlos.
-    pieces.push({ type: t, idx: last ? [last.idx[last.idx.length - 1], m] : [m] });
+    if (last && last.label === labels[m]) { last.idx.push(m); continue; }
+    pieces.push({ label: labels[m], idx: last ? [last.idx[last.idx.length - 1], m] : [m] });
   }
   const lenOf = (p) => s[p.idx[p.idx.length - 1]] - s[p.idx[0]];
-  for (let changed = true; changed && pieces.length > 1;) {
-    changed = false;
+  while (pieces.length > 1) {
     let iMin = -1;
     for (let q = 0; q < pieces.length; q++) {
-      if (lenOf(pieces[q]) < o.minPieceKm && (iMin < 0 || lenOf(pieces[q]) < lenOf(pieces[iMin]))) iMin = q;
+      if (lenOf(pieces[q]) < minPieceKm && (iMin < 0 || lenOf(pieces[q]) < lenOf(pieces[iMin]))) iMin = q;
     }
     if (iMin < 0) break;
     const prev = pieces[iMin - 1], next = pieces[iMin + 1];
@@ -172,18 +194,47 @@ function classify(line, ff, o) {
     if (into === prev) prev.idx.push(...pieces[iMin].idx.slice(1));
     else next.idx.unshift(...pieces[iMin].idx.slice(0, -1));
     pieces.splice(iMin, 1);
-    // Gleichartige Nachbarn verschmelzen.
     pieces = pieces.reduce((acc, p) => {
       const l = acc[acc.length - 1];
-      if (l && l.type === p.type) l.idx.push(...p.idx.slice(1)); else acc.push(p);
+      if (l && l.label === p.label) l.idx.push(...p.idx.slice(1)); else acc.push(p);
       return acc;
     }, []);
-    changed = true;
   }
+  return pieces;
+}
 
-  return pieces.map((p) => {
+// Typ je Stützpunkt aus dem entlang der Linie geglätteten Querwind, dann in
+// typreine Stücke teilen.
+function classify(line, ff, o) {
+  const { g } = ff;
+  const at = (f, p) => sampleBilinear(f, g, p[0], p[1]);
+  const cRaw = line.map((p) => {
+    const nx = at(ff.nx, p), ny = at(ff.ny, p), len = Math.hypot(nx, ny);
+    return (at(ff.u, p) * nx + at(ff.v, p) * ny) / len;
+  });
+  const s = cumDist(line);
+  const c = runningMean(cRaw, s, o.windSmoothKm);
+  const typeOf = (x) => (x > o.windMin ? "cold" : x < -o.windMin ? "warm" : "stationary");
+  return splitRuns(c.map(typeOf), s, o.minPieceKm).map((p) => {
     const pts = p.idx.map((m) => line[m]);
-    return { type: p.type, pts, c: p.idx.map((m) => c[m]), warmSide: warmSide(pts, ff) };
+    return { type: p.label, pts, c: p.idx.map((m) => c[m]), warmSide: warmSide(pts, ff) };
+  });
+}
+
+// Typreines Stück nach Aktivitätsklasse weiter teilen (aktiv / schwach /
+// keine Front). Ohne Oberflächenfelder bleibt es ein Stück ohne Bewertung.
+function byActivity(piece, ff, af, o) {
+  if (!af) return [{ ...piece, assess: [], activityClass: null }];
+  const assess = assessPoints(piece.pts, piece.type, ff, af, o.activity);
+  const s = cumDist(piece.pts);
+  const act = runningMean(assess.map((x) => x.activity), s, o.activitySmoothKm);
+  assess.forEach((x, m) => { x.activity = act[m]; });
+  return splitRuns(act.map((a) => activityClass(a, o.activity)), s, o.minPieceKm).map((p) => {
+    const pts = p.idx.map((m) => piece.pts[m]);
+    return {
+      type: piece.type, pts, c: p.idx.map((m) => piece.c[m]), warmSide: piece.warmSide,
+      assess: p.idx.map((m) => assess[m]), activityClass: p.label,
+    };
   });
 }
 
@@ -203,4 +254,4 @@ function warmSide(pts, ff) {
 
 const flip = (side) => (side === "left" ? "right" : "left");
 const mean = (a) => { const f = a.filter(Number.isFinite); return f.length ? f.reduce((x, y) => x + y, 0) / f.length : NaN; };
-const round2 = (x) => (Number.isFinite(x) ? +x.toFixed(2) : null);
+const round = (x, d) => (Number.isFinite(x) ? +x.toFixed(d) : null);

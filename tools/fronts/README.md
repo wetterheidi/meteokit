@@ -52,21 +52,42 @@ Mit 0,1/0,8 werden gefunden:
 - die Warmfront über Finnland,
 - die Kaltfront Ostsee–Polen–Alpen.
 
-Es gibt aber auch **Fehltreffer ohne Wetter** über Nordafrika, Südspanien
-und dem östlichen Mittelmeer. Okklusionen erscheinen als Warmfront.
+Die TFP-Methode allein liefert aber auch **Fehltreffer ohne Wetter** über Nordafrika, Südspanien
+und dem östlichen Mittelmeer. Diese sortiert das Wetterkriterium aus (s. unten).
+Okklusionen erscheinen als Warmfront.
 Die Fronten des Ligurientiefs fehlen.
 
 Die synoptischen Kriterien aus den DWD-Kompendien und wie sie umgesetzt
 werden (Stand und Plan) stehen in [KRITERIEN.md](KRITERIEN.md).
 
+**Wetter- und Dynamikkriterium** (`src/fronts/activity.js`, Stand
+2026-10-09): Jeder Stützpunkt wird bewertet nach
+
+- T850-Kontrast,
+- Rinne im Bodendruck, die zugleich die Bodenposition auf der warmen Seite
+  liefert,
+- Konvergenz und Vorticity des ~10-m-Winds,
+- Sprung der 3-h-Tendenz,
+- Niederschlag, tiefen Wolken und w700.
+
+Daraus ergibt sich `activity = Kontrast · (½ Wetter + ½ Dynamik)`. Der Wert
+wird entlang der Linie geglättet. Die Linie wird dann in die Klassen
+`active`, `weak` und `none` geteilt. Stücke der Klasse `none` gibt
+`detectFronts` nur mit `keepInactive: true` aus. Die Drucktendenz braucht
+den Vortermin als `prev`. Ergebnis am Testfall: Alle Fehltreffer über
+Nordafrika und Iberien fallen weg, die Hauptfronten bleiben (Details in
+[KRITERIEN.md](KRITERIEN.md)).
+
 Noch offen:
 
-- **Wetter- und Dynamikkriterium.** Eine Front ist eine Luftmassengrenze
-  *mit Wetter*, deshalb sollen keine Linien quer durch Hochs laufen.
-  Geplant sind Niederschlag, Bewölkung, w in 700 hPa, Konvergenz und
-  Bodendruckrinne, als Attribut `activity` je Segment.
-- Schließen von Lücken zwischen Linienstücken.
-- Okklusionen.
+- **Okklusionen**: Tiefzentren, Warmluftzunge in θw bzw. in der
+  Schichtdicke, Okklusionspunkt.
+- Die Frontlinie auf die geschätzte Bodenposition verschieben (der Versatz
+  ist schon als `criteria.sfc_offset_km` verfügbar).
+- Den Typ aus der Verlagerung zwischen den Terminen bestimmen.
+- Lücken zwischen Linienstücken schließen.
+- Fronten des Ligurientiefs: zu wenig θw-Gradient in 850 hPa, das Gelände
+  ist maskiert.
 
 ## Testfälle (Fixtures)
 

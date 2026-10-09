@@ -185,16 +185,16 @@ Wetter.** Ein Gradientband allein ist noch keine Front.
 | Kriterium | Größe im Code | Stand |
 |---|---|---|
 | warme Kante der Zone | TFP-Linie, Masken K1/K2 | ✓ `detectFronts` |
-| Kontrast ≥ 4 K | Integral von \|∇θw\| quer zur Zone | geplant |
-| Rinne, zyklonale Krümmung | Krümmung von `pressure_msl` quer zur Linie | geplant |
-| Konvergenz, Windsprung | u10/v10 im Streifen | geplant |
-| Sprung der Tendenz | Δp(3 h) beidseits der Linie | geplant |
-| Wetter | Niederschlag, tiefe Bewölkung, w700 asymmetrisch | geplant |
-| keine Front unter Absinkinversion | w700 < 0, Spread 700 groß, antizyklonal | geplant |
+| Kontrast ≥ 4 K | T850 an der Linie minus 300 km kälterseitig, Rampe 2–4 K, als **Faktor** | ✓ `activity.js` |
+| Rinne, zyklonale Krümmung | ∂²p/∂n² des Bodendrucks, Maximum im Fenster zur warmen Seite = Bodenposition | ✓ |
+| Konvergenz, Windsprung | Konvergenz und Vorticity des ~10-m-Winds ±100 km um die Bodenposition | ✓ |
+| Sprung der Tendenz | Δp(3 h) 150 km hinter minus 150 km vor der Bodenposition | ✓ (braucht Vortermin) |
+| Wetter | max. Niederschlag oder tiefe Wolken × w700 zwischen 850-Linie und Bodenposition | ✓ |
+| keine Front unter Absinkinversion | indirekt: kein Wetter, keine Rinne → Aktivität ≈ 0 | ✓ indirekt |
 | Typ | Verlagerung zwischen Terminen, sonst geostrophischer Querwind | 850-hPa-Querwind ✓, Rest geplant |
-| Bodenposition | Rinne zur warmen Seite hin suchen | geplant |
+| Bodenposition | Rinne zur warmen Seite hin suchen | Versatz als `criteria.sfc_offset_km`, Linie selbst noch nicht verschoben |
 | Okklusion | Tiefzentren, θw-Rücken (700/850) bzw. Schichtdicke, Okklusionspunkt, isallobarisches Tief | geplant |
-| Darstellung schwacher Fronten | `activity` niedrig → gestrichelt | geplant |
+| Darstellung schwacher Fronten | `activity_class` active / weak (gestrichelt) / none (entfällt) | ✓ |
 
 **Schichtdicke 500/1000 hPa aus Modellleveln.** Die Schichtdicke ist das
 Hauptkriterium für Okklusionen. Sie lässt sich ohne Geopotential
@@ -204,3 +204,15 @@ beiden Druckflächen interpolierten Höhen über Grund. Die Geländehöhe hebt
 sich dabei weg. Wo 1000 hPa unter Grund liegt, muss extrapoliert werden.
 Dazu braucht es zusätzlich `pressure_level` etwa der Level 35–49
 (Stichprobe: Level 48 ≈ 530 hPa).
+
+**Aktivität, erste Kalibrierung** (Fall 2026-10-09, 21–09 UTC):
+
+- Alle Hauptfronten sind durchgehend `active` mit Aktivität 0,7–0,95. Sie
+  haben T850-Kontrast 4,4–6,5 K, Niederschlag 0,3–2 mm/h, Konvergenz
+  1,2–3 · 10⁻⁵ s⁻¹ und einen Tendenzsprung bis 2,5 hPa/3 h.
+- Alle Gradientbänder über Nordafrika, Iberien und dem östlichen
+  Mittelmeer bewertet die Aktivität mit 0–0,2, also `none`. Ihr
+  T850-Kontrast liegt bei −0,7 bis 2,7 K, sie sind reine Feuchtegrenzen.
+  Das 4-K-Kriterium trennt hier allein schon fast vollständig.
+- Warmfronten haben oft einen kleinen Tendenzsprung, das passt zum
+  Kompendium (hinter der Warmfront schwacher Fall).
