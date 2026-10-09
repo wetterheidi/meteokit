@@ -54,7 +54,6 @@ Mit 0,1/0,8 werden gefunden:
 
 Die TFP-Methode allein liefert aber auch **Fehltreffer ohne Wetter** über Nordafrika, Südspanien
 und dem östlichen Mittelmeer. Diese sortiert das Wetterkriterium aus (s. unten).
-Okklusionen erscheinen als Warmfront.
 Die Fronten des Ligurientiefs fehlen.
 
 Die synoptischen Kriterien aus den DWD-Kompendien und wie sie umgesetzt
@@ -78,10 +77,21 @@ den Vortermin als `prev`. Ergebnis am Testfall: Alle Fehltreffer über
 Nordafrika und Iberien fallen weg, die Hauptfronten bleiben (Details in
 [KRITERIEN.md](KRITERIEN.md)).
 
+**Okklusionen und Tiefs** (`src/fronts/occlusion.js`): `findLows` sucht
+Minima im geglätteten Bodendruck mit mindestens 3 hPa Tiefe gegenüber
+einem Ring von 500 km. Am Gebietsrand darf der Ring teilweise fehlen. Am
+Okklusionspunkt trifft das Ende einer Kalt- oder Warmfront (höchstens
+350 km entfernt) auf eine Front des anderen Typs. Dort wird der Ast, der
+vom Warmsektor wegzeigt, als `front_type: "occluded"` abgetrennt.
+`occlusion_character` gibt dabei an, ob er Kalt- oder Warmfrontcharakter
+hat. Die Okklusion endet 150 km vor dem Tiefkern. Die Tiefs stehen in
+`properties.lows` der FeatureCollection.
+
 Noch offen:
 
-- **Okklusionen**: Tiefzentren, Warmluftzunge in θw bzw. in der
-  Schichtdicke, Okklusionspunkt.
+- Okklusionen verfeinern: entlang der Warmluftzunge um den Tiefkern
+  herum verlängern, Charakter aus der Verlagerung bestimmen, Schichtdicke
+  500/1000 hPa nutzen (s. KRITERIEN.md).
 - Die Frontlinie auf die geschätzte Bodenposition verschieben (der Versatz
   ist schon als `criteria.sfc_offset_km` verfügbar).
 - Den Typ aus der Verlagerung zwischen den Terminen bestimmen.
@@ -144,7 +154,7 @@ python3 -m http.server 8765    # im Repo-Root
 # http://127.0.0.1:8765/tools/fronts/debug.html?fixture=fixtures/icon_eu_2026-10-09.json.gz
 ```
 
-Die Seite bietet eine Auswahl von Termin und Druckfläche. Als Schattierung
+Die Seite bietet eine Auswahl von Termin und Druckfläche. Fronten werden mit den üblichen Symbolen gezeichnet (Okklusionen violett), Tiefs als rotes T mit Kerndruck. Als Schattierung
 stehen zur Wahl:
 
 - θe, θw, T, |∇θw|, TFP

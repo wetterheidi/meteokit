@@ -193,7 +193,7 @@ Wetter.** Ein Gradientband allein ist noch keine Front.
 | keine Front unter Absinkinversion | indirekt: kein Wetter, keine Rinne → Aktivität ≈ 0 | ✓ indirekt |
 | Typ | Verlagerung zwischen Terminen, sonst geostrophischer Querwind | 850-hPa-Querwind ✓, Rest geplant |
 | Bodenposition | Rinne zur warmen Seite hin suchen | Versatz als `criteria.sfc_offset_km`, Linie selbst noch nicht verschoben |
-| Okklusion | Tiefzentren, θw-Rücken (700/850) bzw. Schichtdicke, Okklusionspunkt, isallobarisches Tief | geplant |
+| Okklusion | Okklusionspunkt (Ende einer Kalt-/Warmfront an einer Front des anderen Typs, ≤ 350 km), vom Warmsektor wegzeigender Ast = Okklusion, endet vor dem Tiefkern | ✓ `occlusion.js` (Grundfassung) |
 | Darstellung schwacher Fronten | `activity_class` active / weak (gestrichelt) / none (entfällt) | ✓ |
 
 **Schichtdicke 500/1000 hPa aus Modellleveln.** Die Schichtdicke ist das
@@ -216,3 +216,26 @@ Dazu braucht es zusätzlich `pressure_level` etwa der Level 35–49
   Das 4-K-Kriterium trennt hier allein schon fast vollständig.
 - Warmfronten haben oft einen kleinen Tendenzsprung, das passt zum
   Kompendium (hinter der Warmfront schwacher Fall).
+
+**Okklusionen, Grundfassung** (Fall 2026-10-09):
+
+- Islandtief: Von 00 bis 12 UTC wird jeweils eine Okklusion vom
+  Okklusionspunkt bei Nordschottland Richtung Island gefunden. Der Punkt
+  wandert mit der Zeit nach Osten (59/−4,6 → 59/−1 → 57,5/2,2). Das passt
+  zu KNMI (00 UTC Nordschottland, 06 UTC schottische Ostküste).
+- Ostsee-Tief: Um 06 und 09 UTC wird eine kurze Okklusion bis vor den
+  Kern gefunden. Um 00 UTC wechseln Warm- und Kaltfront im Tiefkern auf
+  einer Linie den Typ (Bild einer offenen Welle), deshalb gibt es dort
+  keine Okklusion.
+- Ein **Zungentest** (θw steigt auf der warmen Seite an und fällt danach
+  wieder ab) wurde verworfen. Er schlägt auch an Kaltfronten an, weil auch
+  Warmsektoren begrenzt sind.
+- Noch offen:
+  - Die Okklusion entlang der Warmluftzunge (θw-Rücken in 700 hPa) um den
+    Kern herum verlängern. KNMI zeichnet sie um Island herum, wir enden
+    bei etwa 63° N.
+  - Okklusionen ohne passende TFP-Linie, etwa um den Kern des
+    Ostsee-Tiefs um 00 UTC.
+  - Den Charakter (Kalt-/Warmfront) aus der Verlagerung bestimmen statt
+    vom Ast zu übernehmen.
+  - Die Schichtdicke 500/1000 hPa als eigentliches Kriterium.

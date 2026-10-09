@@ -33,7 +33,10 @@
  * weg, außer mit `keepInactive: true` (Debug). Braucht Oberflächenfelder
  * (Fixture v2) und für die Drucktendenz den Vortermin als `prev`.
  *
- * Bewusst noch NICHT enthalten: Okklusionen.
+ * Okklusionen (occlusion.js): am Okklusionspunkt, wo eine Kalt- auf eine
+ * Warmfront trifft, wird der vom Warmsektor wegzeigende Ast als
+ * `front_type: "occluded"` abgetrennt. Tiefzentren stehen in
+ * `properties.lows` der FeatureCollection.
  */
 
 import { thetaFields } from "./thermo.js";
@@ -42,6 +45,7 @@ import {
   sampleBilinear, lineLengthKm, distKm,
 } from "./grid.js";
 import { activityFields, assessPoints, activityClass } from "./activity.js";
+import { findLows, markOcclusions } from "./occlusion.js";
 
 export const DETECT_DEFAULTS = {
   sigmaKm: 120,       // Gauß-Glättung von θw (und Wind)
@@ -59,6 +63,8 @@ export const DETECT_DEFAULTS = {
   minPieceKm: 250,    // kürzere Typ-/Aktivitäts-Stücke gehen im Nachbarn auf
   activitySmoothKm: 300, // Glättung der Aktivität entlang der Linie
   activity: {},       // überschreibt ACTIVITY_DEFAULTS (activity.js)
+  occlusions: true,   // Okklusionen bestimmen (occlusion.js)
+  occlusion: {},      // überschreibt OCCLUSION_DEFAULTS
 };
 
 /**
@@ -151,7 +157,11 @@ export function detectFronts(field, opts = {}) {
       }
     }
   }
-  return { type: "FeatureCollection", features, properties: { params: o } };
+  // Okklusionen brauchen die bewerteten Fronten (Okklusionspunkt nur
+  // zwischen echten Fronten) und den Bodendruck (Tiefzentren).
+  const lows = o.occlusions && field.sfc ? findLows(field, g, o.occlusion) : [];
+  const out = o.occlusions && field.sfc ? markOcclusions(features, ff, lows, o.occlusion) : features;
+  return { type: "FeatureCollection", features: out, properties: { params: o, lows } };
 }
 
 // Abstand entlang der Linie [km] je Stützpunkt.

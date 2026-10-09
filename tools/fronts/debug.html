@@ -395,11 +395,11 @@ function drawFronts() {
     L.polyline(segs, { pane: "lines", color: "#777", weight: 0.8, interactive: false }).addTo(frontLayer);
   }
   if ($("fronts").checked && fronts) {
-    const RED = "#d7191c", BLUE = "#1f4fd8";
+    const RED = "#d7191c", BLUE = "#1f4fd8", PURPLE = "#8e24aa";
     for (const f of fronts.features) {
       const pr = f.properties, ll = f.geometry.coordinates.map(([lo, la]) => [la, lo]);
       const cr = pr.criteria;
-      const tip = `${pr.front_type}  ${pr.length_km} km` + (pr.activity_class ? `  <b>${pr.activity_class}</b> (Aktivität ${pr.activity})` : "")
+      const tip = `${pr.front_type}${pr.occlusion_character ? ` (${pr.occlusion_character === "cold" ? "Kaltfront" : "Warmfront"}charakter)` : ""}  ${pr.length_km} km` + (pr.activity_class ? `  <b>${pr.activity_class}</b> (Aktivität ${pr.activity})` : "")
         + `<br>|∇θw| ${pr.gradient}  TFP ${pr.tfp}  Querwind ${pr.cross_wind} m/s`
         + (cr ? `<br>ΔT850 ${cr.contrast_k} K  Rinne ${cr.trough}  Konv. ${cr.convergence}  Vort. ${cr.vorticity}`
           + `<br>Tendenzsprung ${cr.tendency_jump} hPa/3h  RR ${cr.precip} mm/h  tiefe Wolken ${cr.cloud_low} %  w700 ${cr.w700} cm/s`
@@ -413,7 +413,8 @@ function drawFronts() {
         L.polyline(ll, { ...base, color: RED }).bindTooltip(tip).addTo(frontLayer);
         L.polyline(ll, { ...base, color: BLUE, dashArray: "14 14", interactive: false }).addTo(frontLayer);
       } else {
-        L.polyline(ll, { ...base, color: pr.front_type === "cold" ? BLUE : RED }).bindTooltip(tip).addTo(frontLayer);
+        const color = pr.front_type === "cold" ? BLUE : pr.front_type === "occluded" ? PURPLE : RED;
+        L.polyline(ll, { ...base, color }).bindTooltip(tip).addTo(frontLayer);
       }
       // Symbole alle ~250 km, Seite aus motion_side bzw. warm_side.
       const sideSign = (side) => (side === "left" ? 1 : -1);
@@ -425,17 +426,28 @@ function drawFronts() {
         const t = [dx / d, dy / d], left = [-t[1], t[0]];
         for (; acc <= d; acc += 250, n++) {
           const p = [a[0] + (b[0] - a[0]) * (acc / d), a[1] + (b[1] - a[1]) * (acc / d)];
-          let kind = pr.front_type, side = pr.motion_side;
-          if (kind === "stationary") {
+          let kind = pr.front_type, side = pr.motion_side, fill = null;
+          if (kind === "occluded") { kind = n % 2 ? "warm" : "cold"; fill = PURPLE; } // abwechselnd, gleiche Seite
+          else if (kind === "stationary") {
             kind = n % 2 ? "warm" : "cold";
             side = kind === "cold" ? pr.warm_side : (pr.warm_side === "left" ? "right" : "left");
           }
           const s = sideSign(side), nrm = [left[0] * s, left[1] * s];
           const poly = kind === "cold" ? triangle(p, t, nrm, 55) : semicircle(p, t, nrm, 55);
-          L.polygon(poly, { pane: "lines", stroke: false, fillColor: kind === "cold" ? BLUE : RED, fillOpacity: 1, interactive: false }).addTo(frontLayer);
+          L.polygon(poly, { pane: "lines", stroke: false, fillColor: fill || (kind === "cold" ? BLUE : RED), fillOpacity: 1, interactive: false }).addTo(frontLayer);
         }
         acc -= d;
       }
+    }
+  }
+  // Tiefzentren (Bodendruck) als rotes T mit Kerndruck.
+  if ($("fronts").checked) {
+    for (const l of fronts?.properties?.lows || []) {
+      L.marker([l.lat, l.lon], {
+        pane: "lines", interactive: false,
+        icon: L.divIcon({ className: "", iconSize: [40, 30], iconAnchor: [20, 15],
+          html: `<div style="text-align:center;color:#d7191c;font:bold 20px/1 sans-serif">T<div style="font-size:11px">${Math.round(l.pressure)}</div></div>` }),
+      }).addTo(frontLayer);
     }
   }
   frontLayer.addTo(map);
