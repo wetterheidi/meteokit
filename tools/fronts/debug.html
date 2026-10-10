@@ -67,7 +67,7 @@
   </select>
 
   <label for="sigma">Glättung σ: <span id="sigmaVal"></span> km</label>
-  <div class="row"><input id="sigma" type="range" min="0" max="300" step="10" value="120"></div>
+  <div class="row"><input id="sigma" type="range" min="0" max="300" step="10" value="90"></div>
 
   <label for="isoSel">Isolinien</label>
   <div class="row">
@@ -154,6 +154,7 @@ import { fieldAt } from "../../src/fronts/field.js";
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
 $("fixture").value = params.get("fixture") || "fixtures/icon_eu_2026-10-09.json.gz";
+$("sigma").value = DETECT_DEFAULTS.sigmaKm; // Glättung wie die Bibliothek (90 km)
 $("k1").value = DETECT_DEFAULTS.k1; $("k2").value = DETECT_DEFAULTS.k2;
 $("minLen").value = DETECT_DEFAULTS.minLengthKm; $("windMin").value = DETECT_DEFAULTS.windMin;
 
