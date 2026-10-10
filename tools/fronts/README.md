@@ -129,7 +129,10 @@ Anschlussregel. Kennzeichen `method: "precip"`, Kriterien `precip` und
 
 **Schwache Fronten (Erprobung, standardmäßig aus):** `fillTerrain`
 (Geländelücken in θw harmonisch füllen), `terrainCut` (keine Linien über
-Gelände unter 850 hPa: Fronten laufen nicht über die Alpen), `maskGapKm` (kurze Maskenlücken
+Gelände unter 850 hPa: Fronten laufen nicht über die Alpen), `stauFronts`
+(`src/fronts/staufronts.js`: endet eine Kaltfront am Gebirgsrand, läuft
+sie als quasistationäre Front am Nordrand weiter, solange Druckanstieg
+und Niederschlag den Stau anzeigen; `method: "stau"`), `maskGapKm` (kurze Maskenlücken
 überbrücken), dazu `windMin` und `activity.contrastRamp` niedriger,
 `activity.weatherMin` (Front nur mit Wetter), `activity.sfcPrecipWeight`
 mit `surfaceDefaultKm` 0 (Bodenposition nach Rinne und Niederschlag); in

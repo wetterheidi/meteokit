@@ -14,3 +14,4 @@ export { activityFields, assessPoints, activityClass, ACTIVITY_DEFAULTS } from "
 export { findLows, markOcclusions, ridgeLines, OCCLUSION_DEFAULTS } from "./occlusion.js";
 export { closeGaps, smoothFeatures, smoothPolyline, requireLowLink, POSTPROCESS_DEFAULTS } from "./postprocess.js";
 export { precipFronts, PRECIP_FRONT_DEFAULTS } from "./precipfronts.js";
+export { stauFronts, STAU_DEFAULTS } from "./staufronts.js";

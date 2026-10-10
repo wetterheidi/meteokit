@@ -53,6 +53,7 @@ import { activityFields, assessPoints, activityClass, ACTIVITY_DEFAULTS } from "
 import { findLows, markOcclusions, ridgeLines, OCCLUSION_DEFAULTS } from "./occlusion.js";
 import { closeGaps, smoothFeatures, requireLowLink } from "./postprocess.js";
 import { precipFronts, PRECIP_FRONT_DEFAULTS } from "./precipfronts.js";
+import { stauFronts } from "./staufronts.js";
 
 export const DETECT_DEFAULTS = {
   // Gauß-Glättung von θw (und Wind). 90 km trifft den Fall 2026-10-09 am
@@ -65,6 +66,8 @@ export const DETECT_DEFAULTS = {
   k1: 0.1,            // K/(100 km)², TFP-Maske
   k2: 0.8,            // K/100 km, Gradientmaske
   maskLenKm: 100,     // m in der K2-Maske
+  stauFronts: false,  // Kaltfronten am Gebirgsrand quasistationär fortsetzen (staufronts.js), in Erprobung
+  stau: {},           // überschreibt STAU_DEFAULTS
   terrainCut: false,  // Linienabschnitte über Gelände unter 850 hPa entfernen (Fronten laufen nicht über die Alpen), in Erprobung
   fillTerrain: false, // Geländelücken (unter Grund/bodennah) in θw harmonisch auffüllen (in Erprobung)
   maskGapKm: 0,       // >0: Lücken der Masken bis zu dieser Länge entlang der Linie überbrücken (in Erprobung)
@@ -228,6 +231,8 @@ export function detectFronts(field, opts = {}) {
   // Tiefs (Bodendruck): für Niederschlagsfronten, Okklusionen und die
   // Anschlussregel.
   const lows = field.sfc ? findLows(field, g, o.occlusion) : [];
+  // Kaltfronten, die am Gebirge hängen bleiben, schleifen am Rand entlang.
+  if (o.stauFronts && af) features.push(...stauFronts(features, field, prev, g, o.stau));
   const joined = closeGaps(features, af, g, o.post);
   // Okklusionen brauchen die bewerteten Fronten (Okklusionspunkt nur
   // zwischen echten Fronten) und den Bodendruck (Tiefzentren).

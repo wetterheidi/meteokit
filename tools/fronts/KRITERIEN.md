@@ -679,8 +679,17 @@ sie als quasistationäre Front am Alpennordrand nach Westen schleifen.
   Kaltfront endet am Nordostrand der Alpen (47,9/15,0). Das schleifende
   Stück am Alpennordrand nach Westen (Handanalyse bis 47,3/7,2) entsteht
   nicht: die gefüllten Werte spannen den Übergang über das ganze Gebirge,
-  die warme Kante liegt über oder südlich der Alpen. Dafür braucht es
-  eine eigene Regel (offen).
+  die warme Kante liegt über oder südlich der Alpen. Dafür eine eigene
+  Regel (`staufronts.js`, `stauFronts`, im Bündel): Endet eine Kaltfront
+  höchstens 150 km vom Geländerand, läuft sie als quasistationäre Front am
+  Rand entlang weiter, solange das Stau-Signal anhält (Druckanstieg
+  ≥ 1,5 hPa/3 h und Niederschlag ≥ 0,3 mm/h, Aussetzer bis 100 km), und nur
+  am Nordrand (der Lauf endet, wo der Rand nach Süden abbiegt). Entlang der
+  handanalysierten Linie: Druckanstieg +3 bis +4,5 hPa/3 h, Niederschlag
+  0,6–1,1 mm/h, Kaltluft im Vorland. Ergebnis 08.10. 18 UTC mit Bündel:
+  Treffer 100 %, Fehlalarm 14 %, 46 km; das schleifende Stück reicht bis
+  46,3/6,3 (Handanalyse 47,3/7,2). Entsteht nur am 08.10. (12, 15, 18 UTC),
+  an keinem anderen Testtermin.
 
 ### Offene Punkte aus dem Fall 10.10. 06 UTC (zurückgestellt)
 

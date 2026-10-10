@@ -94,7 +94,7 @@
     <span>Wind kalt/warm m/s</span><input id="windMin" type="number" step="0.5">
   </div>
   <label class="chk"><input id="surface" type="checkbox" checked> auf Bodenposition verschieben (sonst Lage in der Fläche)</label>
-  <label class="chk"><input id="weak" type="checkbox"> <b>Schwache Fronten</b> (Erprobung): Geländelücken füllen, keine Fronten über Hochgebirge, kurze Maskenlücken überbrücken, Querwind ab 0,5 m/s, Kontrast ab 1,5 K, nur mit Wetter, Bodenposition nach Rinne und Niederschlag</label>
+  <label class="chk"><input id="weak" type="checkbox"> <b>Schwache Fronten</b> (Erprobung): Geländelücken füllen, keine Fronten über Hochgebirge, Kaltfronten schleifen am Alpennordrand, kurze Maskenlücken überbrücken, Querwind ab 0,5 m/s, Kontrast ab 1,5 K, nur mit Wetter, Bodenposition nach Rinne und Niederschlag</label>
   <label class="chk"><input id="precipFronts" type="checkbox"> Fronten aus Niederschlagsachsen an Tiefs ohne TFP-Front (in Erprobung)</label>
   <label class="chk"><input id="inactive" type="checkbox"> Linien ohne Wetter zeigen (grau)</label>
   <label class="chk"><input id="ridges" type="checkbox"> Warmluftzungen (Rückenachsen Schichtdicke bzw. θw 700)</label>
@@ -421,7 +421,7 @@ function detectOpts() {
     precipFronts: $("precipFronts").checked,
     // Bündel für kontrastarme Tiefs (Genuatief 09.10. 12 UTC), s. KRITERIEN.md
     ...($("weak").checked ? {
-      fillTerrain: true, terrainCut: true, maskGapKm: 150, windMin: Math.min(Number($("windMin").value), 0.5),
+      fillTerrain: true, terrainCut: true, stauFronts: true, maskGapKm: 150, windMin: Math.min(Number($("windMin").value), 0.5),
       activity: { contrastRamp: [1.5, 3.5], weatherMin: 0.2, sfcPrecipWeight: 1 },
       surfaceDefaultKm: { cold: 0, stationary: 0 },
     } : {}),
@@ -509,6 +509,7 @@ function drawFronts() {
       const pr = f.properties, ll = f.geometry.coordinates.map(([lo, la]) => [la, lo]);
       const cr = pr.criteria;
       const tip = `${pr.front_type}  ${pr.length_km} km` + (pr.activity_class ? `  <b>${pr.activity_class}</b> (Aktivität ${pr.activity})` : "")
+        + (pr.method === "stau" ? `<br><i>schleift am Gebirgsrand</i> (Stau: Druckanstieg ${cr?.tendency_rim} hPa/3 h, RR ${cr?.precip} mm/h)` : "")
         + (pr.method === "precip" ? `<br><i>aus Niederschlagsachse</i>, RR ${cr?.precip} mm/h, Advektion ${cr?.advection_k10h} K/10 h` : "")
         + (pr.unlinked ? "<br><b>ohne Anschluss an einen Tiefkern</b> (entfällt)" : "")
         + `<br>|∇θw| ${pr.gradient}  TFP ${pr.tfp}  Querwind ${pr.cross_wind} m/s`
