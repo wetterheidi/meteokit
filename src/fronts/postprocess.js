@@ -4,7 +4,7 @@
  * im Wind auf“ -- durchgehend, ohne Knicke und Zacken.
  */
 
-import { sampleBilinear, distKm, lineLengthKm } from "./grid.js";
+import { sampleBilinear, distKm, lineLengthKm, smoothAlong } from "./grid.js";
 
 const DEG = Math.PI / 180;
 const KM_PER_DEG = 111.2;
@@ -106,22 +106,9 @@ export function closeGaps(features, af, g, opts = {}) {
   } : f));
 }
 
-/** Laufendes Mittel entlang der Linie (Fenster ±km/2), Endpunkte fest. */
+/** Laufendes Mittel entlang der Linie (Fenster ±km/2), Endpunkte fest (s. smoothAlong). */
 export function smoothPolyline(pts, km, passes = 1) {
-  let cur = pts.map((p) => p.slice());
-  for (let n = 0; n < passes; n++) {
-    const s = [0];
-    for (let q = 1; q < cur.length; q++) s.push(s[q - 1] + distKm(cur[q - 1], cur[q]));
-    cur = cur.map((p, q) => {
-      if (q === 0 || q === cur.length - 1) return p;
-      let la = 0, lo = 0, c = 0;
-      for (let r = 0; r < cur.length; r++) {
-        if (Math.abs(s[r] - s[q]) <= km / 2) { la += cur[r][0]; lo += cur[r][1]; c++; }
-      }
-      return [la / c, lo / c];
-    });
-  }
-  return cur;
+  return smoothAlong(pts, km, passes);
 }
 
 /**

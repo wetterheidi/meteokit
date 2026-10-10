@@ -173,3 +173,35 @@ export function lineLengthKm(line) {
   for (let m = 1; m < line.length; m++) s += distKm(line[m - 1], line[m]);
   return s;
 }
+
+/**
+ * Laufendes Mittel einer Polylinie entlang der Bogenlänge (Fenster ±km/2),
+ * Endpunkte fest. Gemittelt wird über die Strecke, nicht über die Punkte:
+ * Bei ungleichen Abständen (Isolinienpunkte 0..150 km auseinander) zog ein
+ * Mittel nach Punktzahl die Punkte über mehrere Durchgänge zu Klumpen mit
+ * Sprüngen dazwischen zusammen. Punktzahl bleibt gleich.
+ * @param {number[][]} pts [lat, lon]
+ */
+export function smoothAlong(pts, km, passes = 1) {
+  let cur = pts.map((p) => p.slice());
+  const h = km / 2;
+  for (let n = 0; n < passes; n++) {
+    const s = [0];
+    for (let q = 1; q < cur.length; q++) s.push(s[q - 1] + distKm(cur[q - 1], cur[q]));
+    cur = cur.map((p, q) => {
+      if (q === 0 || q === cur.length - 1) return p;
+      const a = Math.max(0, s[q] - h), b = Math.min(s[s.length - 1], s[q] + h);
+      let la = 0, lo = 0, w = 0;
+      for (let r = 1; r < cur.length; r++) {
+        const s0 = Math.max(a, s[r - 1]), s1 = Math.min(b, s[r]), len = s1 - s0, seg = s[r] - s[r - 1];
+        if (!(len > 0) || !(seg > 0)) continue;
+        const f = ((s0 + s1) / 2 - s[r - 1]) / seg; // Mitte des überlappenden Stücks
+        la += len * (cur[r - 1][0] + f * (cur[r][0] - cur[r - 1][0]));
+        lo += len * (cur[r - 1][1] + f * (cur[r][1] - cur[r - 1][1]));
+        w += len;
+      }
+      return w > 0 ? [la / w, lo / w] : p;
+    });
+  }
+  return cur;
+}

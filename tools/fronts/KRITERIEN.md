@@ -406,3 +406,66 @@ Ergebnis 12 UTC im Vergleich zur Referenzanalyse:
   Stück das zweite war. Behoben; eine Prüfung gegen θw bestätigt die warme
   Seite aller Fronten an allen Terminen.
 - **Ligurientief:** Referenz ist die KNMI-Analyse.
+
+### Handanalyse 09.10. 12 UTC (Referenzdatei)
+
+Die Handanalyse liegt in `tools/fronts/reference/2026-10-09T12.geojson`.
+Vergleich mit `compare.mjs`: alle Fronten getroffen (±150 km), mittlerer
+Abstand 21 km. Abweichungen je Front, mittel/max in km, vor → nach den
+Korrekturen unten:
+
+| Front | vorher | nachher |
+|---|---|---|
+| Island Warmfront | 19/66 | 19/66 |
+| Island Kaltfront | 17/80 | 15/77 |
+| Island Okklusion | 24/110 | 18/85 |
+| Ostsee Kaltfront | 43/100 | 42/73 |
+| Ostsee Warmfront | 37/91 | 37/91 |
+| Ostsee Okklusion | 70/117 | 49/93 |
+
+Befunde:
+
+- **Fronten in der Rinne:** Alle drei Fronten des Ostseetiefs liegen in der
+  Handanalyse genau im Isobarenknick (Rinne bei 0 bis −50 km). Das
+  Niederschlagsmaximum liegt bei der Kaltfront 50–100 km dahinter, bei der
+  Warmfront 50–150 km davor, bei der Okklusion auf der Linie. Die
+  automatische Ostsee-Kaltfront liegt 30–90 km zu weit vorn. Ein einfaches
+  Einrasten in die Rinne (±100–150 km) hilft der Ostsee-Warmfront
+  (37 → 18 km), verschlechtert aber Island: Dort liegt die Rinne 150–250 km
+  im Warmsektor, die Handanalyse folgt dem Niederschlag. Nicht übernommen;
+  Rinne und Niederschlag gemeinsam abzuwägen, ist offen.
+- **Knick am Okklusionspunkt:** In der Handanalyse knickt die Kaltfront in
+  die Okklusion um 15–23° (auf 100 km), die Warmfront um 40–60°. Die
+  Automatik hatte es umgekehrt (Kaltfront 39° bzw. 87°, Warmfront 12° bzw.
+  31°). Ursache 1: Die Okklusion hatte doppelte Punkte und Lücken bis
+  180 km, der tangentiale Start griff kaum. Jetzt wird sie vorher
+  gleichmäßig verdichtet. Ursache 2: Die Glättungen mittelten nach
+  Punktzahl und zogen ungleich verteilte Punkte zu Klumpen mit Sprüngen
+  zusammen; jetzt wird entlang der Bogenlänge gemittelt (`smoothAlong`).
+  Ein Knick von etwa 70° an der Ostsee bleibt: Der automatische Punkt
+  liegt rund 100 km nordwestlich des handanalysierten (61,6/25,7) auf der
+  einbiegenden Kaltfront, die Okklusion läuft von dort direkt nach
+  Südwesten zum Kern. Vom Punkt der Handanalyse aus setzt die Okklusion die
+  Kaltfront fast gerade fort. Offen: den Punkt entlang der Kaltfront
+  dorthin legen, wo die Okklusion sie mit dem kleinsten Knick fortsetzt.
+
+### Offene Punkte aus dem Fall 10.10. 06 UTC (zurückgestellt)
+
+Vergleich mit DWD, KNMI und GeoSphere. Getroffen werden die Warmfront der
+Ostseewelle und ein Teil der Kaltfront des Finnland-Tiefs.
+
+- **Front Biskaya – Frankreich – Benelux – Dänemark fehlt:** In 850 hPa ist
+  der θw-Gradient breit und diffus, auch ohne Masken entsteht keine Linie;
+  T850-Kontrast nur 3–4 K. In 700 hPa ist sie deutlich, ebenso die
+  Kaltfront über Tunesien. Idee: 700 hPa als zweite Analysefläche, wo
+  850 hPa diffus oder maskiert ist (hilft womöglich auch bei der
+  schleifenden Front an den Alpen, 08.10.).
+- **Atlantikfront mit Wellen:** viel Wetter (1,6 mm/h, Konvergenz, Rinne),
+  aber am Westrand des ICON-EU-Gebiets, der Kontrast ist dort nicht
+  bestimmbar.
+- **Keine Okklusionen** an Finnland-, Nordsee- und Ostseetief.
+- **Symbolseite:** Am 10.10. 03 UTC weichen zwei kurze Fronten (Tunesien,
+  Okklusionspunkt südliche Ostsee) nach der Verschiebung auf die
+  Bodenposition von der θw-Prüfung ab, in der Lage auf 850 hPa nicht.
+  Vermutlich ein Fehlalarm der Prüfung, noch zu bestätigen.
+

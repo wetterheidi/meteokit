@@ -25,7 +25,7 @@
  * erhalten -- aus der Verlagerung, wie zuvor für den Ast bestimmt.
  */
 
-import { gaussianSmooth, gradient, chainSegments, sampleBilinear, distKm, lineLengthKm } from "./grid.js";
+import { gaussianSmooth, gradient, chainSegments, sampleBilinear, distKm, lineLengthKm, smoothAlong } from "./grid.js";
 
 const DEG = Math.PI / 180;
 const KM_PER_DEG = 111.2;
@@ -313,6 +313,13 @@ export function markOcclusions(features, ff, lows, opts = {}, ridges = null, ctx
     // (gemeinsame Glättung um den Punkt), den Punkt dabei aber festhalten:
     // eine freie Glättung zog ihn in die Innenseite des Winkels (Ostsee-Tief
     // 12 UTC um 250 km), und die Warmfront musste mit Haken nachgezogen werden.
+    // Okklusion gleichmäßig verdichten, in der Punktdichte der Kaltfront:
+    // Beide Schritte unten arbeiten punktweise, und die Okklusion hatte
+    // teils doppelte Punkte und Lücken bis 180 km. Dann griff der tangentiale
+    // Start kaum, und die gemeinsame Glättung (Mittel nach Punktzahl) zog die
+    // ersten Okklusionspunkte an den Punkt, gefolgt von einem Sprung: ein
+    // Knick von 87° zwischen Kaltfront und Okklusion (Ostsee-Tief 12 UTC).
+    occ = densify(occ, spacingNear(cold, 300));
     occ = continueFrom(cold, occ, o.occBlendKm);
     const J = cold.length - 1;
     const comp = smoothAroundFixed([...cold, ...occ.slice(1)], J, o.junctionSmoothKm);
@@ -492,6 +499,26 @@ function trimToward(pts, P, km) {
 // dass sie die Kaltfront ohne Knick fortsetzt: Punkte im Abstand s vom
 // Okklusionspunkt werden zwischen der verlängerten Kaltfront-Tangente und dem
 // ursprünglichen Verlauf gemischt (Smoothstep über blendKm).
+// Mittlerer Punktabstand der letzten `km` einer Linie (zum Ende hin),
+// begrenzt auf 15..60 km.
+function spacingNear(pts, km) {
+  let s = 0, n = 0;
+  for (let q = pts.length - 1; q > 0 && s < km; q--, n++) s += distKm(pts[q - 1], pts[q]);
+  return Math.min(60, Math.max(15, n ? s / n : 30));
+}
+
+// Linie mit gleichmäßigem Punktabstand ~stepKm (doppelte Punkte fallen weg).
+function densify(pts, stepKm) {
+  const out = [pts[0]];
+  for (let q = 1; q < pts.length; q++) {
+    const a = pts[q - 1], b = pts[q], d = distKm(a, b);
+    if (d < 1e-3) continue;
+    const n = Math.max(1, Math.round(d / stepKm));
+    for (let k = 1; k <= n; k++) out.push([a[0] + ((b[0] - a[0]) * k) / n, a[1] + ((b[1] - a[1]) * k) / n]);
+  }
+  return out;
+}
+
 function continueFrom(cold, occ, blendKm) {
   const P = cold[cold.length - 1];
   let back = cold.length - 1, s0 = 0;
@@ -526,22 +553,7 @@ function smoothAroundFixed(pts, J, windowKm) {
 }
 
 // Laufendes Mittel entlang der Linie (Fenster ±km/2), Endpunkte fest.
-function smoothLine(pts, km, passes = 1) {
-  let cur = pts.map((p) => p.slice());
-  for (let n = 0; n < passes; n++) {
-    const s = [0];
-    for (let q = 1; q < cur.length; q++) s.push(s[q - 1] + distKm(cur[q - 1], cur[q]));
-    cur = cur.map((p, q) => {
-      if (q === 0 || q === cur.length - 1) return p;
-      let la = 0, lo = 0, c = 0;
-      for (let r = 0; r < cur.length; r++) {
-        if (Math.abs(s[r] - s[q]) <= km / 2) { la += cur[r][0]; lo += cur[r][1]; c++; }
-      }
-      return [la / c, lo / c];
-    });
-  }
-  return cur;
-}
+const smoothLine = (pts, km, passes = 1) => smoothAlong(pts, km, passes);
 
 
 function stripChain(f) {

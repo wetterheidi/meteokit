@@ -128,7 +128,11 @@ Noch offen:
   bestimmen. Die Bestimmung über den Querwind in 850 hPa trifft den
   Testfall, hilfreich wäre die Verlagerung vor allem bei schleifenden
   Fronten.
-- Zweiter Testfall.
+- Fall 10.10. 06 UTC: Front Biskaya – Dänemark fehlt (in 850 hPa diffus,
+  in 700 hPa deutlich), keine Okklusionen an den Lehrbuchtiefs; Details in
+  KRITERIEN.md. Zurückgestellt, bis 09.10. 12 UTC abgeschlossen ist.
+- Lage des Okklusionspunkts und der Fronten relativ zu Rinne und
+  Niederschlag (Handanalyse 09.10. 12 UTC, KRITERIEN.md).
 
 ## Testfälle (Fixtures)
 
