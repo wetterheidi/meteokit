@@ -51,7 +51,7 @@ import {
 } from "./grid.js";
 import { activityFields, assessPoints, activityClass, ACTIVITY_DEFAULTS } from "./activity.js";
 import { findLows, markOcclusions, ridgeLines, OCCLUSION_DEFAULTS } from "./occlusion.js";
-import { closeGaps, smoothFeatures } from "./postprocess.js";
+import { closeGaps, smoothFeatures, requireLowLink } from "./postprocess.js";
 
 export const DETECT_DEFAULTS = {
   // Gauß-Glättung von θw (und Wind). 90 km trifft den Fall 2026-10-09 am
@@ -222,7 +222,9 @@ export function detectFronts(field, opts = {}) {
     ? gaussianSmooth(Float32Array.from(field.sfc.pressure_msl, (x, k) => x - prev.sfc.pressure_msl[k]), g, 100) : null;
   const marked = o.occlusions && field.sfc ? markOcclusions(joined, ff, lows, oo, ridges, { msl, tend }) : joined;
   // Abschließend alle Fronten glätten ("wie Segel"), Endpunkte fest.
-  const all = smoothFeatures(marked, o.post);
+  // Jede Front hängt an einem Tiefkern, direkt oder über ihr Frontsystem.
+  const linkLows = lows.length || !field.sfc ? lows : findLows(field, g, o.occlusion);
+  const all = field.sfc ? requireLowLink(smoothFeatures(marked, o.post), linkLows, o.post) : smoothFeatures(marked, o.post);
   const out = keepInactive ? all : all.filter((f) => f.properties.activity_class !== "none");
   return { type: "FeatureCollection", features: out, properties: { params: o, lows, ridges, ridgeSource } };
 }

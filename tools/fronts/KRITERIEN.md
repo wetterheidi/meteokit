@@ -492,6 +492,23 @@ statt 13). Nur die Ostsee-Okklusion gewinnt in allen Varianten (53 →
 33–37 km). Fazit: Für übertragbare Versätze und Gewichte braucht es
 weitere Handanalysen lehrbuchhafter Tiefs; bis dahin nicht übernommen.
 
+### Jede Front hängt an einem Tiefkern (Vorgabe 10.10.)
+
+Jede Front muss mit einem analysierten Tiefkern verbunden sein, direkt oder
+über die Okklusion eines teilokkludierten Tiefs. Umsetzung
+`requireLowLink` (postprocess.js), s. README. Wirkung an den Fällen:
+
+- 09.10. 12 UTC: keine Änderung.
+- Entfallen: Atlantik-Kaltfrontstücke am Westrand (09.10. 03–09 UTC), die
+  Kaltfront Sardinien–Algerien (08.10. 15–21 UTC, ~350 km vom Genuatief,
+  ihre Verbindung fehlt), die Fronten am Schwarzen Meer (10.10.).
+- Entfallen, obwohl die Referenzkarten sie zeigen, weil die Verbindung in
+  der Analyse fehlt: die Welle über Großbritannien (06.10.; Haupttief
+  967 hPa bei 69/36 am Nordrand, dort sucht `findLows` nicht; die Welle bei
+  Wales ist im Modell offen, kein Minimum auch bei 0,5 hPa Tiefe), die
+  Kaltfront über Frankreich (10.10.; Anschluss über Dänemark fehlt), die
+  Island-Warm- und Kaltfront 09.10. 15 UTC (dort fehlt die Okklusion).
+
 ### Offene Punkte aus dem Fall 10.10. 06 UTC (zurückgestellt)
 
 Vergleich mit DWD, KNMI und GeoSphere. Getroffen werden die Warmfront der

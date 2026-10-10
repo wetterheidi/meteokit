@@ -492,6 +492,7 @@ function drawFronts() {
       const pr = f.properties, ll = f.geometry.coordinates.map(([lo, la]) => [la, lo]);
       const cr = pr.criteria;
       const tip = `${pr.front_type}  ${pr.length_km} km` + (pr.activity_class ? `  <b>${pr.activity_class}</b> (Aktivität ${pr.activity})` : "")
+        + (pr.unlinked ? "<br><b>ohne Anschluss an einen Tiefkern</b> (entfällt)" : "")
         + `<br>|∇θw| ${pr.gradient}  TFP ${pr.tfp}  Querwind ${pr.cross_wind} m/s`
         + (cr ? `<br>ΔT850 ${cr.contrast_k} K  Rinne ${cr.trough}  Konv. ${cr.convergence}  Vort. ${cr.vorticity}`
           + `<br>Tendenzsprung ${cr.tendency_jump} hPa/3h  RR ${cr.precip} mm/h  tiefe Wolken ${cr.cloud_low} %  w700 ${cr.w700} cm/s`

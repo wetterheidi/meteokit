@@ -102,7 +102,15 @@ bis an den Okklusionspunkt ein, damit sich dort alle drei Fronten treffen.
 Okklusion ihre Eigenschaften übernimmt; den Charakter bestimmt die Analyse
 nicht (Zeichenregel, s. KRITERIEN.md). **Nachbearbeitung** (`src/fronts/postprocess.js`): Lücken zwischen Fronten
 gleichen Typs werden geschlossen, wenn entlang der Lücke Niederschlag
-fällt. Zum Schluss werden alle Fronten geglättet.
+fällt. Zum Schluss werden alle Fronten geglättet. **Jede Front hängt an
+einem Tiefkern** (`requireLowLink`, Vorgabe der Projektleitung): direkt
+oder über ihr Frontsystem, bei teilokkludierten Tiefs über die Okklusion.
+Fronten gelten als verbunden, wenn ein Ende höchstens 150 km von der
+anderen Linie entfernt liegt; ein System ist angeschlossen, wenn eine
+seiner Fronten näher als 300 km an einem Tiefkern liegt oder seine
+Okklusion zu einem Randtief führt. Systeme ohne Anschluss werden zu
+`activity_class: "none"` mit `unlinked: true` (abschaltbar mit
+`post: { lowLink: false }`).
 
 Die Okklusion muss zu einem Tief hin zeigen (auch zu einem Randtief
 jenseits des Gebiets), pro Tief gibt es höchstens eine.

@@ -18,6 +18,9 @@ export const POSTPROCESS_DEFAULTS = {
   gapPrecipMin: 0.1,    // mm/h: so viel Niederschlag muss entlang der Lücke fallen
   smoothKm: 150,        // abschließende Glättung aller Fronten
   smoothPasses: 2,
+  lowLink: true,        // jede Front hängt (über ihr Frontsystem) an einem Tiefkern
+  lowKm: 300,           // so nah muss eine Front des Systems am Tiefkern liegen
+  linkKm: 150,          // Fronten gelten als verbunden, wenn ein Ende so nah an der anderen liegt
 };
 
 // Richtung, in die eine Linie an ihrem Ende hinausläuft (über ~100 km).
@@ -123,4 +126,46 @@ export function smoothFeatures(features, opts = {}) {
     const sm = smoothPolyline(pts, o.smoothKm, o.smoothPasses);
     return { ...f, geometry: { type: "LineString", coordinates: sm.map(([la, lo]) => [+lo.toFixed(3), +la.toFixed(3)]) } };
   });
+}
+
+/**
+ * Jede Front hängt an einem analysierten Tiefkern, direkt oder über ihr
+ * Frontsystem (bei teilokkludierten Tiefs über die Okklusion). Fronten sind
+ * verbunden, wenn ein Ende höchstens linkKm von der anderen Linie entfernt
+ * liegt. Ein System ist angeschlossen, wenn eine seiner Fronten näher als
+ * lowKm an einem Tiefkern liegt oder seine Okklusion zu einem Randtief
+ * jenseits des Gebiets führt (occlusion_low "edge"). Betrachtet werden nur
+ * Fronten mit Wetter (activity_class nicht "none"); Systeme ohne Anschluss
+ * werden zu "none" mit `unlinked: true`.
+ */
+export function requireLowLink(features, lows, opts = {}) {
+  const o = { ...POSTPROCESS_DEFAULTS, ...opts };
+  if (!o.lowLink) return features;
+  const pts = features.map((f) => f.geometry.coordinates.map(([lo, la]) => [la, lo]));
+  const live = features.map((f) => f.properties.activity_class !== "none");
+  const n = features.length;
+  // Zusammenhangskomponenten (Union-Find).
+  const parent = features.map((_, i) => i);
+  const find = (i) => (parent[i] === i ? i : (parent[i] = find(parent[i])));
+  const near = (p, line, km) => line.some((q) => distKm(p, q) <= km);
+  for (let a = 0; a < n; a++) {
+    if (!live[a]) continue;
+    for (let b = a + 1; b < n; b++) {
+      if (!live[b]) continue;
+      const A = pts[a], B = pts[b];
+      if ([A[0], A[A.length - 1]].some((p) => near(p, B, o.linkKm)) || [B[0], B[B.length - 1]].some((p) => near(p, A, o.linkKm))) {
+        parent[find(a)] = find(b);
+      }
+    }
+  }
+  const anchored = new Set();
+  for (let i = 0; i < n; i++) {
+    if (!live[i]) continue;
+    const pr = features[i].properties;
+    const atLow = lows.some((l) => near([l.lat, l.lon], pts[i], o.lowKm)) || pr.occlusion_low === "edge" || (pr.occlusion_low && typeof pr.occlusion_low === "object");
+    if (atLow) anchored.add(find(i));
+  }
+  return features.map((f, i) => (live[i] && !anchored.has(find(i))
+    ? { ...f, properties: { ...f.properties, activity_class: "none", unlinked: true } }
+    : f));
 }
