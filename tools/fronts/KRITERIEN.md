@@ -563,6 +563,35 @@ Test Isobarenknick (Anteil der Handanalyse in 100 km / mittlerer Abstand):
   bestätigt den Isobarenknick als Frontmerkmal, aber mit viel Rauschen
   (80 000 km Achsen im Gebiet), vor allem orographisch.
 
+Rückmeldung: Die Knicklinien passen so gut wie gar nicht, am ehesten die
+hinter der handanalysierten Kaltfront; die übrigen am Genuatief sind
+Artefakte. Zwischen Rom und La Spezia folgt die Front keinem Knick. Der
+Fall ist wichtig: Fronten mit schwachem Kontrast sind nördlich der Alpen,
+besonders im Sommer, häufig.
+
+Sprünge quer zu den Genua-Linien (Lage des stärksten Sprungs über ±60 km,
+km, + = warme Seite):
+
+- Kaltfront: θe 850 hPa auf ganzer Länge −40 bis −140 km (4,5–7,6 K),
+  auch zwischen Rom und La Spezia; Niederschlag auf der Linie bis Rom.
+  Die Grenze ist eine Feuchtegrenze (θe), T850 nur 2–3 K.
+- Warmfront: θe 850 hPa −40 bis −90 km; über der Adria Taupunkt-, θe- und
+  T-Sprung in 2 m auf der Linie (in der Poebene orographisch).
+- Okklusion: Windscherung 10 m (bis 12 m/s auf 120 km) 40–60 km neben der
+  Linie.
+
+Warum die TFP dort nichts liefert (θw; θe gleich): Die Zone ist im Süden
+da (K1/K2 erfüllt, θe-Gradient 3,4–4,4 K/100 km), aber die Maske schaltet
+an der Schwelle ständig ein und aus, die Stücke bleiben unter 400 km.
+Zwischen Rom und La Spezia ist das Feld NaN: der Apennin ist maskiert, und
+Glättung und Gradient weiten die Lücke auf 150–200 km. Versuchsoptionen
+(standardmäßig aus): `thermo: "thE"` (TFP auf θe) und `maskRunKm` (Masken
+mit Hysterese über die Linie gemittelt). Mit `maskRunKm: 300` entsteht die
+Kaltfront Tunesien–Süditalien (Kontrast 4,2 K, 0,74 mm/h, auf 850 hPa im
+Mittel 93 km vor der Handanalyse), wird aber als quasistationär typisiert
+(Querwind schwach) und fällt über die Anschlussregel weg: ihr Nordende
+liegt 450 km vom Kern, die Verbindung über Rom fehlt (Apennin-Lücke).
+
 ### Offene Punkte aus dem Fall 10.10. 06 UTC (zurückgestellt)
 
 Vergleich mit DWD, KNMI und GeoSphere. Getroffen werden die Warmfront der

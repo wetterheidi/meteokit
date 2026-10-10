@@ -65,6 +65,8 @@ export const DETECT_DEFAULTS = {
   k1: 0.1,            // K/(100 km)², TFP-Maske
   k2: 0.8,            // K/100 km, Gradientmaske
   maskLenKm: 100,     // m in der K2-Maske
+  maskRunKm: 0,       // >0: Masken mit Hysterese, gemittelt über diese Länge entlang der Linie (in Erprobung)
+  maskRunShare: 0.5,  // … Anteil, ab dem ein Abschnitt als maskiert gilt
   minLengthKm: 400,   // kürzere Linien verwerfen
   sfcMarginHpa: 25,   // Fläche weniger als so tief über Grund -> maskiert
   windMin: 2,         // m/s, Schwelle Kalt-/Warmfront vs. quasistationär
@@ -90,6 +92,7 @@ export const DETECT_DEFAULTS = {
   contrastFreeKm: 350,          // Linienende "frei", wenn keine andere Linie so nah ist
   precipFronts: false, // Fronten aus Niederschlagsachsen an Tiefs ohne TFP-Front (precipfronts.js), in Erprobung
   precip: {},         // überschreibt PRECIP_FRONT_DEFAULTS
+  thermo: "thW",      // Feldgröße der TFP: "thW" (θw) oder "thE" (θe), in Erprobung
   occlusions: true,   // Okklusionen bestimmen (occlusion.js)
   occlusion: {},      // überschreibt OCCLUSION_DEFAULTS
 };
@@ -103,7 +106,8 @@ export function frontFields(field, opts = {}) {
   const o = { ...DETECT_DEFAULTS, ...opts };
   const g = { nx: field.nx, ny: field.ny, lat0: field.lat0, lon0: field.lon0, res: field.res };
   const n = g.nx * g.ny;
-  const { thW } = thetaFields(field);
+  const th = thetaFields(field);
+  const thW = o.thermo === "thE" ? th.thE : th.thW; // Feldgröße der TFP (Standard θw)
   const raw = new Float32Array(n);
   for (let k = 0; k < n; k++) {
     const nearGround = !(field.psfc[k] - field.pressure >= o.sfcMarginHpa);
@@ -144,8 +148,15 @@ export function detectFronts(field, opts = {}) {
   const o = { ...DETECT_DEFAULTS, ...rest };
   const ff = frontFields(field, o);
   const { g, F, mask } = ff;
-  const Fm = Float32Array.from(F, (x, k) => (mask[k] ? x : NaN));
-  const lines = chainSegments(isolineSegments(Fm, g, 0))
+  // Masken mit Hysterese: die durchgehende Nulllinie nehmen und nur dort
+  // abschneiden, wo die Masken über maskRunKm überwiegend nicht erfüllt
+  // sind. Bei schwachen Fronten liegen K1/K2 knapp an der Schwelle, die
+  // Maske schaltet ständig ein und aus, und die Stücke fielen unter die
+  // Mindestlänge (Genuatief 09.10. 12 UTC, Kaltfront Tunesien–Neapel).
+  const raw = o.maskRunKm > 0
+    ? chainSegments(isolineSegments(F, g, 0)).flatMap((l) => maskedRuns(l, mask, g, o.maskRunKm, o.maskRunShare))
+    : chainSegments(isolineSegments(Float32Array.from(F, (x, k) => (mask[k] ? x : NaN)), g, 0));
+  const lines = raw
     .flatMap((line) => splitAtCorners(line, o.cornerDeg, o.cornerChordKm))
     .filter((line) => lineLengthKm(line) >= o.minLengthKm);
   const af = activityFields(field, prev, g);
@@ -410,6 +421,21 @@ function surfaceShift(line, pieces, ff, o) {
     return [p[0] + (s * ny) / L / 111.2, p[1] + (s * nx) / L / (111.2 * Math.cos((p[0] * Math.PI) / 180))];
   });
   return { pts, offset };
+}
+
+// Abschnitte einer Linie, in denen der Anteil maskierter Punkte (laufendes
+// Mittel über runKm) mindestens share beträgt.
+function maskedRuns(line, mask, g, runKm, share) {
+  const m = line.map(([la, lo]) => {
+    const i = Math.round((lo - g.lon0) / g.res), j = Math.round((la - g.lat0) / g.res);
+    return i >= 0 && j >= 0 && i < g.nx && j < g.ny ? mask[j * g.nx + i] : 0;
+  });
+  const avg = runningMean(m, cumDist(line), runKm);
+  const out = [];
+  let cur = [];
+  line.forEach((p, i) => { if (avg[i] >= share) cur.push(p); else { if (cur.length > 1) out.push(cur); cur = []; } });
+  if (cur.length > 1) out.push(cur);
+  return out;
 }
 
 // Liegt die warme Luft links oder rechts der Linie (in Punktreihenfolge)?
