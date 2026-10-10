@@ -65,6 +65,8 @@ export const DETECT_DEFAULTS = {
   k1: 0.1,            // K/(100 km)², TFP-Maske
   k2: 0.8,            // K/100 km, Gradientmaske
   maskLenKm: 100,     // m in der K2-Maske
+  fillTerrain: false, // Geländelücken (unter Grund/bodennah) in θw harmonisch auffüllen (in Erprobung)
+  maskGapKm: 0,       // >0: Lücken der Masken bis zu dieser Länge entlang der Linie überbrücken (in Erprobung)
   maskRunKm: 0,       // >0: Masken mit Hysterese, gemittelt über diese Länge entlang der Linie (in Erprobung)
   maskRunShare: 0.5,  // … Anteil, ab dem ein Abschnitt als maskiert gilt
   minLengthKm: 400,   // kürzere Linien verwerfen
@@ -113,6 +115,10 @@ export function frontFields(field, opts = {}) {
     const nearGround = !(field.psfc[k] - field.pressure >= o.sfcMarginHpa);
     raw[k] = field.below[k] || nearGround ? NaN : thW[k];
   }
+  // Geländelücken harmonisch auffüllen (statt NaN): Glättung und Gradient
+  // weiteten die Lücke sonst auf 150–200 km, und Fronten rissen am Gebirge
+  // ab (Genua-Kaltfront zwischen Rom und La Spezia über dem Apennin).
+  if (o.fillTerrain) fillHarmonic(raw, g);
   const tau = gaussianSmooth(raw, g, o.sigmaKm);
   const { gx, gy, mag: G } = gradient(tau, g);
   const nx = new Float32Array(n), ny = new Float32Array(n);
@@ -153,8 +159,8 @@ export function detectFronts(field, opts = {}) {
   // sind. Bei schwachen Fronten liegen K1/K2 knapp an der Schwelle, die
   // Maske schaltet ständig ein und aus, und die Stücke fielen unter die
   // Mindestlänge (Genuatief 09.10. 12 UTC, Kaltfront Tunesien–Neapel).
-  const raw = o.maskRunKm > 0
-    ? chainSegments(isolineSegments(F, g, 0)).flatMap((l) => maskedRuns(l, mask, g, o.maskRunKm, o.maskRunShare))
+  const raw = o.maskGapKm > 0 || o.maskRunKm > 0
+    ? chainSegments(isolineSegments(F, g, 0)).flatMap((l) => (o.maskGapKm > 0 ? bridgedRuns(l, mask, g, o.maskGapKm) : maskedRuns(l, mask, g, o.maskRunKm, o.maskRunShare)))
     : chainSegments(isolineSegments(Float32Array.from(F, (x, k) => (mask[k] ? x : NaN)), g, 0));
   const lines = raw
     .flatMap((line) => splitAtCorners(line, o.cornerDeg, o.cornerChordKm))
@@ -421,6 +427,68 @@ function surfaceShift(line, pieces, ff, o) {
     return [p[0] + (s * ny) / L / 111.2, p[1] + (s * nx) / L / (111.2 * Math.cos((p[0] * Math.PI) / 180))];
   });
   return { pts, offset };
+}
+
+// NaN-Zellen harmonisch füllen (Laplace, Gauß-Seidel): jede Lückenzelle
+// wird zum Mittel ihrer Nachbarn, die Ränder der Lücke bleiben fest. Wie
+// eine über das Gebirge gespannte Membran: keine neuen Extrema, keine
+// künstlichen Gradienten.
+function fillHarmonic(a, g, iters = 400) {
+  const { nx, ny } = g, holes = [];
+  for (let k = 0; k < a.length; k++) if (!Number.isFinite(a[k])) holes.push(k);
+  if (!holes.length) return a;
+  // Startwerte: Mittel der bekannten Nachbarn, schrittweise nach innen.
+  const known = Uint8Array.from(a, (x) => (Number.isFinite(x) ? 1 : 0));
+  for (let pass = 0, left = holes.length; left && pass < nx + ny; pass++) {
+    left = 0;
+    for (const k of holes) {
+      if (known[k] === 1) continue;
+      const i = k % nx, j = (k - i) / nx;
+      let s = 0, c = 0;
+      for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const ii = i + di, jj = j + dj;
+        if (ii < 0 || jj < 0 || ii >= nx || jj >= ny) continue;
+        const kk = jj * nx + ii;
+        if (known[kk] === 1) { s += a[kk]; c++; }
+      }
+      if (c) { a[k] = s / c; known[k] = 2; } else left++;
+    }
+    for (const k of holes) if (known[k] === 2) known[k] = 1;
+  }
+  for (let it = 0; it < iters; it++) {
+    for (const k of holes) {
+      const i = k % nx, j = (k - i) / nx;
+      let s = 0, c = 0;
+      if (i > 0) { s += a[k - 1]; c++; }
+      if (i < nx - 1) { s += a[k + 1]; c++; }
+      if (j > 0) { s += a[k - nx]; c++; }
+      if (j < ny - 1) { s += a[k + nx]; c++; }
+      a[k] = s / c;
+    }
+  }
+  return a;
+}
+
+// Maskierte Abschnitte einer Linie; unmaskierte Lücken bis gapKm zwischen
+// zwei maskierten Abschnitten zählen mit.
+function bridgedRuns(line, mask, g, gapKm) {
+  const m = line.map(([la, lo]) => {
+    const i = Math.round((lo - g.lon0) / g.res), j = Math.round((la - g.lat0) / g.res);
+    return i >= 0 && j >= 0 && i < g.nx && j < g.ny ? mask[j * g.nx + i] : 0;
+  });
+  const s = cumDist(line);
+  for (let i = 0; i < m.length; i++) {
+    if (m[i] || !i || !m[i - 1]) continue;
+    let j = i;
+    while (j < m.length && !m[j]) j++;
+    if (j < m.length && s[j] - s[i - 1] <= gapKm) for (let q = i; q < j; q++) m[q] = 1;
+    i = j;
+  }
+  const out = [];
+  let cur = [];
+  line.forEach((p, i) => { if (m[i]) cur.push(p); else { if (cur.length > 1) out.push(cur); cur = []; } });
+  if (cur.length > 1) out.push(cur);
+  return out;
 }
 
 // Abschnitte einer Linie, in denen der Anteil maskierter Punkte (laufendes

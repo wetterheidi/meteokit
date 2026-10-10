@@ -27,6 +27,7 @@
  */
 
 import { gaussianSmooth, gradient, sampleBilinear } from "./grid.js";
+import { thetaFields } from "./thermo.js";
 
 const DEG = Math.PI / 180;
 const KM_PER_DEG = 111.2;
@@ -34,6 +35,8 @@ const KM_PER_DEG = 111.2;
 export const ACTIVITY_DEFAULTS = {
   contrastKm: 300,          // T850-Kontrast: Linie gegen Punkt so weit auf der kalten Seite
   contrastRamp: [2, 4],     // K
+  contrastE: false,         // zusätzlich θe-Kontrast 850 hPa (Feuchtegrenzen, Genuatief), in Erprobung
+  contrastRampE: [4, 8],    // K, Rampe für den θe-Kontrast; zählt der größere Faktor
   contrastMin: 3.5,         // K: an freien Linienenden endet die Front darunter, auch mit Wetter
   // Suchfenster der Bodenfront auf der warmen Seite der 850-hPa-Linie [km]
   sfcWindow: { warm: [0, 450], cold: [0, 250], stationary: [-100, 300] },
@@ -74,6 +77,7 @@ export function activityFields(field, prev, g) {
   return {
     msl, tend, conv, vort, w700,
     T850: S(field.levels?.[850]?.T ?? field.T, 120),
+    thE850: field.levels?.[850] ? S(thetaFields({ nx: g.nx, ny: g.ny, ...field.levels[850], pressure: 850 }).thE, 120) : null,
     precip: field.sfc.precipitation ? S(field.sfc.precipitation, 50) : null,
     cloudLow: field.sfc.cloud_cover_low ? S(field.sfc.cloud_cover_low, 50) : null,
   };
@@ -105,6 +109,7 @@ export function assessPoints(pts, type, ff, af, opts = {}) {
     const q = (s) => off(p, nx, ny, s);
 
     const contrast = at(af.T850, p) - at(af.T850, q(-o.contrastKm));
+    const contrastE = o.contrastE && af.thE850 ? at(af.thE850, p) - at(af.thE850, q(-o.contrastKm)) : NaN;
     // Bodenfront = stärkste Rinne (zweite Ableitung des Bodendrucks quer zur Linie).
     let trough = -Infinity, sb = 0;
     for (let s = w0; s <= w1; s += 25) {
@@ -129,8 +134,9 @@ export function assessPoints(pts, type, ff, af, opts = {}) {
     const weather = Math.max(ramp(precip, o.precipRamp) || 0,
       (ramp(cloudLow, o.cloudLowRamp) || 0) * (ramp(w700, o.w700Ramp) || 0));
     const dyn = meanFinite([ramp(trough, o.curvRamp), ramp(conv, o.convRamp), ramp(vort, o.vortRamp), ramp(tendJump, o.tendRamp)]);
-    const activity = (ramp(contrast, o.contrastRamp) || 0) * (0.5 * weather + 0.5 * (dyn || 0));
-    return { activity, contrast, trough, conv, vort, tendJump, precip, cloudLow, w700, sfcOffsetKm: sb };
+    const cf = Math.max(ramp(contrast, o.contrastRamp) || 0, ramp(contrastE, o.contrastRampE) || 0);
+    const activity = cf * (0.5 * weather + 0.5 * (dyn || 0));
+    return { activity, contrast, contrastE, trough, conv, vort, tendJump, precip, cloudLow, w700, sfcOffsetKm: sb };
   });
 }
 

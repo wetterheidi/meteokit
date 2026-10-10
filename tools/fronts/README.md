@@ -123,6 +123,13 @@ Danach eigene Lücken- und Okklusionsanalyse, dann dieselbe Glättung und
 Anschlussregel. Kennzeichen `method: "precip"`, Kriterien `precip` und
 `advection_k10h`.
 
+**Schwache Fronten (Erprobung, standardmäßig aus):** `fillTerrain`
+(Geländelücken in θw harmonisch füllen), `maskGapKm` (kurze Maskenlücken
+überbrücken), dazu `windMin` und `activity.contrastRamp` niedriger; in der
+Debug-Seite als Bündel „Schwache Fronten“. Ebenfalls in Erprobung:
+`thermo: "thE"` (TFP auf θe), `maskRunKm` (Masken über die Linie gemittelt),
+`activity.contrastE` (θe-Kontrast). Stand und Messungen in KRITERIEN.md.
+
 Die Okklusion muss zu einem Tief hin zeigen (auch zu einem Randtief
 jenseits des Gebiets), pro Tief gibt es höchstens eine.
 

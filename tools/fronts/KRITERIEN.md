@@ -592,6 +592,38 @@ Mittel 93 km vor der Handanalyse), wird aber als quasistationär typisiert
 (Querwind schwach) und fällt über die Anschlussregel weg: ihr Nordende
 liegt 450 km vom Kern, die Verbindung über Rom fehlt (Apennin-Lücke).
 
+**Geländelücken und schwache Fronten (Erprobung).** Neue Optionen in
+`detectFronts`, standardmäßig aus, in der Debug-Seite als Bündel
+„Schwache Fronten“:
+
+- `fillTerrain`: θw unter Grund und bodennah harmonisch auffüllen
+  (Laplace, wie eine über das Gebirge gespannte Membran) statt NaN. Damit
+  laufen Linien über Apennin und Alpen weiter.
+- `maskGapKm: 150`: kurze Lücken der Masken K1/K2 entlang der Nulllinie
+  überbrücken (schonender als `maskRunKm`, das am 08.10. 15 UTC das
+  Islandsystem kostete).
+- `windMin: 0.5`: Querwind für Kalt-/Warmfront ab 0,5 m/s (die Advektion
+  von θ quer zur Front ist Querwind mal Gradient, also derselbe Test).
+- `activity.contrastRamp: [1.5, 3.5]`: Kontrastfaktor ab 1,5 K (Genua:
+  2–3 K). Ein θe-Kontrast (`activity.contrastE`) taugt nicht: Fehlalarm
+  44 %, Feuchtegrenzen überall.
+
+Ergebnis 09.10. 12 UTC mit dem Bündel: Treffer 75 → 85 %, nur Lage 91 %,
+Fehlalarm 1 → 20 %, Abstand 31 km. Am Genuatief: Okklusion um den Kern
+(100 % in 100 km, 57 km), Warmfront Poebene – Adria (80 %, 52 km), Anschluss
+an die bis Kroatien verlängerte Ostsee-Kaltfront (wie KNMI; in der
+Handanalyse endet sie bei 46,6/27,7 und zählt deshalb als Fehlalarm).
+Die Kaltfront fehlt noch: das Südband Algerien–Tunesien–Sizilien liegt
+100–150 km südlich der Handanalyse, das Stück Neapel – Rom – Okklusionspunkt
+bleibt kurz und ohne Verbindung.
+
+Nebenwirkungen: 10.10. 03/06 UTC erscheinen die Kaltfront über Frankreich
+und die Ostseewelle mit Okklusion (passt eher zu den Referenzkarten);
+08.10. 12/15 UTC fällt das Islandsystem weg (sein Tief liegt am Westrand,
+die Okklusion zum Randtief bildet sich nicht mehr, Anschlussregel), und
+`fillTerrain` erzeugt eine Kaltfront Schweden – Alpen – Algerien (die
+schleifende Front an den Alpen, aber zu lang).
+
 ### Offene Punkte aus dem Fall 10.10. 06 UTC (zurückgestellt)
 
 Vergleich mit DWD, KNMI und GeoSphere. Getroffen werden die Warmfront der

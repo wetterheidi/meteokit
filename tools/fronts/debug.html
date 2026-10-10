@@ -94,6 +94,7 @@
     <span>Wind kalt/warm m/s</span><input id="windMin" type="number" step="0.5">
   </div>
   <label class="chk"><input id="surface" type="checkbox" checked> auf Bodenposition verschieben (sonst Lage in der Fläche)</label>
+  <label class="chk"><input id="weak" type="checkbox"> <b>Schwache Fronten</b> (Erprobung): Geländelücken füllen, kurze Maskenlücken überbrücken, Querwind ab 0,5 m/s, Kontrast ab 1,5 K</label>
   <label class="chk"><input id="precipFronts" type="checkbox"> Fronten aus Niederschlagsachsen an Tiefs ohne TFP-Front (in Erprobung)</label>
   <label class="chk"><input id="inactive" type="checkbox"> Linien ohne Wetter zeigen (grau)</label>
   <label class="chk"><input id="ridges" type="checkbox"> Warmluftzungen (Rückenachsen Schichtdicke bzw. θw 700)</label>
@@ -418,6 +419,8 @@ function detectOpts() {
     minLengthKm: Number($("minLen").value), windMin: Number($("windMin").value),
     position: $("surface").checked ? "surface" : "analysis",
     precipFronts: $("precipFronts").checked,
+    // Bündel für kontrastarme Tiefs (Genuatief 09.10. 12 UTC), s. KRITERIEN.md
+    ...($("weak").checked ? { fillTerrain: true, maskGapKm: 150, windMin: Math.min(Number($("windMin").value), 0.5), activity: { contrastRamp: [1.5, 3.5] } } : {}),
   };
 }
 
@@ -880,7 +883,7 @@ $("presSel").onchange = selectStep;
 $("isobars").onchange = drawIsobars;
 $("isoP").onchange = drawIsobars;
 $("wind10").onchange = drawWind10;
-for (const id of ["k1", "k2", "minLen", "windMin", "surface", "precipFronts"]) $(id).onchange = () => runDetection();
+for (const id of ["k1", "k2", "minLen", "windMin", "surface", "precipFronts", "weak"]) $(id).onchange = () => runDetection();
 $("fronts").onchange = drawFronts;
 $("cand").onchange = drawFronts;
 $("inactive").onchange = drawFronts;
