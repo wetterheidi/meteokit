@@ -691,6 +691,35 @@ sie als quasistationäre Front am Alpennordrand nach Westen schleifen.
   46,3/6,3 (Handanalyse 47,3/7,2). Entsteht nur am 08.10. (12, 15, 18 UTC),
   an keinem anderen Testtermin.
 
+### Handanalyse 10.10. 06 UTC (Teilanalyse)
+
+Analysiert: Skagerraktief (Okklusion stärker am Niederschlag orientiert,
+Kaltfront dort durchgezeichnet, wo die Automatik gestrichelt war) und
+Russlandtief (der Übergang von Warm- zu Kaltfront muss im Tiefkern
+liegen; danach Isobarenknick bei 1 hPa, Niederschlag und Drucktendenz).
+Referenz `reference/2026-10-10T06.geojson` (`partial`); eine schwache
+Kaltfront, ein Rest der Automatik parallel zur durchgezeichneten, wurde
+entfernt.
+
+Ergebnis (Treffer / Fehlalarm / Abstand): Vorgabe 19 % / 5 % / 46 km,
+Bündel „Schwache Fronten“ 100 % / 0 % / 33 km. Über alle drei
+Referenztage mit Bündel: 96 % / 5 % / 34 km, nur Lage 100 %.
+
+Umgesetzt:
+
+- **Übergang im Tiefkern** (`junctionToCore`, Vorgabe): Treffen sich Warm-
+  und Kaltfront höchstens 300 km vom Kern eines Tiefs ohne Okklusion, wird
+  der Treffpunkt in den Kern gelegt, beide Fronten folgen weich (über
+  max(400 km, 2 × Weg)). Russlandtief: Übergang vorher 110 km
+  nordnordöstlich des Kerns; Kaltfront 72 → 45 km, Warmfront 79 → 41 km;
+  10.10. gesamt 33 → 26 km, an den anderen Tagen keine Verschlechterung.
+- **Okklusion am Niederschlag** (`post.occPrecip`, aus): je Punkt quer zur
+  Linie zum Niederschlagsmaximum (bis `occPrecipKm`), geglättet, am
+  Okklusionspunkt fest. Mittlerer Abstand der Okklusionen (Island /
+  Ostsee / Genua / Skagerrak): ohne 13 / 53 / 57 / 77 km, 60 km Suchweite
+  31 / 28 / 43 / 55 km, 150 km 43 / 49 / 51 / 52 km. Hilft allen außer
+  Island; noch nicht eingeschaltet (Rückfrage).
+
 ### Offene Punkte aus dem Fall 10.10. 06 UTC (zurückgestellt)
 
 Vergleich mit DWD, KNMI und GeoSphere. Getroffen werden die Warmfront der

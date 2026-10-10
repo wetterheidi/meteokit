@@ -106,7 +106,11 @@ Okklusion ihre Eigenschaften übernimmt; den Charakter bestimmt die Analyse
 nicht (Zeichenregel, s. KRITERIEN.md). **Nachbearbeitung** (`src/fronts/postprocess.js`): Lücken zwischen Fronten
 gleichen Typs werden geschlossen, wenn entlang der Lücke Niederschlag
 fällt; seitlich versetzte, parallele Enden (bis 200 km) werden vorher
-gekürzt. Zum Schluss werden alle Fronten geglättet. **Jede Front hängt an
+gekürzt. Zum Schluss werden alle Fronten geglättet. **Offenes Tief** (`junctionToCore`, Vorgabe): Treffen sich
+Warm- und Kaltfront höchstens 300 km vom Kern eines Tiefs ohne Okklusion,
+wird der Übergang in den Tiefkern gelegt (`core_junction: true`).
+**Okklusion am Niederschlag** (`post.occPrecip`, in Erprobung, aus): die
+Okklusion quer zur Linie zum Niederschlagsmaximum rücken. **Jede Front hängt an
 einem Tiefkern** (`requireLowLink`, Vorgabe der Projektleitung): direkt
 oder über ihr Frontsystem, bei teilokkludierten Tiefs über die Okklusion.
 Fronten gelten als verbunden, wenn ein Ende höchstens 150 km von der
@@ -222,7 +226,7 @@ Vorhandene Fälle:
 | `icon_eu_2026-10-06.json.gz` | 06.10. 06–15 UTC, 3-stündlich | alle Termine +0 h. Wellende Front über Großbritannien. Vergleichskarten: DWD und KNMI 12 UTC |
 | `icon_eu_2026-10-08.json.gz` | 08.10. 09–21 UTC, 3-stündlich | alle Termine +0 h. Schleifende Kaltfront an den Alpen, Island- und Ostsee-Tief. Vergleichskarten: DWD und KNMI 12/18 UTC |
 | `icon_eu_2026-10-09.json.gz` | 08.10. 18 UTC – 09.10. 15 UTC, 3-stündlich | 18–12 UTC Analyse, 15 UTC +0 h aus dem 15-UTC-Lauf. Island-Tief mit Okklusion, Ostsee-Tief, Ligurien-Tief. Vergleichskarten: DWD 00/12 UTC, KNMI und GeoSphere 00/06/12 UTC |
-| `icon_eu_2026-10-10.json.gz` | 10.10. 00–09 UTC, 3-stündlich | 00–06 UTC Analyse, 09 UTC +3 h. Lehrbuchnahe Tiefs: Finnland-Tief mit Okklusion, Ostseewelle, Nordseetief, Wellen auf der Atlantikfront, Tief über Tunesien. Vergleichskarten: DWD, KNMI, GeoSphere 06 UTC |
+| `icon_eu_2026-10-10.json.gz` | 10.10. 00–09 UTC, 3-stündlich | 00–06 UTC Analyse, 09 UTC +3 h. Lehrbuchnahe Tiefs: Finnland-/Russlandtief, Ostseewelle mit Skagerraktief, Nordseetief, Wellen auf der Atlantikfront, Tief über Tunesien. Vergleichskarten: DWD, KNMI, GeoSphere 06 UTC; Handanalyse 06 UTC (Skagerrak- und Russlandtief) |
 | `icon_eu_850_2026100900_an.json` u. a. | ein Termin | Format v1, nur 850 hPa, aus dem Spike. Die Debug-Seite liest sie weiterhin |
 
 ## Debug-Seite

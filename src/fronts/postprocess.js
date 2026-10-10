@@ -19,6 +19,11 @@ export const POSTPROCESS_DEFAULTS = {
   overlapKm: 200,       // seitlich versetzte, parallele Enden bis zu diesem Abstand vorher kürzen
   smoothKm: 150,        // abschließende Glättung aller Fronten
   smoothPasses: 2,
+  occPrecip: false,     // Okklusion zum Niederschlagsmaximum quer zur Linie rücken (in Erprobung)
+  occPrecipKm: 150,     // … höchstens so weit
+  occPrecipMin: 0.2,    // mm/h: nur wo dort so viel fällt
+  coreJunction: true,   // offenes Tief: Übergang Warm-/Kaltfront in den Tiefkern legen
+  coreKm: 300,          // … wenn der Übergang höchstens so weit vom Kern liegt
   lowLink: true,        // jede Front hängt (über ihr Frontsystem) an einem Tiefkern
   lowKm: 300,           // so nah muss eine Front des Systems am Tiefkern liegen
   linkKm: 150,          // Fronten gelten als verbunden, wenn ein Ende so nah an der anderen liegt
@@ -186,4 +191,95 @@ export function requireLowLink(features, lows, opts = {}) {
   return features.map((f, i) => (live[i] && !anchored.has(find(i))
     ? { ...f, properties: { ...f.properties, activity_class: "none", unlinked: true } }
     : f));
+}
+
+/**
+ * Bei einem offenen Tief (ohne Okklusion) liegt der Übergang von der Warm-
+ * zur Kaltfront im Tiefkern (Projektleitung, Russlandtief 10.10. 06 UTC:
+ * die Automatik wechselte 110 km nordnordöstlich des Kerns). Treffen sich
+ * eine Warm- und eine Kaltfront höchstens coreKm vom Kern eines Tiefs, an
+ * dem keine Okklusion hängt, wird der Treffpunkt in den Kern verschoben;
+ * beide Fronten folgen weich (Verschiebung nimmt über max(400 km, 2·Weg)
+ * entlang der Linie auf null ab).
+ */
+export function junctionToCore(features, lows, opts = {}) {
+  const o = { ...POSTPROCESS_DEFAULTS, ...opts };
+  if (!o.coreJunction || !lows.length) return features;
+  const pts = features.map((f) => f.geometry.coordinates.map(([lo, la]) => [la, lo]));
+  const occLows = features.filter((f) => f.properties.front_type === "occluded").map((f) => f.properties.occlusion_low).filter((l) => l && typeof l === "object");
+  const moved = new Map(); // Feature-Index -> Punkte
+  const ends = [];
+  features.forEach((f, i) => {
+    const t = f.properties.front_type;
+    if ((t !== "cold" && t !== "warm") || f.properties.activity_class === "none") return;
+    ends.push({ i, t, atEnd: false, p: pts[i][0] }, { i, t, atEnd: true, p: pts[i][pts[i].length - 1] });
+  });
+  for (const a of ends) {
+    if (a.t !== "warm") continue;
+    const b = ends.find((e) => e.t === "cold" && distKm(e.p, a.p) < 5);
+    if (!b) continue;
+    const low = lows.map((l) => ({ l, d: distKm([l.lat, l.lon], a.p) })).sort((x, y) => x.d - y.d)[0];
+    if (!low || low.d > o.coreKm || low.d < 10) continue;
+    if (occLows.some((ol) => distKm([ol.lat, ol.lon], [low.l.lat, low.l.lon]) < 100)) continue;
+    const D = [low.l.lat - a.p[0], low.l.lon - a.p[1]];
+    const taper = Math.max(400, 2 * low.d);
+    for (const e of [a, b]) {
+      const line = (moved.get(e.i) || pts[e.i]).map((p) => p.slice());
+      const order = e.atEnd ? line.slice().reverse() : line;
+      let s = 0;
+      const shifted = order.map((p, q) => {
+        if (q) s += distKm(order[q - 1], order[q]);
+        const x = Math.max(0, 1 - s / taper), w = x * x * (3 - 2 * x);
+        return [p[0] + w * D[0], p[1] + w * D[1]];
+      });
+      moved.set(e.i, e.atEnd ? shifted.reverse() : shifted);
+    }
+  }
+  return features.map((f, i) => (moved.has(i) ? {
+    ...f,
+    geometry: { type: "LineString", coordinates: moved.get(i).map(([la, lo]) => [+lo.toFixed(3), +la.toFixed(3)]) },
+    properties: { ...f.properties, length_km: Math.round(lineLengthKm(moved.get(i))), core_junction: true },
+  } : f));
+}
+
+/**
+ * Okklusion am Niederschlag ausrichten (Projektleitung, Ostsee-Okklusion
+ * 09.10. 12 UTC und Skagerrak-Okklusion 10.10. 06 UTC "stärker am
+ * Niederschlag orientiert"): je Punkt quer zur Linie bis occPrecipKm das
+ * Niederschlagsmaximum suchen, den Versatz entlang der Linie glätten
+ * (300 km) und am Okklusionspunkt auf null ausblenden (200 km), damit die
+ * Anschlüsse halten.
+ */
+export function occlusionToPrecip(features, af, g, opts = {}) {
+  const o = { ...POSTPROCESS_DEFAULTS, ...opts };
+  if (!o.occPrecip || !af?.precip) return features;
+  return features.map((f) => {
+    if (f.properties.front_type !== "occluded") return f;
+    const ll = f.geometry.coordinates.map(([lo, la]) => [la, lo]);
+    const n = ll.length;
+    if (n < 3) return f;
+    const nrm = [], off = [];
+    for (let i = 0; i < n; i++) {
+      const a = ll[Math.max(0, i - 1)], b = ll[Math.min(n - 1, i + 1)], c = Math.cos(ll[i][0] * DEG);
+      const t = unitV([(b[1] - a[1]) * c, b[0] - a[0]]);
+      const nn = [-t[1], t[0]];
+      nrm.push(nn);
+      let best = -1, bs = 0;
+      for (let s = -o.occPrecipKm; s <= o.occPrecipKm; s += 10) {
+        const q = [ll[i][0] + (s * nn[1]) / KM_PER_DEG, ll[i][1] + (s * nn[0]) / (KM_PER_DEG * c)];
+        const r = sampleBilinear(af.precip, g, q[0], q[1]);
+        if (r > best) { best = r; bs = s; }
+      }
+      off.push(best >= o.occPrecipMin ? bs : 0);
+    }
+    const cum = [0];
+    for (let i = 1; i < n; i++) cum.push(cum[i - 1] + distKm(ll[i - 1], ll[i]));
+    const sm = off.map((_, i) => { let s = 0, k = 0; for (let j = 0; j < n; j++) if (Math.abs(cum[j] - cum[i]) <= 150) { s += off[j]; k++; } return s / k; });
+    // Okklusionspunkt am Anfang (markOcclusions legt ihn dorthin)
+    const out = ll.map((p, i) => {
+      const x = Math.min(1, cum[i] / 200), w = x * x * (3 - 2 * x), c = Math.cos(p[0] * DEG);
+      return [p[0] + (w * sm[i] * nrm[i][1]) / KM_PER_DEG, p[1] + (w * sm[i] * nrm[i][0]) / (KM_PER_DEG * c)];
+    });
+    return { ...f, geometry: { type: "LineString", coordinates: out.map(([la, lo]) => [+lo.toFixed(3), +la.toFixed(3)]) }, properties: { ...f.properties, length_km: Math.round(lineLengthKm(out)) } };
+  });
 }
