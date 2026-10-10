@@ -461,6 +461,37 @@ Befunde:
   60 km zu weit vorn liegt; Kaltfront und Okklusion gehen jetzt ohne Knick
   ineinander über.
 
+### Einzelparameterfronten (Vorgehen der Projektleitung, Prototyp)
+
+Vorgehen bei unklarer Lage: je eine Front nach Niederschlag, Drucktendenz,
+Windsprung/Isobarenknick, Temperatursprung, θe 850 hPa usw. zeichnen und
+optisch über alle mitteln. Prototyp: Für jeden Frontpunkt wird quer zur
+Front (±200 km) die Lage jedes Parameters bestimmt: Maximum Niederschlag,
+stärkster Tendenzsprung in Zugrichtung, stärkste Krümmung des Bodendrucks,
+Maximum der Konvergenz (10 m), stärkster Anstieg von T2m bzw. θe 850 hPa.
+
+Lage der Parameter relativ zur Handanalyse 09.10. 12 UTC (Median ±
+mittlere Abweichung, km, positiv = warme Seite):
+
+| Parameter | Kaltfront | Warmfront | Okklusion |
+|---|---|---|---|
+| Isobarenknick | −20 ± 51 | +10 ± 40 | −40 ± 41 |
+| Konvergenz | −30 ± 66 | +40 ± 40 | −30 ± 56 |
+| Niederschlag | −50 ± 68 | −80 ± 60 | +40 ± 51 |
+| Tendenzsprung | −90 ± 28 | +120 ± 43 | +40 ± 114 |
+| T2m-Anstieg | −120 ± 61 | −50 ± 54 | +110 ± 125 |
+| θe-Gradient 850 hPa | −140 ± 40 | −130 ± 18 | −150 ± 32 |
+
+Isobarenknick und Konvergenz liegen am nächsten an der Handanalyse. Der
+θe-Gradient in 850 hPa liegt stets 130–150 km auf der kalten Seite, aber
+mit kleiner Streuung (Frontneigung). Ein ungewichtetes Mittel aller
+Parameter verschlechtert das Ergebnis (56 statt 26 km). Gewichtet und um
+den typischen Versatz korrigiert: am selben Fall kalibriert 27 km, über
+Kreuz (Island ↔ Ostsee) schlechter als ohne (Ostsee 46 statt 44, Island 26
+statt 13). Nur die Ostsee-Okklusion gewinnt in allen Varianten (53 →
+33–37 km). Fazit: Für übertragbare Versätze und Gewichte braucht es
+weitere Handanalysen lehrbuchhafter Tiefs; bis dahin nicht übernommen.
+
 ### Offene Punkte aus dem Fall 10.10. 06 UTC (zurückgestellt)
 
 Vergleich mit DWD, KNMI und GeoSphere. Getroffen werden die Warmfront der
