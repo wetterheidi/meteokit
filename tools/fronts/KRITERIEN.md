@@ -624,6 +624,35 @@ die Okklusion zum Randtief bildet sich nicht mehr, Anschlussregel), und
 `fillTerrain` erzeugt eine Kaltfront Schweden – Alpen – Algerien (die
 schleifende Front an den Alpen, aber zu lang).
 
+**Rückmeldung zum Bündel (09.10. 12 UTC):** Genua-Okklusion und
+-Warmfront vertretbar. Die Ostsee-Kaltfront **nicht** bis Kroatien
+verlängern: keine Wettererscheinungen entlang dieses Stücks, und eine
+Kaltfront, die in die Warmfront des nächsten Tiefs übergeht, zeichnet die
+Projektleitung nur bei einer Zyklonenfamilie. Das Genuatief hat einen
+eigenen Entstehungsgrund. Die Genua-Kaltfront orientiert sich am
+Niederschlag, der mit dem Vorderrand der θe-Drängung zusammenfällt.
+
+Umsetzung (Optionen, standardmäßig aus, im Bündel enthalten):
+
+- `activity.weatherMin: 0.2`: Front nur, wo das geglättete Wettermaß
+  (Niederschlag oder tiefe Wolken mit Hebung) mindestens 0,2 erreicht.
+  Streicht die Verlängerung nach Kroatien. Als allgemeine Vorgabe
+  (Schwelle 0,3) kostet es Treffer (75 → 71 %): Es kappt auch trockene
+  Abschnitte, die die Handanalyse zeichnet (Atlantikausläufer der
+  Islandkaltfront).
+- `activity.sfcPrecipWeight: 1` und `surfaceDefaultKm: {cold: 0}`:
+  Bodenposition dort, wo Rinne und Niederschlag zusammen am stärksten sind,
+  ohne Pauschalversatz. Ohne Bündel gemischt: Ostsee-Kaltfront 40 → 27 km,
+  Islandkaltfront 12 → 26 km, schleifende Front 08.10. 41 → 55 km.
+
+Ergebnis mit dem ganzen Bündel: 09.10. 12 UTC Treffer 94 %, nur Lage
+100 %, Fehlalarm 6 %, 32 km (Genua-Kaltfront 65 % in 100 km, 60 km;
+Warmfront 78 %, 51 km; Okklusion 100 %, 57 km). 08.10. 18 UTC (Teilanalyse,
+nur die schleifende Front geprüft): 70 % / 76 % / 32 % / 47 km gegenüber
+68 % / 68 % / 19 % / 41 km ohne Bündel. Die Automatik führt die Kaltfront
+quer durch die Alpen zum Genuatief (ähnlich KNMI); die Handanalyse lässt
+sie als quasistationäre Front am Alpennordrand nach Westen schleifen.
+
 ### Offene Punkte aus dem Fall 10.10. 06 UTC (zurückgestellt)
 
 Vergleich mit DWD, KNMI und GeoSphere. Getroffen werden die Warmfront der

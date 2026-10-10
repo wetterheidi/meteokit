@@ -385,6 +385,14 @@ function byActivity(piece, ff, af, o, ends) {
   const con = runningMean(assess.map((x) => x.contrast), s, o.activitySmoothKm);
   const label = act.map((a) => activityClass(a, o.activity));
   const n = label.length;
+  // Eine Front ist eine Luftmassengrenze MIT Wetter: ohne Niederschlag oder
+  // tiefe Wolken mit Hebung keine Front, auch bei Dynamik (Ostsee-Kaltfront
+  // bis Kroatien, 09.10. 12 UTC, mit dem Bündel "schwache Fronten").
+  const wmin = o.activity.weatherMin ?? ACTIVITY_DEFAULTS.weatherMin;
+  if (wmin > 0) {
+    const wx = runningMean(assess.map((x) => x.weather), s, o.activitySmoothKm);
+    wx.forEach((w, m) => { if (!(w >= wmin)) label[m] = "none"; });
+  }
   if (ends?.free[0] && piece.lineIdx[0] === ends.first) for (let m = 0; m < n && !(con[m] >= cmin); m++) label[m] = "none";
   if (ends?.free[1] && piece.lineIdx[n - 1] === ends.last) for (let m = n - 1; m >= 0 && !(con[m] >= cmin); m--) label[m] = "none";
   return splitRuns(label, s, o.minPieceKm).map((p) => {

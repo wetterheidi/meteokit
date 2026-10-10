@@ -94,7 +94,7 @@
     <span>Wind kalt/warm m/s</span><input id="windMin" type="number" step="0.5">
   </div>
   <label class="chk"><input id="surface" type="checkbox" checked> auf Bodenposition verschieben (sonst Lage in der Fläche)</label>
-  <label class="chk"><input id="weak" type="checkbox"> <b>Schwache Fronten</b> (Erprobung): Geländelücken füllen, kurze Maskenlücken überbrücken, Querwind ab 0,5 m/s, Kontrast ab 1,5 K</label>
+  <label class="chk"><input id="weak" type="checkbox"> <b>Schwache Fronten</b> (Erprobung): Geländelücken füllen, kurze Maskenlücken überbrücken, Querwind ab 0,5 m/s, Kontrast ab 1,5 K, nur mit Wetter, Bodenposition nach Rinne und Niederschlag</label>
   <label class="chk"><input id="precipFronts" type="checkbox"> Fronten aus Niederschlagsachsen an Tiefs ohne TFP-Front (in Erprobung)</label>
   <label class="chk"><input id="inactive" type="checkbox"> Linien ohne Wetter zeigen (grau)</label>
   <label class="chk"><input id="ridges" type="checkbox"> Warmluftzungen (Rückenachsen Schichtdicke bzw. θw 700)</label>
@@ -420,7 +420,11 @@ function detectOpts() {
     position: $("surface").checked ? "surface" : "analysis",
     precipFronts: $("precipFronts").checked,
     // Bündel für kontrastarme Tiefs (Genuatief 09.10. 12 UTC), s. KRITERIEN.md
-    ...($("weak").checked ? { fillTerrain: true, maskGapKm: 150, windMin: Math.min(Number($("windMin").value), 0.5), activity: { contrastRamp: [1.5, 3.5] } } : {}),
+    ...($("weak").checked ? {
+      fillTerrain: true, maskGapKm: 150, windMin: Math.min(Number($("windMin").value), 0.5),
+      activity: { contrastRamp: [1.5, 3.5], weatherMin: 0.2, sfcPrecipWeight: 1 },
+      surfaceDefaultKm: { cold: 0, stationary: 0 },
+    } : {}),
   };
 }
 
@@ -816,10 +820,14 @@ $("edWeak").onchange = () => { const ln = ED.lines[ED.sel]; if (ln) { pushUndo()
 $("edImport").onclick = () => {
   if (!fronts) return;
   pushUndo();
+  // Schon übernommene Linien nicht noch einmal anhängen (mehrfaches Drücken
+  // ergab sonst jede Linie mehrfach in der Referenz).
+  const same = (a, b) => a.length === b.length && a.every((p, i) => distKm(p, b[i]) < 1);
   for (const f of fronts.features) {
     const pr = f.properties;
     if (pr.activity_class === "none") continue;
     const cps = decimate(f.geometry.coordinates.map(([lo, la]) => [la, lo]));
+    if (ED.lines.some((ln) => same(ln.cps, cps))) continue;
     ED.lines.push({ type: pr.front_type, weak: pr.activity_class === "weak", warm: pr.warm_side, cps });
   }
   ED.sel = -1; changed();

@@ -59,8 +59,10 @@ for (const file of refs) {
   const field = fieldAt(C, n, 850);
   const prev = n > 0 && C.stepH === 3 ? fieldAt(C, n - 1, 850) : undefined;
   const auto = detectFronts(field, { ...detectOpts, prev });
-  const r = compareFronts(fcToLines(fc), fcToLines(auto), tolKm ? { tolKm } : {});
+  // Teilanalyse (properties.partial): Fehlalarme nur nahe den geprüften Linien.
+  const r = compareFronts(fcToLines(fc), fcToLines(auto), { ...(tolKm ? { tolKm } : {}), ...(fc.properties?.partial ? { partialKm: 300 } : {}) });
   for (const k of Object.keys(tot)) tot[k] += r[k];
-  console.log(`${vt}  ${hit.name.padEnd(26)}  ${pct(r.pod)}  ${pct(r.podAny)}    ${pct(r.far)}   ${km(r.meanDistKm)} km  ${km(r.refKm)}/${km(r.testKm)}${prev ? "" : "  (ohne Vortermin)"}`);
+  console.log(`${vt}${fc.properties?.partial ? "*" : " "} ${hit.name.padEnd(26)}  ${pct(r.pod)}  ${pct(r.podAny)}    ${pct(r.far)}   ${km(r.meanDistKm)} km  ${km(r.refKm)}/${km(r.testKm)}${prev ? "" : "  (ohne Vortermin)"}`);
 }
+console.log("* Teilanalyse: Fehlalarm nur im Umkreis von 300 km um die geprüften Linien");
 console.log(`Gesamt${" ".repeat(40)}${pct(tot.hitKm / tot.refKm)}  ${pct(tot.hitAnyKm / tot.refKm)}    ${pct(tot.testKm ? tot.falseKm / tot.testKm : null)}   ${km(tot.distN ? tot.distSum / tot.distN : null)} km`);

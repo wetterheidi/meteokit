@@ -6,12 +6,14 @@
  * getroffen, wenn eine Front gleichen Typs höchstens tolKm entfernt liegt
  * ("nur Lage": Front beliebigen Typs). Ein Punkt der Automatik ist ein
  * Fehlalarm, wenn keine Referenzfront gleichen Typs so nah liegt. Alle
- * Anteile sind längengewichtet.
+ * Anteile sind längengewichtet. Bei einer Teilanalyse (nur einige Fronten
+ * geprüft, partialKm > 0) zählen Fehlalarme nur im Umkreis partialKm um die
+ * Referenzlinien.
  */
 
 import { distKm } from "../../src/fronts/grid.js";
 
-export const COMPARE_DEFAULTS = { tolKm: 150, stepKm: 25 };
+export const COMPARE_DEFAULTS = { tolKm: 150, stepKm: 25, partialKm: 0 };
 
 /** Fronten einer FeatureCollection als { type, ll: [[lat, lon], …] }, ohne activity_class "none". */
 export function fcToLines(fc) {
@@ -74,7 +76,11 @@ export function compareFronts(ref, test, opts = {}) {
   }
   let testKm = 0, falseKm = 0;
   for (const l of T) {
-    for (const p of l.pts) { testKm += o.stepKm; if (near(p, R, l.type) > o.tolKm) falseKm += o.stepKm; }
+    for (const p of l.pts) {
+      if (o.partialKm > 0 && near(p, R) > o.partialKm) continue;
+      testKm += o.stepKm;
+      if (near(p, R, l.type) > o.tolKm) falseKm += o.stepKm;
+    }
   }
   return {
     refKm, testKm, hitKm, hitAnyKm, falseKm, distSum, distN,

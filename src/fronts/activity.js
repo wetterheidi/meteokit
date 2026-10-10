@@ -37,9 +37,11 @@ export const ACTIVITY_DEFAULTS = {
   contrastRamp: [2, 4],     // K
   contrastE: false,         // zusätzlich θe-Kontrast 850 hPa (Feuchtegrenzen, Genuatief), in Erprobung
   contrastRampE: [4, 8],    // K, Rampe für den θe-Kontrast; zählt der größere Faktor
+  weatherMin: 0,            // geglättetes Wettermaß, darunter keine Front (0 = aus), in Erprobung
   contrastMin: 3.5,         // K: an freien Linienenden endet die Front darunter, auch mit Wetter
   // Suchfenster der Bodenfront auf der warmen Seite der 850-hPa-Linie [km]
   sfcWindow: { warm: [0, 450], cold: [0, 250], stationary: [-100, 300] },
+  sfcPrecipWeight: 0,       // Gewicht des Niederschlags bei der Suche der Bodenposition (0 = nur Rinne), in Erprobung
   curvStepKm: 150,          // Schrittweite der zweiten Ableitung des Bodendrucks
   curvRamp: [0.1, 0.5],     // hPa/(100 km)²
   convRamp: [0.3, 1.2],     // 10⁻⁵ s⁻¹
@@ -110,11 +112,17 @@ export function assessPoints(pts, type, ff, af, opts = {}) {
 
     const contrast = at(af.T850, p) - at(af.T850, q(-o.contrastKm));
     const contrastE = o.contrastE && af.thE850 ? at(af.thE850, p) - at(af.thE850, q(-o.contrastKm)) : NaN;
-    // Bodenfront = stärkste Rinne (zweite Ableitung des Bodendrucks quer zur Linie).
-    let trough = -Infinity, sb = 0;
+    // Bodenfront = stärkste Rinne (zweite Ableitung des Bodendrucks quer zur
+    // Linie). Mit sfcPrecipWeight > 0 zählt der Niederschlag mit: Rinne und
+    // Niederschlag gemeinsam (Polarfronten liegen in der Rinne, die
+    // kontrastarme Genua-Kaltfront am Niederschlag).
+    let trough = -Infinity, sb = 0, best = -Infinity;
     for (let s = w0; s <= w1; s += 25) {
       const c = (at(af.msl, q(s + h)) - 2 * at(af.msl, q(s)) + at(af.msl, q(s - h))) / (h / 100) ** 2;
-      if (c > trough) { trough = c; sb = s; }
+      const score = o.sfcPrecipWeight > 0
+        ? (ramp(c, o.curvRamp) || 0) + o.sfcPrecipWeight * (ramp(at(af.precip, q(s)), o.precipRamp) || 0)
+        : c;
+      if (score > best) { best = score; trough = c; sb = s; }
     }
     let conv = -Infinity, vort = -Infinity;
     for (let s = sb - 100; s <= sb + 100; s += 25) {
@@ -136,7 +144,7 @@ export function assessPoints(pts, type, ff, af, opts = {}) {
     const dyn = meanFinite([ramp(trough, o.curvRamp), ramp(conv, o.convRamp), ramp(vort, o.vortRamp), ramp(tendJump, o.tendRamp)]);
     const cf = Math.max(ramp(contrast, o.contrastRamp) || 0, ramp(contrastE, o.contrastRampE) || 0);
     const activity = cf * (0.5 * weather + 0.5 * (dyn || 0));
-    return { activity, contrast, contrastE, trough, conv, vort, tendJump, precip, cloudLow, w700, sfcOffsetKm: sb };
+    return { activity, weather, contrast, contrastE, trough, conv, vort, tendJump, precip, cloudLow, w700, sfcOffsetKm: sb };
   });
 }
 

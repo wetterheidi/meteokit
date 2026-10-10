@@ -125,8 +125,10 @@ Anschlussregel. Kennzeichen `method: "precip"`, Kriterien `precip` und
 
 **Schwache Fronten (Erprobung, standardmäßig aus):** `fillTerrain`
 (Geländelücken in θw harmonisch füllen), `maskGapKm` (kurze Maskenlücken
-überbrücken), dazu `windMin` und `activity.contrastRamp` niedriger; in der
-Debug-Seite als Bündel „Schwache Fronten“. Ebenfalls in Erprobung:
+überbrücken), dazu `windMin` und `activity.contrastRamp` niedriger,
+`activity.weatherMin` (Front nur mit Wetter), `activity.sfcPrecipWeight`
+mit `surfaceDefaultKm` 0 (Bodenposition nach Rinne und Niederschlag); in
+der Debug-Seite als Bündel „Schwache Fronten“. Ebenfalls in Erprobung:
 `thermo: "thE"` (TFP auf θe), `maskRunKm` (Masken über die Linie gemittelt),
 `activity.contrastE` (θe-Kontrast). Stand und Messungen in KRITERIEN.md.
 
@@ -272,6 +274,12 @@ und als Referenz für den jeweiligen Termin speichern:
 Das Format ist eine FeatureCollection wie bei `detectFronts`
 (`front_type`, `activity_class`, `warm_side`, `motion_side`), dazu die
 Stützpunkte in `control_points` und `properties.valid_time`.
+
+Wurden nur einige Fronten eines Termins geprüft, bekommt die Referenz
+`properties.partial: true`; `compare.mjs` zählt Fehlalarme dann nur im
+Umkreis von 300 km um die geprüften Linien (Beispiel 08.10. 18 UTC: nur die
+schleifende Front an den Alpen). „Automatik übernehmen“ hängt schon
+übernommene Linien nicht erneut an.
 
 Unter den Knöpfen steht der Vergleich der Automatik mit der Handanalyse am
 aktuellen Termin, mit den aktuellen Reglern. Über alle Referenzen zugleich
