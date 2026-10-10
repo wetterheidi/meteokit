@@ -97,6 +97,7 @@
   <label class="chk"><input id="precipFronts" type="checkbox"> Fronten aus Niederschlagsachsen an Tiefs ohne TFP-Front (in Erprobung)</label>
   <label class="chk"><input id="inactive" type="checkbox"> Linien ohne Wetter zeigen (grau)</label>
   <label class="chk"><input id="ridges" type="checkbox"> Warmluftzungen (Rückenachsen Schichtdicke bzw. θw 700)</label>
+  <label class="chk"><input id="kinks" type="checkbox"> Knicklinien der Isobaren (Achsen max. zyklonaler Isobarenkrümmung, orange)</label>
   <label class="chk"><input id="cand" type="checkbox"> Kandidaten ohne Masken (grau)</label>
   <div class="row"><button id="export">GeoJSON speichern</button> <span id="nFronts"></span></div>
 
@@ -147,6 +148,7 @@ import { thetaFields } from "../../src/fronts/thermo.js";
 import { gaussianSmooth, gradient, isolineSegments, chainSegments, sampleBilinear, distKm } from "../../src/fronts/grid.js";
 import { compareFronts, fcToLines } from "./compare.js";
 import { detectFronts, frontFields, DETECT_DEFAULTS } from "../../src/fronts/detect.js";
+import { ridgeLines } from "../../src/fronts/occlusion.js";
 import { fieldAt } from "../../src/fronts/field.js";
 
 const $ = (id) => document.getElementById(id);
@@ -512,6 +514,9 @@ function drawFronts() {
       addFront(frontLayer, ll, pr, { tip });
     }
   }
+  if ($("kinks").checked && derived?.msl?.some(Number.isFinite)) {
+    L.polyline(kinkLines(), { pane: "lines", color: "#ff8c00", weight: 2, interactive: false }).addTo(frontLayer);
+  }
   if ($("ridges").checked && fronts?.properties?.ridges) {
     L.polyline(fronts.properties.ridges, { pane: "lines", color: "#8e24aa", weight: 1.5, dashArray: "1 5", interactive: false }).addTo(frontLayer);
   }
@@ -527,6 +532,15 @@ function drawFronts() {
   }
   frontLayer.addTo(map);
   if (ED.layer) renderManual(); // Handanalyse über der Automatik
+}
+
+// Knicklinien der Isobaren: Achsen maximaler zyklonaler Krümmung
+// κ = ∇·(∇p/|∇p|) des Bodendrucks (40 km geglättet), s. KRITERIEN.md.
+function kinkLines() {
+  const p = gaussianSmooth(derived.msl, G, 40), d = gradient(p, G);
+  const ux = d.gx.map((x, k) => x / Math.max(d.mag[k], 0.3)), uy = d.gy.map((x, k) => x / Math.max(d.mag[k], 0.3));
+  const dx = gradient(ux, G), dy = gradient(uy, G);
+  return ridgeLines(ux.map((_, k) => dx.gx[k] + dy.gy[k]), G, { ridgeSmoothKm: 40, ridgeMinKm: 200 }, 0.05);
 }
 
 function exportGeoJSON() {
@@ -870,6 +884,7 @@ $("fronts").onchange = drawFronts;
 $("cand").onchange = drawFronts;
 $("inactive").onchange = drawFronts;
 $("ridges").onchange = drawFronts;
+$("kinks").onchange = drawFronts;
 $("export").onclick = exportGeoJSON;
 $("sigma").oninput = recompute;
 $("fieldSel").onchange = drawField;

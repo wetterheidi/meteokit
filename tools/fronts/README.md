@@ -225,7 +225,7 @@ stehen zur Wahl:
 - Gesamtbewölkung und tiefe Wolken
 - w und Spread in 700 hPa
 
-Dazu kommen Isobaren (5, 2 oder 1 hPa; fein aufgelöst zeigen sie die Knicke schwacher Fronten), Isolinien, Windpfeile auf der Fläche und bei
+Dazu kommen Isobaren (5, 2 oder 1 hPa; fein aufgelöst zeigen sie die Knicke schwacher Fronten), die Knicklinien der Isobaren (Achsen maximaler zyklonaler Isobarenkrümmung), Isolinien, Windpfeile auf der Fläche und bei
 ~10 m, die Warmluftzungen (Rückenachsen der Schichtdicke bzw. θw 700) sowie die Orographiemaske. Darüber liegen die detektierten
 Fronten mit den üblichen Symbolen. Die Schwellen K1, K2, Mindestlänge und
 Windschwelle sind live einstellbar. Optional lassen sich alle Kandidaten
