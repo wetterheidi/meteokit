@@ -16,6 +16,7 @@ export const POSTPROCESS_DEFAULTS = {
   gapKm: 600,           // Lücken bis zu dieser Länge schließen
   gapAlignMin: 0.6,     // cos: Linienenden müssen aufeinander zu zeigen
   gapPrecipMin: 0.1,    // mm/h: so viel Niederschlag muss entlang der Lücke fallen
+  overlapKm: 200,       // seitlich versetzte, parallele Enden bis zu diesem Abstand vorher kürzen
   smoothKm: 150,        // abschließende Glättung aller Fronten
   smoothPasses: 2,
   lowLink: true,        // jede Front hängt (über ihr Frontsystem) an einem Tiefkern
@@ -71,24 +72,41 @@ export function closeGaps(features, af, g, opts = {}) {
         if (!ok(A) || !ok(B) || A.f.properties.front_type !== B.f.properties.front_type) continue;
         for (const ea of [true, false]) {
           for (const eb of [true, false]) {
-            const pa = ea ? A.pts[A.pts.length - 1] : A.pts[0], pb = eb ? B.pts[B.pts.length - 1] : B.pts[0];
+            // A so ausgerichtet, dass die Lücke an seinem Ende liegt, B an seinem Anfang.
+            let aP = ea ? A.pts : A.pts.slice().reverse(), bP = eb ? B.pts.slice().reverse() : B.pts;
+            const d0 = distKm(aP[aP.length - 1], bP[0]);
+            if (d0 < 1 || d0 > o.gapKm) continue;
+            // Seitlich versetzte, parallel laufende Enden (Genua-Kaltfront 09.10.
+            // 12 UTC: das nördliche Stück begann neben dem Ende des südlichen):
+            // die überlappenden Enden kürzen, bis B vor A liegt.
+            const tA0 = outward(aP, true), tB0 = outward(bP, false);
+            if (d0 <= o.overlapKm && dotV(tA0, [-tB0[0], -tB0[1]]) >= o.gapAlignMin) {
+              // so weit, dass die Lücke überwiegend in Laufrichtung liegt
+              // (Vorlauf mindestens so groß wie der seitliche Versatz)
+              const gap = () => { const v = vecKm(aP[aP.length - 1], bP[0]); return { ahead: dotV(v, tA0), side: Math.abs(v[0] * tA0[1] - v[1] * tA0[0]) }; };
+              const short = () => { const x = gap(); return x.ahead < x.side; };
+              while (short() && (aP.length > 2 || bP.length > 2)) {
+                if (aP.length > 2) aP = aP.slice(0, -1);
+                if (short() && bP.length > 2) bP = bP.slice(1);
+              }
+            }
+            const pa = aP[aP.length - 1], pb = bP[0];
             const d = distKm(pa, pb);
             if (d < 1 || d > o.gapKm || (best && d >= best.d)) continue;
-            const tA = outward(A.pts, ea), tB = outward(B.pts, eb), ab = unitV(vecKm(pa, pb));
+            const tA = outward(aP, true), tB = outward(bP, false), ab = unitV(vecKm(pa, pb));
             if (dotV(tA, ab) < o.gapAlignMin || dotV(tB, [-ab[0], -ab[1]]) < o.gapAlignMin) continue;
             // Niederschlag entlang der Verbindung (Maximum der Stichproben).
             let rr = 0;
             for (let s = 0.1; s < 1; s += 0.1) rr = Math.max(rr, sampleBilinear(af.precip, g, pa[0] + s * (pb[0] - pa[0]), pa[1] + s * (pb[1] - pa[1])) || 0);
             if (rr < o.gapPrecipMin) continue;
-            best = { a, b, ea, eb, d, tA, tB, pa, pb };
+            best = { a, b, ea, eb, d, tA, tB, pa, pb, aP, bP };
           }
         }
       }
     }
     if (!best) break;
     const A = items[best.a], B = items[best.b];
-    const aPts = best.ea ? A.pts : A.pts.slice().reverse();
-    const bPts = best.eb ? B.pts.slice().reverse() : B.pts;
+    const aPts = best.aP, bPts = best.bP;
     const pts = [...aPts, ...bridge(best.pa, best.tA, best.pb, best.tB), ...bPts];
     const main = lineLengthKm(A.pts) >= lineLengthKm(B.pts) ? A : B;
     // Seitenangaben gelten in Punktreihenfolge: übernimmt das Hauptstück eine

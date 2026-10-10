@@ -65,6 +65,7 @@ export const DETECT_DEFAULTS = {
   k1: 0.1,            // K/(100 km)², TFP-Maske
   k2: 0.8,            // K/100 km, Gradientmaske
   maskLenKm: 100,     // m in der K2-Maske
+  terrainCut: false,  // Linienabschnitte über Gelände unter 850 hPa entfernen (Fronten laufen nicht über die Alpen), in Erprobung
   fillTerrain: false, // Geländelücken (unter Grund/bodennah) in θw harmonisch auffüllen (in Erprobung)
   maskGapKm: 0,       // >0: Lücken der Masken bis zu dieser Länge entlang der Linie überbrücken (in Erprobung)
   maskRunKm: 0,       // >0: Masken mit Hysterese, gemittelt über diese Länge entlang der Linie (in Erprobung)
@@ -162,7 +163,11 @@ export function detectFronts(field, opts = {}) {
   const raw = o.maskGapKm > 0 || o.maskRunKm > 0
     ? chainSegments(isolineSegments(F, g, 0)).flatMap((l) => (o.maskGapKm > 0 ? bridgedRuns(l, mask, g, o.maskGapKm) : maskedRuns(l, mask, g, o.maskRunKm, o.maskRunShare)))
     : chainSegments(isolineSegments(Float32Array.from(F, (x, k) => (mask[k] ? x : NaN)), g, 0));
-  const lines = raw
+  // Fronten laufen nicht über Hochgebirge: Kaltfronten aus Nord/Nordwest
+  // bleiben am Alpennordrand hängen (Stau, Druckanstieg), sie verlagern
+  // nicht ungehindert nach Süden (Projektleitung, 08.10. 18 UTC).
+  const terrain = o.terrainCut ? Uint8Array.from(field.psfc, (p, k) => (field.below[k] || !(p - field.pressure >= o.sfcMarginHpa) ? 1 : 0)) : null;
+  const lines = (terrain ? raw.flatMap((l) => offTerrain(l, terrain, g)) : raw)
     .flatMap((line) => splitAtCorners(line, o.cornerDeg, o.cornerChordKm))
     .filter((line) => lineLengthKm(line) >= o.minLengthKm);
   const af = activityFields(field, prev, g);
@@ -390,7 +395,10 @@ function byActivity(piece, ff, af, o, ends) {
   // bis Kroatien, 09.10. 12 UTC, mit dem Bündel "schwache Fronten").
   const wmin = o.activity.weatherMin ?? ACTIVITY_DEFAULTS.weatherMin;
   if (wmin > 0) {
-    const wx = runningMean(assess.map((x) => x.weather), s, o.activitySmoothKm);
+    // Gemittelt über einen langen Abschnitt: gelegentlicher schwacher
+    // Niederschlag genügt, wenn die übrigen Kriterien deutlich ansprechen
+    // (Atlantikausläufer der Islandkaltfront 09.10. 12 UTC).
+    const wx = runningMean(assess.map((x) => x.weather), s, o.activity.weatherSmoothKm ?? ACTIVITY_DEFAULTS.weatherSmoothKm);
     wx.forEach((w, m) => { if (!(w >= wmin)) label[m] = "none"; });
   }
   if (ends?.free[0] && piece.lineIdx[0] === ends.first) for (let m = 0; m < n && !(con[m] >= cmin); m++) label[m] = "none";
@@ -475,6 +483,19 @@ function fillHarmonic(a, g, iters = 400) {
     }
   }
   return a;
+}
+
+// Abschnitte einer Linie außerhalb des Geländes (nächste Gitterzelle).
+function offTerrain(line, terrain, g) {
+  const out = [];
+  let cur = [];
+  for (const p of line) {
+    const i = Math.round((p[1] - g.lon0) / g.res), j = Math.round((p[0] - g.lat0) / g.res);
+    const t = i >= 0 && j >= 0 && i < g.nx && j < g.ny ? terrain[j * g.nx + i] : 0;
+    if (!t) cur.push(p); else { if (cur.length > 1) out.push(cur); cur = []; }
+  }
+  if (cur.length > 1) out.push(cur);
+  return out;
 }
 
 // Maskierte Abschnitte einer Linie; unmaskierte Lücken bis gapKm zwischen

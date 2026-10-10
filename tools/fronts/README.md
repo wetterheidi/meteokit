@@ -70,7 +70,10 @@ werden (Stand und Plan) stehen in [KRITERIEN.md](KRITERIEN.md).
 - Sprung der 3-h-Tendenz,
 - Niederschlag, tiefen Wolken und w700.
 
-Daraus ergibt sich `activity = Kontrast · (½ Wetter + ½ Dynamik)`. Der Wert
+Daraus ergibt sich `activity = Kontrast · (½ Wetter + ½ Dynamik)`. Zudem
+gilt die Wetterpflicht (`weatherMin` 0,2): Das Wettermaß, über 800 km
+entlang der Front gemittelt, muss sie erreichen; gelegentlicher schwacher
+Niederschlag genügt. Der Wert
 wird entlang der Linie geglättet. Die Linie wird dann in die Klassen
 `active`, `weak` und `none` geteilt. Stücke der Klasse `none` gibt
 `detectFronts` nur mit `keepInactive: true` aus. An freien Linienenden
@@ -102,7 +105,8 @@ bis an den Okklusionspunkt ein, damit sich dort alle drei Fronten treffen.
 Okklusion ihre Eigenschaften übernimmt; den Charakter bestimmt die Analyse
 nicht (Zeichenregel, s. KRITERIEN.md). **Nachbearbeitung** (`src/fronts/postprocess.js`): Lücken zwischen Fronten
 gleichen Typs werden geschlossen, wenn entlang der Lücke Niederschlag
-fällt. Zum Schluss werden alle Fronten geglättet. **Jede Front hängt an
+fällt; seitlich versetzte, parallele Enden (bis 200 km) werden vorher
+gekürzt. Zum Schluss werden alle Fronten geglättet. **Jede Front hängt an
 einem Tiefkern** (`requireLowLink`, Vorgabe der Projektleitung): direkt
 oder über ihr Frontsystem, bei teilokkludierten Tiefs über die Okklusion.
 Fronten gelten als verbunden, wenn ein Ende höchstens 150 km von der
@@ -124,7 +128,8 @@ Anschlussregel. Kennzeichen `method: "precip"`, Kriterien `precip` und
 `advection_k10h`.
 
 **Schwache Fronten (Erprobung, standardmäßig aus):** `fillTerrain`
-(Geländelücken in θw harmonisch füllen), `maskGapKm` (kurze Maskenlücken
+(Geländelücken in θw harmonisch füllen), `terrainCut` (keine Linien über
+Gelände unter 850 hPa: Fronten laufen nicht über die Alpen), `maskGapKm` (kurze Maskenlücken
 überbrücken), dazu `windMin` und `activity.contrastRamp` niedriger,
 `activity.weatherMin` (Front nur mit Wetter), `activity.sfcPrecipWeight`
 mit `surfaceDefaultKm` 0 (Bodenposition nach Rinne und Niederschlag); in

@@ -653,6 +653,35 @@ nur die schleifende Front geprüft): 70 % / 76 % / 32 % / 47 km gegenüber
 quer durch die Alpen zum Genuatief (ähnlich KNMI); die Handanalyse lässt
 sie als quasistationäre Front am Alpennordrand nach Westen schleifen.
 
+**Dritte Rückmeldung (09.10. 12 UTC und 08.10.):**
+
+- Island und Ostsee passen gut, „damit kann man arbeiten“.
+- Genua: das durchgezogene und das gestrichelte Kaltfrontstück
+  zusammengesetzt wäre vertretbar. Umgesetzt im Lückenschluss: seitlich
+  versetzte, parallel laufende Enden bis 200 km (`overlapKm`) werden
+  gekürzt, bis die Lücke überwiegend in Laufrichtung liegt, dann
+  verbunden. Ergebnis: eine durchgehende Kaltfront Algerien – Tunesien –
+  Tyrrhenisches Meer – Okklusionspunkt bei Ancona, rund 100 km östlich
+  parallel zur Handanalyse.
+- Islandkaltfront: durchgezogen, weil entlang der Front immer wieder
+  schwacher Niederschlag fällt und alle anderen Kriterien deutlich
+  ansprechen. Umgesetzt: Wetterpflicht über 800 km gemittelt
+  (`weatherSmoothKm`), als Vorgabe `weatherMin: 0.2`. Kostet an den
+  Referenzen nichts mehr und streicht weiter die trockene Verlängerung der
+  Ostsee-Kaltfront (endet bei 46,1/26,8, Handanalyse 46,6/27,7).
+- Alpen: Kaltfronten aus Nord/Nordwest verlagern wegen der Orographie nie
+  ungehindert nach Süden. Sie bleiben nördlich der Alpen hängen, es
+  entsteht eine Stausituation mit Druckanstieg (deshalb greift dort kein
+  Isobarenknick), und die Front wellt am Alpennordrand. Am 08.10. entstand
+  durch den relativ niedrigeren Druck südlich der Alpen das Genuatief.
+  Umgesetzt: `terrainCut` (im Bündel), keine Linienabschnitte über Gelände
+  unter 850 hPa. 08.10. 18 UTC mit Bündel: Fehlalarm 32 → 20 %, die
+  Kaltfront endet am Nordostrand der Alpen (47,9/15,0). Das schleifende
+  Stück am Alpennordrand nach Westen (Handanalyse bis 47,3/7,2) entsteht
+  nicht: die gefüllten Werte spannen den Übergang über das ganze Gebirge,
+  die warme Kante liegt über oder südlich der Alpen. Dafür braucht es
+  eine eigene Regel (offen).
+
 ### Offene Punkte aus dem Fall 10.10. 06 UTC (zurückgestellt)
 
 Vergleich mit DWD, KNMI und GeoSphere. Getroffen werden die Warmfront der

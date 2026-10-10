@@ -37,7 +37,8 @@ export const ACTIVITY_DEFAULTS = {
   contrastRamp: [2, 4],     // K
   contrastE: false,         // zusätzlich θe-Kontrast 850 hPa (Feuchtegrenzen, Genuatief), in Erprobung
   contrastRampE: [4, 8],    // K, Rampe für den θe-Kontrast; zählt der größere Faktor
-  weatherMin: 0,            // geglättetes Wettermaß, darunter keine Front (0 = aus), in Erprobung
+  weatherMin: 0.2,          // geglättetes Wettermaß, darunter keine Front (Luftmassengrenze MIT Wetter)
+  weatherSmoothKm: 800,     // … gemittelt über diese Länge entlang der Front
   contrastMin: 3.5,         // K: an freien Linienenden endet die Front darunter, auch mit Wetter
   // Suchfenster der Bodenfront auf der warmen Seite der 850-hPa-Linie [km]
   sfcWindow: { warm: [0, 450], cold: [0, 250], stationary: [-100, 300] },
