@@ -74,6 +74,9 @@ export const OCCLUSION_DEFAULTS = {
   // Glättung ("Fronten spannen sich wie Segel")
   occSmoothKm: 150,     // Okklusion insgesamt
   junctionSmoothKm: 400, // gemeinsame Glättung Kaltfront + Okklusion um den (festen) Punkt
+  opSlideKm: 150,       // Okklusionspunkt bis so weit entlang der Kaltfront zurücklegen …
+  opSlideLookKm: 200,   // … gemessen am Knick zwischen Kaltfront und Richtung zum Okklusionsverlauf in diesem Abstand
+  opSlidePen: 10,       // Grad je 100 km Zurücklegen (bei gleichem Knick lieber nah am TFP-Punkt)
   occBlendKm: 150,      // Okklusion verlässt den Punkt in Kaltfrontrichtung, Übergang über diese Länge (länger: schießt hinaus)
   // Verlängerung entlang der Warmluftzunge (θw-Rücken, i. d. R. 700 hPa, K4)
   ridgeSmoothKm: 150,
@@ -240,11 +243,12 @@ export function markOcclusions(features, ff, lows, opts = {}, ridges = null, ctx
     if (!applied.some((a) => a.chain === c.chain || key(a) === key(c))) applied.push(c);
   }
 
-  const toFeature = (i, pts, extra = {}) => ({
+  const dedup = (pts) => pts.filter((p, q) => q === 0 || distKm(p, pts[q - 1]) > 0.5);
+  const toFeature = (i, pts0, extra = {}) => { const pts = dedup(pts0); return {
     type: "Feature",
     geometry: { type: "LineString", coordinates: pts.map(([la, lo]) => [+lo.toFixed(3), +la.toFixed(3)]) },
     properties: { ...props(i), length_km: Math.round(lineLengthKm(pts)), ...extra },
-  });
+  }; };
   const ptsOf = (i) => chainOf(i).pts.slice(range[i][0], range[i][1] + 1);
 
   // Geometrie an jedem Okklusionspunkt neu aufbauen. Überschriebene Punkte
@@ -305,7 +309,13 @@ export function markOcclusions(features, ff, lows, opts = {}, ridges = null, ctx
 
     // 5. Kaltfront und Okklusion als ein durchgehender Bogen (die Okklusion
     // setzt die Kaltfront ohne Knick fort, die Warmfront setzt mit Knick an).
-    const cold = coldIsA ? aPts : rest;
+    let cold = coldIsA ? aPts : rest;
+    // Okklusionspunkt entlang der Kaltfront dorthin, wo die Okklusion sie
+    // ohne Knick fortsetzt (Handanalyse 09.10. 12 UTC: der Punkt lag 100 km
+    // weiter zurück auf der Kaltfront, die Okklusion lief von dort fast
+    // gerade weiter; vom automatischen Punkt aus knickte sie um 70°).
+    let slidKm = 0;
+    if (o.opSlideKm > 0) ({ cold, occ, slidKm } = slideAlongCold(cold, occ, o));
     // Der Okklusionsast stammt aus derselben Linie wie die Warmfront und setzt
     // daher sie fort statt der Kaltfront. Anfang neu führen: tangential aus
     // der Kaltfront heraus, über occBlendKm weich in den Keilverlauf.
@@ -353,6 +363,7 @@ export function markOcclusions(features, ff, lows, opts = {}, ridges = null, ctx
         occlusion_point: junction,
         occlusion_geometry: geometry,
         occlusion_spiral_km: spiralKm,
+        occlusion_slide_km: slidKm,
         occlusion_low: cut.low.edge ? "edge" : { lat: cut.low.lat, lon: cut.low.lon },
         activity_class: props(src).activity_class === "none" ? "weak" : props(src).activity_class,
         // Symbole: Seite wie das Stück, bei umgekehrter Punktreihenfolge gespiegelt.
@@ -468,8 +479,23 @@ function attach(pts, P) {
   const n = pts.length;
   let k = n - 1, best = distKm(pts[k], P);
   for (let q = 0; q < n; q++) { const d = distKm(pts[q], P); if (d < best) { best = d; k = q; } }
+  if (best < 20 || n - 1 - k < 1) { const out = pts.slice(); out[n - 1] = P; return out; }
+  // Anschlusspunkt: nicht einfach der nächste, sondern der, von dem aus die
+  // Linie schon ungefähr auf P zeigt (Winkel + Abstandsstrafe, bis 300 km).
+  // Sonst verlässt der Bogen die Linie in ihrer alten Richtung und kehrt
+  // mit einem Haken zurück (Ostsee-Warmfront, nachdem der Okklusionspunkt
+  // entlang der Kaltfront zurückgelegt wurde).
+  let cost = Infinity;
+  for (let q = 1; q < n - 1; q++) {
+    const d = distKm(pts[q], P);
+    if (d < 20 || d > 300) continue;
+    const t = unitV(vecKm(pts[Math.max(0, q - 3)], pts[q]));
+    const ang = (Math.acos(Math.max(-1, Math.min(1, dotV(t, unitV(vecKm(pts[q], P)))))) * 180) / Math.PI;
+    const c = ang + (10 * d) / 100;
+    if (c < cost) { cost = c; k = q; }
+  }
   const tail = n - 1 - k;
-  if (best < 20 || tail < 1) { const out = pts.slice(); out[n - 1] = P; return out; }
+  if (tail < 1) { const out = pts.slice(); out[n - 1] = P; return out; }
   const A = pts[k];
   const tA = k > 0 ? unitV(vecKm(pts[Math.max(0, k - 3)], A)) : unitV(vecKm(A, P));
   const tB = unitV(vecKm(P, A));
@@ -499,6 +525,46 @@ function trimToward(pts, P, km) {
 // dass sie die Kaltfront ohne Knick fortsetzt: Punkte im Abstand s vom
 // Okklusionspunkt werden zwischen der verlängerten Kaltfront-Tangente und dem
 // ursprünglichen Verlauf gemischt (Smoothstep über blendKm).
+// Okklusionspunkt entlang der Kaltfront (Punkt am Ende) zurücklegen, bis
+// höchstens opSlideKm. Kosten je Kandidat Q: Winkel zwischen der Richtung
+// der Kaltfront in Q (über 150 km) und der Richtung von Q zum ersten
+// Okklusionspunkt im Abstand >= opSlideLookKm, plus opSlidePen je 100 km.
+// Die Kaltfront endet dann in Q (Punktzahl bleibt: die übrigen Punkte
+// rücken auf Q), die Okklusion beginnt in Q und läuft auf ihren Verlauf ab
+// diesem Punkt zu.
+function slideAlongCold(cold, occ, o) {
+  const n = cold.length, s = [0];
+  for (let q = n - 1; q > 0; q--) s.push(s[s.length - 1] + distKm(cold[q - 1], cold[q]));
+  // s[k]: Abstand des Punkts n-1-k vom Ende
+  const at = (b) => { // Punkt im Abstand b vom Ende, Index des nächsten Punkts davor
+    for (let k = 1; k < s.length; k++) {
+      if (s[k] >= b) {
+        const f = (b - s[k - 1]) / (s[k] - s[k - 1] || 1), A = cold[n - k], B = cold[n - 1 - k];
+        return { Q: [A[0] + f * (B[0] - A[0]), A[1] + f * (B[1] - A[1])], i: n - 1 - k };
+      }
+    }
+    return null;
+  };
+  let best = null;
+  for (let b = 0; b <= o.opSlideKm; b += 25) {
+    const c = at(b);
+    if (!c) break;
+    const { Q, i } = c;
+    let back = i, sb = distKm(cold[i], Q);
+    while (back > 0 && sb < 150) { sb += distKm(cold[back - 1], cold[back]); back--; }
+    const t = unitV(vecKm(cold[back], Q));
+    const R = occ.find((p) => distKm(p, Q) >= o.opSlideLookKm);
+    if (!R || !(Math.hypot(t[0], t[1]) > 0)) continue;
+    const kink = (Math.acos(Math.max(-1, Math.min(1, dotV(t, unitV(vecKm(Q, R)))))) * 180) / Math.PI;
+    const cost = kink + (o.opSlidePen * b) / 100;
+    if (!best || cost < best.cost) best = { cost, b, Q, i, R };
+  }
+  if (!best || best.b === 0) return { cold, occ, slidKm: 0 };
+  const newCold = cold.map((p, q) => (q <= best.i ? p : best.Q));
+  const r = occ.indexOf(best.R);
+  return { cold: newCold, occ: [best.Q, ...occ.slice(r)], slidKm: best.b };
+}
+
 // Mittlerer Punktabstand der letzten `km` einer Linie (zum Ende hin),
 // begrenzt auf 15..60 km.
 function spacingNear(pts, km) {

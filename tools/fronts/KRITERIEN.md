@@ -446,8 +446,20 @@ Befunde:
   liegt rund 100 km nordwestlich des handanalysierten (61,6/25,7) auf der
   einbiegenden Kaltfront, die Okklusion läuft von dort direkt nach
   Südwesten zum Kern. Vom Punkt der Handanalyse aus setzt die Okklusion die
-  Kaltfront fast gerade fort. Offen: den Punkt entlang der Kaltfront
-  dorthin legen, wo die Okklusion sie mit dem kleinsten Knick fortsetzt.
+  Kaltfront fast gerade fort. **Umgesetzt** (`slideAlongCold`): Der Punkt
+  wird entlang der Kaltfront bis 150 km zurückgelegt (`opSlideKm`), dorthin,
+  wo der Knick zwischen Kaltfront und Richtung zum Okklusionsverlauf
+  (200 km voraus) am kleinsten ist, mit 10° Strafe je 100 km
+  (`opSlidePen`). Die Okklusion läuft von dort direkt in ihren Verlauf, die
+  Warmfront wird angeschlossen. Damit der Anschluss keinen Haken bildet,
+  wählt `attach` den Warmfrontpunkt, von dem aus die Front schon auf den
+  Punkt zeigt (statt einfach den nächsten). `occlusion_slide_km` nennt die
+  Strecke. Ergebnis 12 UTC (mittel/max km): Island Warmfront 14/33,
+  Kaltfront 12/37, Okklusion 13/45; Ostsee unverändert (Kaltfront 42,
+  Warmfront 42, Okklusion 53), gesamt 26 km. An der Ostsee rutscht der
+  Punkt bis an die Grenze von 150 km, weil die automatische Kaltfront dort
+  60 km zu weit vorn liegt; Kaltfront und Okklusion gehen jetzt ohne Knick
+  ineinander über.
 
 ### Offene Punkte aus dem Fall 10.10. 06 UTC (zurückgestellt)
 

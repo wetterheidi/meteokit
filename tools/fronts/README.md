@@ -113,7 +113,8 @@ Am Okklusionspunkt gelten die Zeichenregeln der Referenzanalyse
 - Optional (`opRefine`, standardmäßig aus): den Punkt zum stärksten
   3-h-Druckfall entlang des Warmluftkeils verschieben.
 - Die Okklusion setzt die Kaltfront ohne Knick fort, die Warmfront knickt
-  ab.
+  ab. Dafür wird der Punkt bei Bedarf bis 150 km entlang der Kaltfront
+  zurückgelegt (`opSlideKm`).
 - Die Okklusion läuft spiralig gegen den Uhrzeigersinn bis 80 km vor den
   Kern, der Druck fällt dabei zum Kern hin.
 - Fronten machen keine Kehrtwenden („wie Segel“). Die Tiefs stehen in

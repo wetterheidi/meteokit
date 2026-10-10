@@ -331,6 +331,45 @@ export function lowestCloudBase(col, i) {
   return lowestCrossing(col, i, CF_FEW, FOG_BASE_M);
 }
 
+// NATO-/Militär-Color-States: Klasse = schlechtere aus Wolkenbasis (unterste
+// Schicht ≥ 3/8, also SCT oder mehr) und Sicht. Schwellen in ft bzw. m wie
+// in der Originaltabelle, Basis hier in m AGL umgerechnet. Reihenfolge von
+// gut (BLU) nach schlecht (RED); `idx` ist der Ordnungsrang (0 = BLU).
+const FT = 0.3048;
+export const COLOR_STATES = [
+  { id: "BLU", minBaseM: 2500 * FT, minVisM: 8000, rgb: [40, 90, 220] },
+  { id: "WHT", minBaseM: 1500 * FT, minVisM: 5000, rgb: [245, 245, 245] },
+  { id: "GRN", minBaseM: 700 * FT, minVisM: 3700, rgb: [30, 140, 40] },
+  { id: "YLO1", minBaseM: 500 * FT, minVisM: 2500, rgb: [255, 240, 110] },
+  { id: "YLO2", minBaseM: 300 * FT, minVisM: 1600, rgb: [245, 200, 0] },
+  { id: "AMB", minBaseM: 200 * FT, minVisM: 800, rgb: [245, 140, 0] },
+  { id: "RED", minBaseM: -Infinity, minVisM: -Infinity, rgb: [220, 30, 30] },
+].map((s, idx) => ({ ...s, idx }));
+
+/**
+ * Color State zur Stunde `i` aus der Säule und der Sicht (m).
+ * Basis = unterste Höhe mit `CF ≥ CF_SCT` (dieselbe SCT-Schwelle wie
+ * `oktaCategory()`, also das Modell-Äquivalent von „3/8 oder mehr"), über der
+ * Nebel-Grenze. Keine solche Schicht ⇒ Basis unbegrenzt. Fehlt `visibility`
+ * (ICON Global), wird die Sicht wie in `classifyFog()` aus der bodennahen
+ * Feuchte geschätzt (`visEstimated: true`). Bodennebel unter `FOG_BASE_M`
+ * zählt nicht als Basis, drückt aber über die Sicht die Klasse.
+ * @returns {{ state: object, baseM: number|null, visM: number, visEstimated: boolean } | null}
+ *   null, wenn weder Modell- noch geschätzte Sicht bestimmbar ist.
+ */
+export function colorState(col, i, visibility) {
+  let visM = visibility, visEstimated = false;
+  if (!Number.isFinite(visM)) {
+    visM = estimateVisibilityFromHumidity(col.t?.[0]?.[i], col.rh?.[0]?.[i]);
+    visEstimated = true;
+  }
+  if (!Number.isFinite(visM)) return null;
+  const baseM = lowestCrossing(col, i, CF_SCT, FOG_BASE_M);
+  const b = baseM ?? Infinity;
+  const state = COLOR_STATES.find((s) => b >= s.minBaseM && visM >= s.minVisM);
+  return { state, baseM, visM, visEstimated };
+}
+
 /**
  * Sichtschätzung (m) aus bodennaher Temperatur (°C) und RH (%) für Modelle
  * ohne `visibility`-Feld — Formel nach Doran et al. (1999), s. Kommentar bei den Sicht-
