@@ -34,7 +34,7 @@ const KM_PER_DEG = 111.2;
 
 export const ACTIVITY_DEFAULTS = {
   contrastKm: 300,          // T850-Kontrast: Linie gegen Punkt so weit auf der kalten Seite
-  contrastRamp: [2, 4],     // K
+  contrastRamp: [1.5, 3.5], // K (kontrastarme Tiefs wie das Genuatief: 2–3 K)
   contrastE: false,         // zusätzlich θe-Kontrast 850 hPa (Feuchtegrenzen, Genuatief), in Erprobung
   contrastRampE: [4, 8],    // K, Rampe für den θe-Kontrast; zählt der größere Faktor
   weatherMin: 0.2,          // geglättetes Wettermaß, darunter keine Front (Luftmassengrenze MIT Wetter)
@@ -42,7 +42,7 @@ export const ACTIVITY_DEFAULTS = {
   contrastMin: 3.5,         // K: an freien Linienenden endet die Front darunter, auch mit Wetter
   // Suchfenster der Bodenfront auf der warmen Seite der 850-hPa-Linie [km]
   sfcWindow: { warm: [0, 450], cold: [0, 250], stationary: [-100, 300] },
-  sfcPrecipWeight: 0,       // Gewicht des Niederschlags bei der Suche der Bodenposition (0 = nur Rinne), in Erprobung
+  sfcPrecipWeight: 1,       // Gewicht des Niederschlags bei der Suche der Bodenposition (0 = nur Rinne)
   curvStepKm: 150,          // Schrittweite der zweiten Ableitung des Bodendrucks
   curvRamp: [0.1, 0.5],     // hPa/(100 km)²
   convRamp: [0.3, 1.2],     // 10⁻⁵ s⁻¹

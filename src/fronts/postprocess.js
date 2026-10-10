@@ -19,8 +19,8 @@ export const POSTPROCESS_DEFAULTS = {
   overlapKm: 200,       // seitlich versetzte, parallele Enden bis zu diesem Abstand vorher kürzen
   smoothKm: 150,        // abschließende Glättung aller Fronten
   smoothPasses: 2,
-  occPrecip: false,     // Okklusion zum Niederschlagsmaximum quer zur Linie rücken (in Erprobung)
-  occPrecipKm: 150,     // … höchstens so weit
+  occPrecip: true,      // Okklusion zum Niederschlagsmaximum quer zur Linie rücken
+  occPrecipKm: 60,      // … höchstens so weit
   occPrecipMin: 0.2,    // mm/h: nur wo dort so viel fällt
   coreJunction: true,   // offenes Tief: Übergang Warm-/Kaltfront in den Tiefkern legen
   coreKm: 300,          // … wenn der Übergang höchstens so weit vom Kern liegt

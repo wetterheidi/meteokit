@@ -66,16 +66,16 @@ export const DETECT_DEFAULTS = {
   k1: 0.1,            // K/(100 km)², TFP-Maske
   k2: 0.8,            // K/100 km, Gradientmaske
   maskLenKm: 100,     // m in der K2-Maske
-  stauFronts: false,  // Kaltfronten am Gebirgsrand quasistationär fortsetzen (staufronts.js), in Erprobung
+  stauFronts: true,   // Kaltfronten am Gebirgsrand quasistationär fortsetzen (staufronts.js)
   stau: {},           // überschreibt STAU_DEFAULTS
-  terrainCut: false,  // Linienabschnitte über Gelände unter 850 hPa entfernen (Fronten laufen nicht über die Alpen), in Erprobung
-  fillTerrain: false, // Geländelücken (unter Grund/bodennah) in θw harmonisch auffüllen (in Erprobung)
-  maskGapKm: 0,       // >0: Lücken der Masken bis zu dieser Länge entlang der Linie überbrücken (in Erprobung)
+  terrainCut: true,   // Linienabschnitte über Gelände unter 850 hPa entfernen (Fronten laufen nicht über die Alpen)
+  fillTerrain: true,  // Geländelücken (unter Grund/bodennah) in θw harmonisch auffüllen
+  maskGapKm: 100,     // Lücken der Masken bis zu dieser Länge entlang der Linie überbrücken (0 = aus; 150 erzeugte eine zweite, parallele Warmfront 09.10. 06 UTC)
   maskRunKm: 0,       // >0: Masken mit Hysterese, gemittelt über diese Länge entlang der Linie (in Erprobung)
   maskRunShare: 0.5,  // … Anteil, ab dem ein Abschnitt als maskiert gilt
   minLengthKm: 400,   // kürzere Linien verwerfen
   sfcMarginHpa: 25,   // Fläche weniger als so tief über Grund -> maskiert
-  windMin: 2,         // m/s, Schwelle Kalt-/Warmfront vs. quasistationär
+  windMin: 0.5,       // m/s, Schwelle Kalt-/Warmfront vs. quasistationär (2 m/s typisierte schwache Fronten als quasistationär)
   windSmoothKm: 300,  // Glättung von c entlang der Linie (laufendes Mittel)
   minPieceKm: 250,    // kürzere Typ-/Aktivitäts-Stücke gehen im Nachbarn auf
   cornerDeg: 70,      // Rohlinien an Richtungsänderungen über diesem Wert teilen ...
@@ -92,7 +92,7 @@ export const DETECT_DEFAULTS = {
   // Analysen (KNMI/DWD); die Verschiebung um den Leitfaden-Versatz
   // (250–450 km) erzeugte Haken und Parallellinien zur Okklusion.
   surfaceTypes: ["cold", "stationary"],
-  surfaceDefaultKm: { cold: 120, stationary: 50 },
+  surfaceDefaultKm: { cold: 0, stationary: 0 }, // Versatz ohne erkennbare Rinne (früher 120/50 km, schob kontrastarme Fronten zu weit)
   surfaceTroughRamp: [0.1, 0.5], // hPa/(100 km)²: ab hier zählt die gefundene Rinne voll
   surfaceSmoothKm: 400,         // Glättung des Versatzes entlang der Linie
   contrastFreeKm: 350,          // Linienende "frei", wenn keine andere Linie so nah ist

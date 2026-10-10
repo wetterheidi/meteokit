@@ -720,6 +720,22 @@ Umgesetzt:
   31 / 28 / 43 / 55 km, 150 km 43 / 49 / 51 / 52 km. Hilft allen außer
   Island; noch nicht eingeschaltet (Rückfrage).
 
+### Vorgaben umgestellt (2026-10-10, Entscheidung der Projektleitung)
+
+Das Bündel „Schwache Fronten“ und die Okklusion am Niederschlag sind
+Vorgabe: `fillTerrain`, `terrainCut`, `stauFronts`, `maskGapKm: 100`,
+`windMin: 0.5`, `activity.contrastRamp: [1.5, 3.5]`,
+`activity.sfcPrecipWeight: 1`, `surfaceDefaultKm: {cold: 0, stationary: 0}`,
+`post.occPrecip` mit `occPrecipKm: 60` (dazu schon vorher `weatherMin: 0.2`
+und `junctionToCore`). `maskGapKm` von 150 auf 100: mit 150 entstand am
+09.10. 06 UTC eine zweite, parallele Warmfront nördlich der Ostsee-
+Warmfront (mit falscher Symbolseite); an den Referenzen ändert 100 nichts.
+Ergebnis über die drei Referenztage: Treffer 96 %, nur Lage 99 %,
+Fehlalarm 5 %, 32 km (vorher 61 % / 64 % / 4 % / 25 km). Die
+Seitenprüfung gegen θw meldet an allen Terminen keine Abweichung mehr;
+Knicke über 40° nur an den Spiralenden der Okklusionen am Kern. Bekannte
+Nebenwirkung: Islandsystem 08.10. 12/15 UTC fällt weg (Randtief).
+
 ### Offene Punkte aus dem Fall 10.10. 06 UTC (zurückgestellt)
 
 Vergleich mit DWD, KNMI und GeoSphere. Getroffen werden die Warmfront der

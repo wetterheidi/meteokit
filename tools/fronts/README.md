@@ -22,23 +22,26 @@ Debug-Seite und Testfälle.
 - θe nach Bolton (1980). θw wird exakt als Umkehrung von θe bei
   Sättigung in 1000 hPa berechnet (s. `src/fronts/thermo.js`).
 
-## Detektion (`detectFronts`, Stand 2026-10-09)
+## Detektion (`detectFronts`, Stand 2026-10-10)
 
 `src/fronts/detect.js` arbeitet in diesen Schritten:
 
-1. θw berechnen und maskieren, wo die Fläche unter Grund liegt oder weniger
-   als 25 hPa darüber.
+1. θw berechnen. Wo die Fläche unter Grund liegt oder weniger als 25 hPa
+   darüber, wird θw harmonisch aus der Umgebung aufgefüllt (`fillTerrain`),
+   damit Linien nicht am Gebirge abreißen.
 2. θw mit einer Gauß-Glättung von σ = 90 km glätten.
 3. TFP = −∇|∇θw|·n̂ berechnen.
 4. Die Frontlinie ist die Nulllinie von ∇TFP·n̂, also die warme Kante der
    Frontalzone.
 5. Masken anwenden: K1 verlangt TFP > 0,1 K/(100 km)², K2 verlangt
-   |∇θw| + m/√2·TFP > 0,8 K/100 km.
-6. Linien verketten, an scharfen Ecken teilen („wie Segel“) und alles unter
-   400 km verwerfen.
-7. Den Typ aus dem Querwind in 850 hPa bestimmen: über +2 m/s Kaltfront,
-   unter −2 m/s Warmfront, dazwischen quasistationär. Eine Linie, deren Typ
-   wechselt, wird in Stücke zerlegt.
+   |∇θw| + m/√2·TFP > 0,8 K/100 km. Lücken der Masken bis 100 km entlang
+   der Linie werden überbrückt (`maskGapKm`).
+6. Abschnitte über Gelände unter 850 hPa entfernen (`terrainCut`): Fronten
+   laufen nicht über die Alpen. Linien verketten, an scharfen Ecken teilen
+   („wie Segel“) und alles unter 400 km verwerfen.
+7. Den Typ aus dem Querwind in 850 hPa bestimmen: über +0,5 m/s Kaltfront,
+   unter −0,5 m/s Warmfront, dazwischen quasistationär (`windMin`). Eine
+   Linie, deren Typ wechselt, wird in Stücke zerlegt.
 
 Die Ausgabe ist eine GeoJSON-FeatureCollection. Jedes Feature trägt
 `front_type`, `level`, `valid_time`, `length_km`, `gradient`, `tfp`,
@@ -70,7 +73,9 @@ werden (Stand und Plan) stehen in [KRITERIEN.md](KRITERIEN.md).
 - Sprung der 3-h-Tendenz,
 - Niederschlag, tiefen Wolken und w700.
 
-Daraus ergibt sich `activity = Kontrast · (½ Wetter + ½ Dynamik)`. Zudem
+Daraus ergibt sich `activity = Kontrast · (½ Wetter + ½ Dynamik)`, der
+Kontrastfaktor steigt von 1,5 bis 3,5 K (`contrastRamp`, kontrastarme
+Tiefs wie das Genuatief haben 2–3 K). Zudem
 gilt die Wetterpflicht (`weatherMin` 0,2): Das Wettermaß, über 800 km
 entlang der Front gemittelt, muss sie erreichen; gelegentlicher schwacher
 Niederschlag genügt. Der Wert
@@ -84,8 +89,11 @@ Nordafrika und Iberien fallen weg, die Hauptfronten bleiben (Details in
 [KRITERIEN.md](KRITERIEN.md)).
 
 **Bodenposition**: Standardmäßig (`position: "surface"`) werden Kalt- und
-quasistationäre Fronten von der 850-hPa-Lage zur Bodendruckrinne auf der
-warmen Seite verschoben, Warmfronten nicht (s. KRITERIEN.md).
+quasistationäre Fronten von der 850-hPa-Lage zur warmen Seite verschoben,
+dorthin, wo Bodendruckrinne und Niederschlag zusammen am stärksten sind
+(`sfcPrecipWeight`); ohne erkennbare Rinne gibt es keinen Pauschalversatz
+(`surfaceDefaultKm` 0). Warmfronten werden nicht verschoben (s.
+KRITERIEN.md).
 `properties.level` ist dann `"surface"`, der Versatz steht in
 `surface_offset_km`. Mit `position: "analysis"` bleibt die Lage in der
 Analysefläche.
@@ -109,8 +117,9 @@ fällt; seitlich versetzte, parallele Enden (bis 200 km) werden vorher
 gekürzt. Zum Schluss werden alle Fronten geglättet. **Offenes Tief** (`junctionToCore`, Vorgabe): Treffen sich
 Warm- und Kaltfront höchstens 300 km vom Kern eines Tiefs ohne Okklusion,
 wird der Übergang in den Tiefkern gelegt (`core_junction: true`).
-**Okklusion am Niederschlag** (`post.occPrecip`, in Erprobung, aus): die
-Okklusion quer zur Linie zum Niederschlagsmaximum rücken. **Jede Front hängt an
+**Okklusion am Niederschlag** (`post.occPrecip`, Vorgabe): die Okklusion
+quer zur Linie bis 60 km zum Niederschlagsmaximum rücken, am
+Okklusionspunkt fest. **Jede Front hängt an
 einem Tiefkern** (`requireLowLink`, Vorgabe der Projektleitung): direkt
 oder über ihr Frontsystem, bei teilokkludierten Tiefs über die Okklusion.
 Fronten gelten als verbunden, wenn ein Ende höchstens 150 km von der
@@ -131,18 +140,21 @@ Danach eigene Lücken- und Okklusionsanalyse, dann dieselbe Glättung und
 Anschlussregel. Kennzeichen `method: "precip"`, Kriterien `precip` und
 `advection_k10h`.
 
-**Schwache Fronten (Erprobung, standardmäßig aus):** `fillTerrain`
-(Geländelücken in θw harmonisch füllen), `terrainCut` (keine Linien über
-Gelände unter 850 hPa: Fronten laufen nicht über die Alpen), `stauFronts`
-(`src/fronts/staufronts.js`: endet eine Kaltfront am Gebirgsrand, läuft
-sie als quasistationäre Front am Nordrand weiter, solange Druckanstieg
-und Niederschlag den Stau anzeigen; `method: "stau"`), `maskGapKm` (kurze Maskenlücken
-überbrücken), dazu `windMin` und `activity.contrastRamp` niedriger,
-`activity.weatherMin` (Front nur mit Wetter), `activity.sfcPrecipWeight`
-mit `surfaceDefaultKm` 0 (Bodenposition nach Rinne und Niederschlag); in
-der Debug-Seite als Bündel „Schwache Fronten“. Ebenfalls in Erprobung:
-`thermo: "thE"` (TFP auf θe), `maskRunKm` (Masken über die Linie gemittelt),
-`activity.contrastE` (θe-Kontrast). Stand und Messungen in KRITERIEN.md.
+**Schleifende Fronten am Gebirgsrand** (`stauFronts`,
+`src/fronts/staufronts.js`, Vorgabe): Endet eine Kaltfront höchstens
+150 km vor dem Gebirge, läuft sie als quasistationäre Front am Nordrand
+weiter, solange Druckanstieg (≥ 1,5 hPa/3 h) und Niederschlag
+(≥ 0,3 mm/h) den Stau anzeigen; `method: "stau"`.
+
+Die Vorgaben für Gelände und schwache Kontraste (Geländefüllung,
+Geländeschnitt, Maskenlücken, Querwind 0,5 m/s, Kontrast ab 1,5 K,
+Bodenposition nach Rinne und Niederschlag, schleifende Fronten, Okklusion
+am Niederschlag) gelten seit 2026-10-10; sie wurden an drei Handanalysen
+geprüft (Treffer 61 → 96 %, s. KRITERIEN.md). Die früheren Werte lassen
+sich einzeln zurückstellen, z. B. `fillTerrain: false`, `windMin: 2`,
+`surfaceDefaultKm: {cold: 120, stationary: 50}`. Weiter in Erprobung
+(aus): `thermo: "thE"` (TFP auf θe), `maskRunKm` (Masken über die Linie
+gemittelt), `activity.contrastE` (θe-Kontrast).
 
 Die Okklusion muss zu einem Tief hin zeigen (auch zu einem Randtief
 jenseits des Gebiets), pro Tief gibt es höchstens eine.
@@ -162,19 +174,20 @@ Am Okklusionspunkt gelten die Zeichenregeln der Referenzanalyse
 
 Noch offen:
 
-- Fronten des Genuatiefs (Referenz: Handanalyse 09.10. 12 UTC, KNMI).
-  Erster Ansatz über Niederschlagsachsen, noch unvollständig (s.
-  KRITERIEN.md).
+- Genuatief: Okklusion und Warmfront vertretbar, die Kaltfront liegt rund
+  100 km östlich parallel zur Handanalyse, der Okklusionspunkt bei Ancona
+  statt La Spezia.
+- Randtiefs (Islandsystem 08.10. 12/15 UTC fällt über die Anschlussregel
+  weg); erledigt sich mit ICON Global.
 - Okklusionen ohne passende TFP-Linie.
 - Zurückgestellt: den Typ aus der Verlagerung zwischen den Terminen
   bestimmen. Die Bestimmung über den Querwind in 850 hPa trifft den
   Testfall, hilfreich wäre die Verlagerung vor allem bei schleifenden
   Fronten.
-- Fall 10.10. 06 UTC: Front Biskaya – Dänemark fehlt (in 850 hPa diffus,
-  in 700 hPa deutlich), keine Okklusionen an den Lehrbuchtiefs; Details in
-  KRITERIEN.md. Zurückgestellt, bis 09.10. 12 UTC abgeschlossen ist.
-- Lage des Okklusionspunkts und der Fronten relativ zu Rinne und
-  Niederschlag (Handanalyse 09.10. 12 UTC, KRITERIEN.md).
+- Russlandtief 10.10. 06 UTC: die Warmfront liegt im Osten bis 120 km zu
+  weit nördlich.
+- Die Islandokklusion verliert durch die Ausrichtung am Niederschlag
+  (13 → 31 km); prüfen, ob sie anders zu legen ist.
 
 ## Testfälle (Fixtures)
 
