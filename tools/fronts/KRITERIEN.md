@@ -547,6 +547,22 @@ Treffer 75 → 82 %, nur Lage 75 → 89 %, Fehlalarm 1 → 12 %. Probleme:
   Okklusion). Deshalb vorerst abgeschaltet (`precipFronts: false`), in der
   Debug-Seite zum Ansehen eingeschaltet.
 
+Rückmeldung der Projektleitung zum Ergebnis der Niederschlagsachsen:
+synoptisch seltsam, die Kaltfront fehlt, die Warmfront ist doppelt.
+Hinweis: bei schwachen Fronten hilft eine Isobarenanalyse von 1 zu 1 hPa
+(Debug-Seite: Isobaren 5/2/1 hPa).
+
+Test Isobarenknick (Anteil der Handanalyse in 100 km / mittlerer Abstand):
+
+- Rinnenachsen (Hesse-Matrix von −p, 40 km): Genua-Okklusion 92 %/50,
+  Kaltfront 48 %/51, Warmfront 37 %/71; am Genuatief stark vom Gelände
+  geprägt (Lee-Rinnen an Korsika und Apennin).
+- Krümmung der Isobaren κ = ∇·(∇p/|∇p|) (Druck 40 km geglättet, Achsen
+  maximaler zyklonaler Krümmung): Island/Ostsee 87–100 % in 28–50 km,
+  Genua-Okklusion 90 %/38, Kaltfront 66 %/64, Warmfront 51 %/53. Das
+  bestätigt den Isobarenknick als Frontmerkmal, aber mit viel Rauschen
+  (80 000 km Achsen im Gebiet), vor allem orographisch.
+
 ### Offene Punkte aus dem Fall 10.10. 06 UTC (zurückgestellt)
 
 Vergleich mit DWD, KNMI und GeoSphere. Getroffen werden die Warmfront der

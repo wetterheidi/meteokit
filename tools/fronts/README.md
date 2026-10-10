@@ -113,7 +113,7 @@ Okklusion zu einem Randtief führt. Systeme ohne Anschluss werden zu
 `post: { lowLink: false }`).
 
 **Fronten aus Niederschlagsachsen** (`src/fronts/precipfronts.js`, in
-Erprobung, `precipFronts: true`, in der Debug-Seite per Häkchen): für Tiefs
+Erprobung, `precipFronts: true`, in der Debug-Seite per Häkchen, standardmäßig aus): für Tiefs
 mit schwachem Luftmassenkontrast (Genuatief), an denen nach der
 TFP-Analyse keine Front liegt (500 km). Rückenachsen des Niederschlags im
 Umkreis von 1000 km, an Gabelungen und Ecken geteilt, geglättet; Stücke
@@ -225,7 +225,7 @@ stehen zur Wahl:
 - Gesamtbewölkung und tiefe Wolken
 - w und Spread in 700 hPa
 
-Dazu kommen Isobaren (5 hPa), Isolinien, Windpfeile auf der Fläche und bei
+Dazu kommen Isobaren (5, 2 oder 1 hPa; fein aufgelöst zeigen sie die Knicke schwacher Fronten), Isolinien, Windpfeile auf der Fläche und bei
 ~10 m, die Warmluftzungen (Rückenachsen der Schichtdicke bzw. θw 700) sowie die Orographiemaske. Darüber liegen die detektierten
 Fronten mit den üblichen Symbolen. Die Schwellen K1, K2, Mindestlänge und
 Windschwelle sind live einstellbar. Optional lassen sich alle Kandidaten
