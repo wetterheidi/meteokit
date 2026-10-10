@@ -52,6 +52,7 @@ import {
 import { activityFields, assessPoints, activityClass, ACTIVITY_DEFAULTS } from "./activity.js";
 import { findLows, markOcclusions, ridgeLines, OCCLUSION_DEFAULTS } from "./occlusion.js";
 import { closeGaps, smoothFeatures, requireLowLink } from "./postprocess.js";
+import { precipFronts, PRECIP_FRONT_DEFAULTS } from "./precipfronts.js";
 
 export const DETECT_DEFAULTS = {
   // Gauß-Glättung von θw (und Wind). 90 km trifft den Fall 2026-10-09 am
@@ -87,6 +88,8 @@ export const DETECT_DEFAULTS = {
   surfaceTroughRamp: [0.1, 0.5], // hPa/(100 km)²: ab hier zählt die gefundene Rinne voll
   surfaceSmoothKm: 400,         // Glättung des Versatzes entlang der Linie
   contrastFreeKm: 350,          // Linienende "frei", wenn keine andere Linie so nah ist
+  precipFronts: false, // Fronten aus Niederschlagsachsen an Tiefs ohne TFP-Front (precipfronts.js), in Erprobung
+  precip: {},         // überschreibt PRECIP_FRONT_DEFAULTS
   occlusions: true,   // Okklusionen bestimmen (occlusion.js)
   occlusion: {},      // überschreibt OCCLUSION_DEFAULTS
 };
@@ -200,10 +203,12 @@ export function detectFronts(field, opts = {}) {
   }
   // Lücken zwischen Fronten gleichen Typs schließen, wo Niederschlag fällt
   // (Kaltfront südlich Großbritanniens 12 UTC), vor der Okklusionsanalyse.
+  // Tiefs (Bodendruck): für Niederschlagsfronten, Okklusionen und die
+  // Anschlussregel.
+  const lows = field.sfc ? findLows(field, g, o.occlusion) : [];
   const joined = closeGaps(features, af, g, o.post);
   // Okklusionen brauchen die bewerteten Fronten (Okklusionspunkt nur
   // zwischen echten Fronten) und den Bodendruck (Tiefzentren).
-  const lows = o.occlusions && field.sfc ? findLows(field, g, o.occlusion) : [];
   // Warmluftzungen: bevorzugt aus der Schichtdicke 500/1000 (Okklusion
   // durch den Scheitel des Warmluftkeils, K1), sonst aus θw in 700 hPa
   // (Isentropenanalyse 700 hPa, K4).
@@ -220,11 +225,20 @@ export function detectFronts(field, opts = {}) {
   const msl = o.occlusions && field.sfc ? gaussianSmooth(Float32Array.from(field.sfc.pressure_msl, (x) => (x == null ? NaN : x)), g, oo.lowSmoothKm) : null;
   const tend = o.occlusions && prev?.sfc?.pressure_msl
     ? gaussianSmooth(Float32Array.from(field.sfc.pressure_msl, (x, k) => x - prev.sfc.pressure_msl[k]), g, 100) : null;
-  const marked = o.occlusions && field.sfc ? markOcclusions(joined, ff, lows, oo, ridges, { msl, tend }) : joined;
+  let marked = o.occlusions && field.sfc ? markOcclusions(joined, ff, lows, oo, ridges, { msl, tend }) : joined;
+  // Tiefs mit schwachem Kontrast, an denen danach keine Front liegt
+  // (Genuatief): Fronten aus Niederschlagsachsen, mit eigener Lücken- und
+  // Okklusionsanalyse, damit sie nicht mit TFP-Fronten verschmelzen.
+  if (o.precipFronts && af) {
+    const pf = precipFronts(field, g, lows, marked, o.precip, { split: (l) => splitAtCorners(l, o.precip.cornerDeg ?? PRECIP_FRONT_DEFAULTS.cornerDeg, o.cornerChordKm) });
+    if (pf.length) {
+      const pj = closeGaps(pf, af, g, o.post);
+      marked = [...marked, ...(o.occlusions ? markOcclusions(pj, ff, lows, oo, ridges, { msl, tend }) : pj)];
+    }
+  }
   // Abschließend alle Fronten glätten ("wie Segel"), Endpunkte fest.
   // Jede Front hängt an einem Tiefkern, direkt oder über ihr Frontsystem.
-  const linkLows = lows.length || !field.sfc ? lows : findLows(field, g, o.occlusion);
-  const all = field.sfc ? requireLowLink(smoothFeatures(marked, o.post), linkLows, o.post) : smoothFeatures(marked, o.post);
+  const all = field.sfc ? requireLowLink(smoothFeatures(marked, o.post), lows, o.post) : smoothFeatures(marked, o.post);
   const out = keepInactive ? all : all.filter((f) => f.properties.activity_class !== "none");
   return { type: "FeatureCollection", features: out, properties: { params: o, lows, ridges, ridgeSource } };
 }

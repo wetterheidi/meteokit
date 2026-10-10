@@ -509,6 +509,44 @@ Jede Front muss mit einem analysierten Tiefkern verbunden sein, direkt oder
   Kaltfront über Frankreich (10.10.; Anschluss über Dänemark fehlt), die
   Island-Warm- und Kaltfront 09.10. 15 UTC (dort fehlt die Okklusion).
 
+### Genuatief 09.10. 12 UTC (Handanalyse)
+
+Handanalyse: Kaltfront Algerien – südlich Sardinien – Tyrrhenisches Meer –
+Rom – La Spezia (Okklusionspunkt 44,4/10,4), Warmfront Poebene – nördliche
+Adria – Bosnien, Okklusion von Genua westlich und südlich um den Kern
+(42,5/8). Erfahrung der Projektleitung: bei Genuatiefs sind die
+Luftmassenkontraste wesentlich geringer als bei Polarfronttiefs.
+
+Signale quer zu den handanalysierten Linien (±150 km):
+
+- Kaltfront: T850-Kontrast 5–6 K über Algerien/Tunesien, 2–3 K an
+  Italien, 1 K am Okklusionspunkt. Niederschlagsmaximum 10–20 km neben der
+  Linie (0,7–1,1 mm/h). Zwischen Rom und La Spezia keine eigene
+  Niederschlagsachse (Niederschlag 200 km östlich am Apennin).
+- Warmfront: 850 hPa im Gelände maskiert, 700 hPa ~1 K; Niederschlag auf
+  der Linie. Advektion 850 hPa +1,5 bis +2,3 K/10 h über der Adria.
+- Okklusion: kein Temperaturkontrast, kräftige Rinne 20–40 km neben der
+  Linie.
+
+TFP findet dort nichts, auch nicht in 700 hPa (mit gelockerten Masken nur
+59 % der Kaltfront und 49 % der Warmfront in 150 km). Niederschlagsachsen
+treffen Kaltfront 96 %/28 km, Warmfront 92 %/42 km, Okklusion 59 %/41 km
+(Anteil in 100 km/mittlerer Abstand).
+
+Erster Ansatz `precipfronts.js` (s. README), Stand: an 09.10. 12 UTC
+Treffer 75 → 82 %, nur Lage 75 → 89 %, Fehlalarm 1 → 12 %. Probleme:
+
+- Die Achse Algerien–Tunesien folgt der Kaltfront bis vor Neapel und biegt
+  dort um 50° nach Osten zum Ionischen Meer ab; sie liegt 450 km vom Kern
+  und bleibt ohne Anschluss. Eine Eckenschwelle von 45° teilt sie, macht
+  das Band aber zur Okklusion (Fehlalarm 24 %).
+- Das Band über Mittelitalien (42–43° N) wird zur Warmfront, die Warmfront
+  der Handanalyse liegt in der Poebene (45° N).
+- An anderen Terminen entstehen plausible (10.10. 09 UTC Ostseewelle) und
+  fragliche Fronten (06.10. Biskaya-Tief, 09.10. 15 UTC Islandtief ohne
+  Okklusion). Deshalb vorerst abgeschaltet (`precipFronts: false`), in der
+  Debug-Seite zum Ansehen eingeschaltet.
+
 ### Offene Punkte aus dem Fall 10.10. 06 UTC (zurückgestellt)
 
 Vergleich mit DWD, KNMI und GeoSphere. Getroffen werden die Warmfront der

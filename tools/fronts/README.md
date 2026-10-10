@@ -112,6 +112,17 @@ Okklusion zu einem Randtief führt. Systeme ohne Anschluss werden zu
 `activity_class: "none"` mit `unlinked: true` (abschaltbar mit
 `post: { lowLink: false }`).
 
+**Fronten aus Niederschlagsachsen** (`src/fronts/precipfronts.js`, in
+Erprobung, `precipFronts: true`, in der Debug-Seite per Häkchen): für Tiefs
+mit schwachem Luftmassenkontrast (Genuatief), an denen nach der
+TFP-Analyse keine Front liegt (500 km). Rückenachsen des Niederschlags im
+Umkreis von 1000 km, an Gabelungen und Ecken geteilt, geglättet; Stücke
+ab 250 km mit mindestens 0,3 mm/h. Typ aus der Temperaturadvektion
+(850 hPa, im Gelände 700 hPa). Begleitbänder von TFP-Fronten entfallen.
+Danach eigene Lücken- und Okklusionsanalyse, dann dieselbe Glättung und
+Anschlussregel. Kennzeichen `method: "precip"`, Kriterien `precip` und
+`advection_k10h`.
+
 Die Okklusion muss zu einem Tief hin zeigen (auch zu einem Randtief
 jenseits des Gebiets), pro Tief gibt es höchstens eine.
 
@@ -130,8 +141,9 @@ Am Okklusionspunkt gelten die Zeichenregeln der Referenzanalyse
 
 Noch offen:
 
-- Fronten des Ligurientiefs (Referenz: KNMI-Analyse). Zu wenig
-  θw-Gradient in 850 hPa, das Gelände ist maskiert.
+- Fronten des Genuatiefs (Referenz: Handanalyse 09.10. 12 UTC, KNMI).
+  Erster Ansatz über Niederschlagsachsen, noch unvollständig (s.
+  KRITERIEN.md).
 - Okklusionen ohne passende TFP-Linie.
 - Zurückgestellt: den Typ aus der Verlagerung zwischen den Terminen
   bestimmen. Die Bestimmung über den Querwind in 850 hPa trifft den
