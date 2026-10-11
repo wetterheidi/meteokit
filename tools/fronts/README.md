@@ -306,6 +306,12 @@ Umkreis von 300 km um die geprüften Linien (Beispiel 08.10. 18 UTC: nur die
 schleifende Front an den Alpen). „Automatik übernehmen“ hängt schon
 übernommene Linien nicht erneut an.
 
+Ablauf für eine neue Handanalyse: Die heruntergeladene Rohfassung kommt
+nach `docs/Testfronten/` (lokale Ablage, per `.gitignore` nicht im Repo).
+Ins Repo kommt nur die bereinigte Fassung in `tools/fronts/reference/`:
+ungeprüfte, aus der Automatik übernommene Linien entfernt, bei
+Teilanalysen `partial: true` und eine `note`, was geprüft wurde.
+
 Unter den Knöpfen steht der Vergleich der Automatik mit der Handanalyse am
 aktuellen Termin, mit den aktuellen Reglern. Über alle Referenzen zugleich
 rechnet das Skript:

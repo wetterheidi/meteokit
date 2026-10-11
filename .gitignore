@@ -4,3 +4,6 @@ node_modules/
 
 # DWD-Kompendien (nur für den schulinternen Gebrauch) – lokale Arbeitsunterlage
 docs/Kompendien/
+
+# Rohfassungen der Handanalysen (lokale Ablage); geprüfte Fassungen in tools/fronts/reference/
+docs/Testfronten/
