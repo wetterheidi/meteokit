@@ -660,7 +660,13 @@ function toGeoJSON() {
   const r3 = ([la, lo]) => [+lo.toFixed(3), +la.toFixed(3)];
   return {
     type: "FeatureCollection",
-    properties: { source: "manual", valid_time: F.validTime, fixture: $("fixture").value, created: new Date().toISOString() },
+    // Gezeichnetes Gebiet (Raster der geladenen Felder, bei "ICON Global
+    // außen" das zusammengesetzte): compare.mjs wertet nur dort aus.
+    properties: {
+      source: "manual", valid_time: F.validTime, fixture: $("fixture").value, model: F.model,
+      domain: { latMin: G.lat0, latMax: +(G.lat0 + (G.ny - 1) * G.res).toFixed(4), lonMin: G.lon0, lonMax: +(G.lon0 + (G.nx - 1) * G.res).toFixed(4) },
+      created: new Date().toISOString(),
+    },
     features: ED.lines.map((ln) => ({
       type: "Feature",
       geometry: { type: "LineString", coordinates: spline(ln.cps).ll.map(r3) },

@@ -385,10 +385,12 @@ node tools/fronts/compare.mjs --model icon_global --clip 30,70,-23.5,44.5
 
 Standardmäßig setzt das Skript die Felder zusammen (ICON-EU innen, ICON
 Global außen), wenn es eine ICON-Global-Fixture mit dem Termin gibt, und
-wertet nur das Gebiet der ICON-EU-Fixture aus, auf dem die Referenzen
-gezeichnet sind. `--model` rechnet nur auf einem Modell, `--clip` legt das
-ausgewertete Gebiet fest, `--fixtures` nimmt Fixtures aus einem anderen
-Verzeichnis.
+wertet nur das Gebiet aus, auf dem die Referenz gezeichnet ist: Die
+Debug-Seite speichert es seit 2026-10-11 als `properties.domain` (mit
+„ICON Global außen“ das zusammengesetzte Gebiet); ältere Referenzen ohne
+Angabe gelten als auf ICON-EU gezeichnet. `--model` rechnet nur auf einem
+Modell, `--clip` legt das ausgewertete Gebiet fest, `--fixtures` und
+`--refs` nehmen Fixtures bzw. Referenzen aus einem anderen Verzeichnis.
 
 Maße (`tools/fronts/compare.js`, längengewichtet, Abtastung 25 km):
 

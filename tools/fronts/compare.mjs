@@ -6,19 +6,20 @@
  * Vortermin (für die Drucktendenz).
  *
  *   node tools/fronts/compare.mjs ['{"sigmaKm":100}'] [--tol 150] [--no-merge]
- *     [--fixtures dir] [--model icon_global] [--clip latMin,latMax,lonMin,lonMax]
+ *     [--fixtures dir] [--refs dir] [--model icon_global] [--clip latMin,latMax,lonMin,lonMax]
  *
  * Das optionale JSON überschreibt DETECT_DEFAULTS, so lassen sich
  * Parameter gegen alle Referenzen zugleich prüfen.
  *
  * Wie im Betrieb vorgesehen, werden die Felder zusammengesetzt
  * (mergeFields): ICON-EU innen, ICON Global außen, wenn es eine
- * ICON-Global-Fixture mit dem Termin gibt. Ausgewertet wird dann nur das
- * Gebiet der ICON-EU-Fixture, auf dem die Referenzen gezeichnet sind
- * (Fronten außerhalb wären sonst Fehlalarme). --no-merge rechnet nur auf
- * ICON-EU. --fixtures nimmt die Fixtures aus einem anderen Verzeichnis,
- * --model nur Fixtures dieses Modells (ohne Zusammensetzen), --clip legt
- * das ausgewertete Gebiet fest.
+ * ICON-Global-Fixture mit dem Termin gibt. Ausgewertet wird nur das
+ * Gebiet, auf dem die Referenz gezeichnet ist (properties.domain, sonst das
+ * der ICON-EU-Fixture); Fronten außerhalb wären sonst Fehlalarme.
+ * --no-merge rechnet nur auf ICON-EU, --model nur auf den Fixtures dieses
+ * Modells (ohne Zusammensetzen). --fixtures und --refs nehmen Fixtures bzw.
+ * Referenzen aus einem anderen Verzeichnis, --clip legt das ausgewertete
+ * Gebiet fest.
  */
 
 import { readFileSync, readdirSync, existsSync } from "node:fs";
@@ -51,7 +52,7 @@ const clipLines = (lines, clip) => !clip ? lines : lines.flatMap((l) => {
 const optsArg = argv.find((a, i) => a.startsWith("{") && !(argv[i - 1]?.startsWith("--") && !FLAGS.includes(argv[i - 1])));
 const detectOpts = optsArg ? JSON.parse(optsArg) : {};
 
-const refDir = `${dir}reference/`;
+const refDir = arg("--refs") ? `${arg("--refs").replace(/\/$/, "")}/` : `${dir}reference/`;
 const refs = existsSync(refDir) ? readdirSync(refDir).filter((f) => f.endsWith(".geojson")).sort() : [];
 if (!refs.length) { console.log(`Keine Referenzen in ${refDir}`); process.exit(0); }
 
@@ -98,7 +99,12 @@ for (const file of refs) {
   const field = merged(inner);
   const prev = n > 0 && C.stepH === 3 ? merged(fieldAt(C, n - 1, 850)) : undefined;
   const isMerged = field !== inner;
-  const clip = clipArg || (isMerged ? [inner.lat0, inner.lat0 + (inner.ny - 1) * inner.res, inner.lon0, inner.lon0 + (inner.nx - 1) * inner.res] : null);
+  // Ausgewertet wird das Gebiet, auf dem die Referenz gezeichnet ist
+  // (properties.domain, von der Debug-Seite gespeichert); ältere Referenzen
+  // ohne Angabe sind auf ICON-EU gezeichnet.
+  const d = fc.properties?.domain;
+  const clip = clipArg || (d ? [d.latMin, d.latMax, d.lonMin, d.lonMax]
+    : isMerged ? [inner.lat0, inner.lat0 + (inner.ny - 1) * inner.res, inner.lon0, inner.lon0 + (inner.nx - 1) * inner.res] : null);
   const auto = detectFronts(field, { ...detectOpts, prev });
   // Teilanalyse (properties.partial): Fehlalarme nur nahe den geprüften Linien.
   const r = compareFronts(fcToLines(fc), clipLines(fcToLines(auto), clip), { ...(tolKm ? { tolKm } : {}), ...(fc.properties?.partial ? { partialKm: 300 } : {}) });
