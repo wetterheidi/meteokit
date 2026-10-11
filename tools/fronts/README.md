@@ -289,6 +289,7 @@ Vorhandene Fälle:
 
 | Datei | Termine | Bemerkung |
 |---|---|---|
+| `icon_eu_2026-10-05.json.gz` | 05.10. 00–21 UTC, 3-stündlich | alle Termine +0 h (abgerufen 11.10.). Testfall der Projektleitung, noch ohne Handanalyse; Tief im Nordmeer (12 UTC 70° N 6° E, 975 hPa) |
 | `icon_eu_2026-10-06.json.gz` | 06.10. 06–18 UTC, 3-stündlich | alle Termine +0 h (abgerufen 11.10.). Wellende Front über Großbritannien, Barentssee-Tief. Vergleichskarten: DWD und KNMI 12 UTC, DWD 18 UTC |
 | `icon_eu_2026-10-08.json.gz` | 08.10. 09–21 UTC, 3-stündlich | alle Termine +0 h. Schleifende Kaltfront an den Alpen, Island- und Ostsee-Tief. Vergleichskarten: DWD und KNMI 12/18 UTC |
 | `icon_eu_2026-10-09.json.gz` | 08.10. 18 UTC – 09.10. 15 UTC, 3-stündlich | 18–12 UTC Analyse, 15 UTC +0 h aus dem 15-UTC-Lauf. Island-Tief mit Okklusion, Ostsee-Tief, Ligurien-Tief. Vergleichskarten: DWD 00/12 UTC, KNMI und GeoSphere 00/06/12 UTC |
