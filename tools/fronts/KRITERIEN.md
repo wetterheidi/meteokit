@@ -886,3 +886,20 @@ ist der 3-h-Druckfall ein flaches Plateau (−3,1 bis −3,2 hPa zwischen 59
 und 62,5° N); der automatische Punkt liegt an dessen Südrand (−2,5 hPa),
 der Handpunkt darin (−2,5 hPa in der 60-km-Glättung). Der stärkste Fall
 insgesamt liegt am Kern (−4,2 hPa, das Tief vertieft sich bzw. zieht).
+
+Umgesetzt (`opFall`, Vorgabe, Zustimmung der Projektleitung: der Punkt
+rutscht so auch in den stärksten Niederschlag, ebenfalls ein übliches
+Kriterium): Nach dem Zurücklegen entlang der Kaltfront rückt der Punkt
+entlang der Okklusion bis 400 km zum stärksten 3-h-Druckfall vor (Abzug
+0,15 hPa je 100 km, mindestens 0,3 hPa Gewinn); die Kaltfront läuft auf dem
+bisherigen Okklusionsweg bis zum neuen Punkt weiter, die Warmfront wird
+angeschlossen. 06.10. 18 UTC: Punkt 239 km vor auf 60,0° N 46,1° E (Hand:
+60,3° N 45,2° E, rund 50 km), Niederschlag am Punkt 0,9 → 2,4 mm/h;
+Treffer 84 → 94 %, 91 → 76 km. Alle anderen Okklusionspunkte der Fälle
+bleiben (kein deutlich stärkerer Fall). Zwei Einschränkungen nach der
+Seitenprüfung: nur solange die Okklusion örtlich höchstens 30° von der
+Kaltfrontrichtung abweicht, und nur wenn die Kaltfront als ganzes Stück
+zurückgeschrieben wird (in der Restkette verschob das Neuverteilen der
+Punkte die Stückgrenzen; am Russlandtief 10.10. 09 UTC lag ein Stück mit
+falscher Symbolseite auf der Verlängerung). Gesamt 94 % / 97 % / 11 % /
+39 km.

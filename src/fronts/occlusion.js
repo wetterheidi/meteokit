@@ -75,6 +75,16 @@ export const OCCLUSION_DEFAULTS = {
   cornerOpDeg: 60,
   opDistPenalty: 0.15,  // hPa/3 h je 100 km Verschiebung
   opMinGain: 0.3,       // hPa/3 h: nur bei deutlich stärkerem Fall verschieben
+  // Okklusionspunkt entlang der Okklusion zum stärksten 3-h-Druckfall
+  // vorschieben (Projektleitung: Punkt nach dem stärksten Druckfall, liegt
+  // so auch eher im stärksten Niederschlag). Kaltfront und Warmfront reichen
+  // bis zum neuen Punkt. Abzug opDistPenalty je 100 km, mindestens opMinGain.
+  opFall: true,
+  opFallKm: 400,
+  // … nur, solange der Weg die Richtung der Kaltfront hält (die Okklusion
+  // setzt sie ohne Knick fort). Am Russlandtief (10.10. 09 UTC) bog die
+  // Okklusion hinter dem Punkt scharf ab, die Kaltfront wurde mitgezogen.
+  opFallTurnDeg: 30,
   // Spirale um den Kern (gegen den Uhrzeigersinn, Druck fallend)
   spiralStepKm: 50,
   spiralMinDrop: 0.05,  // hPa je Schritt
@@ -367,6 +377,12 @@ export function markOcclusions(features, ff, lows, opts = {}, ridges = null, ctx
     // gerade weiter; vom automatischen Punkt aus knickte sie um 70°).
     let slidKm = 0;
     if (o.opSlideKm > 0) ({ cold, occ, slidKm } = slideAlongCold(cold, occ, o));
+    let fallKm = 0;
+    // Nur wenn die Kaltfront als ganzes Stück zurückgeschrieben wird (A):
+    // in der Restkette verschob das Neuverteilen der Punkte die Stückgrenzen,
+    // ein Stück mit anderer Symbolseite lag dann auf der Verlängerung
+    // (Russlandtief 10.10. 09 UTC).
+    if (o.opFall && ctx?.tend && coldIsA) ({ cold, occ, fallKm } = advanceToFall(cold, occ, ctx.tend, g, o));
     // Der Okklusionsast stammt aus derselben Linie wie die Warmfront und setzt
     // daher sie fort statt der Kaltfront. Anfang neu führen: tangential aus
     // der Kaltfront heraus, über occBlendKm weich in den Keilverlauf.
@@ -415,6 +431,7 @@ export function markOcclusions(features, ff, lows, opts = {}, ridges = null, ctx
         occlusion_geometry: geometry,
         occlusion_spiral_km: spiralKm,
         occlusion_slide_km: slidKm,
+        occlusion_fall_km: fallKm,
         occlusion_low: cut.low.edge ? "edge" : { lat: cut.low.lat, lon: cut.low.lon },
         activity_class: props(src).activity_class === "none" ? "weak" : props(src).activity_class,
         // Symbole: Seite wie das Stück, bei umgekehrter Punktreihenfolge gespiegelt.
@@ -584,6 +601,34 @@ function trimToward(pts, P, km) {
 // Die Kaltfront endet dann in Q (Punktzahl bleibt: die übrigen Punkte
 // rücken auf Q), die Okklusion beginnt in Q und läuft auf ihren Verlauf ab
 // diesem Punkt zu.
+// Okklusionspunkt entlang der Okklusion (bis opFallKm) zum stärksten
+// 3-h-Druckfall vorschieben; die Kaltfront läuft dafür auf dem bisherigen
+// Okklusionsweg bis zum neuen Punkt weiter (kein Knick).
+function advanceToFall(cold, occ, tend, g, o) {
+  const t0 = sampleBilinear(tend, g, occ[0][0], occ[0][1]);
+  if (!Number.isFinite(t0)) return { cold, occ, fallKm: 0 };
+  let best = { q: 0, score: t0, t: t0, s: 0 }, s = 0;
+  // Richtung der Kaltfront an ihrem Ende (über ~100 km).
+  let b = cold.length - 1, sb = 0;
+  while (b > 0 && sb < 100) { sb += distKm(cold[b - 1], cold[b]); b--; }
+  const dc = unitV(vecKm(cold[b], cold[cold.length - 1]));
+  const cosMax = Math.cos((o.opFallTurnDeg * Math.PI) / 180);
+  for (let q = 1; q < occ.length - 2; q++) {
+    s += distKm(occ[q - 1], occ[q]);
+    if (s > o.opFallKm) break;
+    // örtliche Richtung der Okklusion (Sehne über die letzten ~50 km)
+    let a = q, sa = 0;
+    while (a > 0 && sa < 50) { sa += distKm(occ[a - 1], occ[a]); a--; }
+    if (a < q && dotV(unitV(vecKm(occ[a], occ[q])), dc) < cosMax) break;
+    const t = sampleBilinear(tend, g, occ[q][0], occ[q][1]);
+    if (!Number.isFinite(t)) continue;
+    const score = t + (o.opDistPenalty * s) / 100;
+    if (score < best.score) best = { q, score, t, s };
+  }
+  if (!best.q || t0 - best.t < o.opMinGain) return { cold, occ, fallKm: 0 };
+  return { cold: [...cold, ...occ.slice(1, best.q + 1)], occ: occ.slice(best.q), fallKm: Math.round(best.s) };
+}
+
 function slideAlongCold(cold, occ, o) {
   const n = cold.length, s = [0];
   for (let q = n - 1; q > 0; q--) s.push(s[s.length - 1] + distKm(cold[q - 1], cold[q]));
