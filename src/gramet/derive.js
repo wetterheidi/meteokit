@@ -141,7 +141,13 @@ function isothermPolylines(grid, thresholdC) {
     // (z. B. 3x um 0°C) -- fürs Chart zählt nur der tiefste Durchgang beim
     // Aufstieg, weitere Durchgänge wären nur verwirrendes Rauschen (s. Feedback).
     const allZs = columnCrossings(grid, i, thrK);
-    const zs = allZs.length ? [allZs[0]] : [];
+    // Nullgradgrenze am Boden ("FZLVL SFC"): liegt die Bodentemperatur unter
+    // 0 °C, gilt in der Fliegerei der Boden als Freezing Level -- auch wenn
+    // weiter oben noch eine warme Schicht folgt. Die 0-°C-Linie läuft dann am
+    // Boden entlang statt abzubrechen (s. Feedback). Nur für 0 °C; z = 0 AGL,
+    // `sfc` markiert den Punkt für den Renderer (Log-Achse beginnt über 0).
+    const sfc = thresholdC === 0 && surfaceTempK(grid, i) < thrK;
+    const zs = sfc ? [0] : allZs.length ? [allZs[0]] : [];
     const usedZ = new Array(zs.length).fill(false);
 
     for (const a of active) {
@@ -154,18 +160,25 @@ function isothermPolylines(grid, thresholdC) {
       }
       if (bestJ >= 0 && bestD < ISOTHERM_MAX_JUMP_M) {
         usedZ[bestJ] = true;
-        a.line.push({ t: pos[i], z: zs[bestJ] });
+        a.line.push(sfc ? { t: pos[i], z: zs[bestJ], sfc } : { t: pos[i], z: zs[bestJ] });
         a.lastZ = zs[bestJ]; a.lastI = i;
       }
     }
     for (const a of active) if (a.lastI < i && a.line.length > 1) finished.push(a.line);
     for (let ai = active.length - 1; ai >= 0; ai--) if (active[ai].lastI < i) active.splice(ai, 1);
     for (let j = 0; j < zs.length; j++) {
-      if (!usedZ[j]) active.push({ line: [{ t: pos[i], z: zs[j] }], lastZ: zs[j], lastI: i });
+      if (!usedZ[j]) active.push({ line: [sfc ? { t: pos[i], z: zs[j], sfc } : { t: pos[i], z: zs[j] }], lastZ: zs[j], lastI: i });
     }
   }
   for (const a of active) if (a.line.length > 1) finished.push(a.line);
   return finished;
+}
+
+// 2-m-Temperatur (K) der Spalte, ersatzweise das unterste Modelllevel.
+function surfaceTempK(grid, i) {
+  const t2m = grid.surface?.t2m?.[i];
+  if (Number.isFinite(t2m)) return t2m + KELVIN;
+  return grid.T[i * grid.nk];
 }
 
 function columnCrossings(grid, i, thrK) {

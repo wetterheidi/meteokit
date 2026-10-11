@@ -1837,7 +1837,11 @@ function drawIsotherms(ctx, isotherms, x, y) {
     // Auf den sichtbaren Höhenbereich geschnitten (s. `clipPolylineZ`) --
     // sonst klebt eine Isotherme weit außerhalb des Zooms als Phantomlinie +
     // Label am Panelrand (s. Feedback).
-    const polylines = raw.flatMap((pl) => clipPolylineZ(pl, zMin, zMax));
+    // Bodenpunkte ("FZLVL SFC", z = 0 AGL bzw. Geländehöhe) auf die Unterkante
+    // heben: die Log-Achse beginnt über 0 und würde sie sonst wegschneiden.
+    const polylines = raw
+      .map((pl) => pl.map((p) => (p.sfc && p.z < zMin ? { ...p, z: zMin } : p)))
+      .flatMap((pl) => clipPolylineZ(pl, zMin, zMax));
     if (!polylines.length) continue;
     const color = tempC === 0 ? "#1d4c8c" : "#7a1414";
     for (const pl of polylines) drawPolyline(ctx, pl, x, y, color, [5, 3]);
