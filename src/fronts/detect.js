@@ -51,7 +51,7 @@ import {
 } from "./grid.js";
 import { activityFields, assessPoints, activityClass, ACTIVITY_DEFAULTS } from "./activity.js";
 import { findLows, markOcclusions, ridgeLines, OCCLUSION_DEFAULTS } from "./occlusion.js";
-import { closeGaps, smoothFeatures, requireLowLink, junctionToCore, occlusionToPrecip } from "./postprocess.js";
+import { closeGaps, smoothFeatures, requireLowLink, junctionToCore, occlusionToPrecip, dropDuplicates } from "./postprocess.js";
 import { precipFronts, PRECIP_FRONT_DEFAULTS } from "./precipfronts.js";
 import { stauFronts } from "./staufronts.js";
 
@@ -268,7 +268,8 @@ export function detectFronts(field, opts = {}) {
   // Offenes Tief: Übergang Warm-/Kaltfront im Tiefkern.
   if (field.sfc) marked = junctionToCore(marked, lows, o.post);
   marked = occlusionToPrecip(marked, af, g, o.post);
-  const all = field.sfc ? requireLowLink(smoothFeatures(marked, o.post), lows, o.post) : smoothFeatures(marked, o.post);
+  const smoothed = dropDuplicates(smoothFeatures(marked, o.post), o.post);
+  const all = field.sfc ? requireLowLink(smoothed, lows, o.post) : smoothed;
   const out = keepInactive ? all : all.filter((f) => f.properties.activity_class !== "none");
   return { type: "FeatureCollection", features: out, properties: { params: o, lows, ridges, ridgeSource } };
 }

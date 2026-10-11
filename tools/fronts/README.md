@@ -1,13 +1,15 @@
 # fronts – Werkzeuge zur objektiven Frontenanalyse
 
-Im Aufbau. Ziel: Fronten aus ICON-EU-Feldern in 850 hPa nach der TFP-Methode
+Im Aufbau. Ziel: Fronten aus ICON-Feldern in 850 hPa nach der TFP-Methode
 (Hewson 1998) bestimmen und als GeoJSON an Apps liefern, z. B. dronecast.
+Gerechnet wird auf zusammengesetzten Feldern: ICON-EU innen, ICON Global
+außen (s. unten).
 Kernmodul ist `src/fronts/` (`meteokit/fronts`). Hier liegen Abrufskript,
 Debug-Seite und Testfälle.
 
 ## Stand (Spike, 2026-10-08)
 
-- `fetchPlaneField` holt die Modelllevel 55–70 sowie das unterste Level per
+- `fetchPlaneField` holt die Modelllevel 50–70 (ICON Global 96–120) sowie das unterste Level per
   Mehrpunkt-POST vom Modelllevel-Server und interpoliert linear in ln p auf
   die Zieldruckfläche. Der Server liefert **keine Druckflächen-Variablen**
   (`temperature_850hPa` u. ä. kommen als `null`), deshalb wird selbst
@@ -127,7 +129,32 @@ anderen Linie entfernt liegt; ein System ist angeschlossen, wenn eine
 seiner Fronten näher als 300 km an einem Tiefkern liegt oder seine
 Okklusion zu einem Randtief führt. Systeme ohne Anschluss werden zu
 `activity_class: "none"` mit `unlinked: true` (abschaltbar mit
-`post: { lowLink: false }`).
+`post: { lowLink: false }`). **Brücken** (`post.bridges`, Vorgabe der
+Projektleitung 2026-10-11): Erreicht ein System mit einer aktiven Front den
+Anschluss nur über Stücke ohne Wetter, die im Mittel mindestens 4 K
+Kontrast haben (`bridgeContrastMin`), werden diese Stücke schwach mit
+`bridge: true` (frontolytisch, dieselbe Zyklonenfamilie). Mehrere solche
+Stücke dürfen aufeinander folgen. **Doppellinien** (`dropDuplicates`):
+liegt eine Front zu mindestens 70 % ihrer Punkte höchstens 100 km neben
+einer stärkeren (Okklusion vor aktiv vor schwach), entfällt sie
+(`duplicate: true`).
+
+**Zusammengesetzte Felder** (`mergeFields` in `src/fronts/field.js`, seit
+2026-10-11): ICON-EU deckt im Norden und Westen nicht genug ab; Tiefs bei
+Island, Grönland oder über der Barentssee lagen am Rand oder außerhalb, und
+ihre Fronten fielen über die Anschlussregel weg. ICON Global allein hatte an
+den Referenzen dreimal so viele Fehlalarme (18 statt 5 %), weil sein
+Niederschlag flächiger ist und die Wetterpflicht leichter erfüllt. Deshalb
+werden die Felder vor der Analyse zusammengesetzt: ICON-EU im eigenen
+Gebiet, ICON Global außen (25–78° N, 50° W–60° E), auf dem gemeinsamen
+0,5°-Raster mit einem linearen Übergang über 2,5° zum ICON-EU-Rand. Innen
+bleibt die Abstimmung an ICON-EU gültig, und an der Nahtstelle entstehen
+keine Brüche in den Linien.
+
+```js
+const field = mergeFields(fieldAt(eu, n, 850), fieldAt(global, m, 850));
+const fc = detectFronts(field, { prev: mergeFields(…Vortermin…) });
+```
 
 **Fronten aus Niederschlagsachsen** (`src/fronts/precipfronts.js`, in
 Erprobung, `precipFronts: true`, in der Debug-Seite per Häkchen, standardmäßig aus): für Tiefs
@@ -157,7 +184,11 @@ sich einzeln zurückstellen, z. B. `fillTerrain: false`, `windMin: 2`,
 gemittelt), `activity.contrastE` (θe-Kontrast).
 
 Die Okklusion muss zu einem Tief hin zeigen (auch zu einem Randtief
-jenseits des Gebiets), pro Tief gibt es höchstens eine.
+jenseits des Gebiets), pro Tief gibt es höchstens eine. Liegt der
+Treffpunkt höchstens 150 km von einem Tiefkern (`coreSkipKm`), ist es ein
+offenes Tief und kein Okklusionspunkt. Okklusionen über 2500 km
+(`occMaxKm`) entfallen; beides kam erst mit dem größeren Gebiet vor
+(Russlandtief 10.10.).
 
 Am Okklusionspunkt gelten die Zeichenregeln der Referenzanalyse
 (KRITERIEN.md, Abschnitt 10):
@@ -177,8 +208,17 @@ Noch offen:
 - Genuatief: Okklusion und Warmfront vertretbar, die Kaltfront liegt rund
   100 km östlich parallel zur Handanalyse, der Okklusionspunkt bei Ancona
   statt La Spezia.
-- Randtiefs (Islandsystem 08.10. 12/15 UTC fällt über die Anschlussregel
-  weg); erledigt sich mit ICON Global.
+- Welle 06.10. 18 UTC: Die Kaltfront England–Atlantik hängt an keinem
+  Tief und entfällt. Die Kette ohne Wetter über Nordsee und Ostsee hat nur
+  im ersten Stück 4,6 K, sonst 1,6–2,0 K, und reißt 400 km vor dem
+  Barentssee-Tief ab. Auch mit 1,5 K entsteht keine Brücke. Der DWD
+  zeichnet durch.
+- Russlandtief 10.10. 06 UTC: Mit ICON Global außen liegt der
+  Okklusionspunkt bei 50° E, außerhalb des Gebiets der Handanalyse
+  (Okklusion statt Warmfront entlang 64° N). Synoptisch zu prüfen.
+- Seitenprüfung: vier Okklusionen und eine Kaltfront außerhalb des
+  ICON-EU-Gebiets (Grönland, Nordmeer, Barentssee, Russland) widersprechen
+  der θw-Seite; innen keine Abweichung.
 - Okklusionen ohne passende TFP-Linie.
 - Zurückgestellt: den Typ aus der Verlagerung zwischen den Terminen
   bestimmen. Die Bestimmung über den Querwind in 850 hPa trifft den
@@ -206,14 +246,27 @@ Optionen:
 - `--pressures`, Default `850,700`
 - `--model`, `--res`, `--bbox latMin,latMax,lonMin,lonMax`, `--out`
 
-**Dauer:** Ein Termin umfasst rund 150 Variablen je Punkt (Level 50–70 plus
-Oberfläche, Druck der Level 40–49 für die Schichtdicke) und braucht etwa
-**3 min**. Die Levelhöhen über Grund sind zeitlich konstant und werden nur
-beim ersten Termin geholt. Zum Vergleich: 80 Variablen je Punkt brauchten 8 s. Für
-einen Betrieb im Cron ist der Weg über Modelllevel daher zu teuer. Dort
-wären Druckflächen auf dem Server oder die `.om`-Dateien auf S3 besser
-(s. unten). Der Server hält nur etwa eine Woche Historie, Fälle also
-zeitnah sichern.
+ICON Global für die Zusammensetzung (Level 96–120, Schichtdicke 88–95):
+
+```bash
+node tools/fronts/fetch-case.mjs --model icon_global --bbox 25,78,-50,60 \
+  --start 2026-10-06T06:00 --end 2026-10-06T18:00 --name 2026-10-06
+```
+
+Debug-Seite und `compare.mjs` setzen eine ICON-EU-Fixture mit der
+ICON-Global-Fixture gleichen Namens zusammen.
+
+**Dauer** (gemessen 2026-10-11): ein Termin rund 150 Variablen je Punkt
+(Level 50–70 bzw. 96–120 plus Oberfläche und Druck der Level für die
+Schichtdicke). ICON-EU (137×81 Punkte) braucht etwa **11 s**, ICON Global
+über 25–78° N, 50° W–60° E (221×107 Punkte) etwa **25 s**. Die
+Levelhöhen über Grund sind zeitlich konstant und werden nur beim ersten
+Termin geholt. Am 2026-10-09 dauerte ein ICON-EU-Termin noch 3 min; der
+Server ist seither deutlich schneller. Damit ist eine Vorberechnung im Cron
+über Modelllevel machbar (rund 40 s je Termin für beide Modelle); die
+Messung schwankt aber mit dem Serverausbau. ICON Global gibt es nur auf
+dem eigenen Server, nicht auf dem Ausweichserver. Der Server hält nur etwa
+eine Woche Historie, Fälle also zeitnah sichern.
 
 Format v2:
 
@@ -236,10 +289,11 @@ Vorhandene Fälle:
 
 | Datei | Termine | Bemerkung |
 |---|---|---|
-| `icon_eu_2026-10-06.json.gz` | 06.10. 06–15 UTC, 3-stündlich | alle Termine +0 h. Wellende Front über Großbritannien. Vergleichskarten: DWD und KNMI 12 UTC |
+| `icon_eu_2026-10-06.json.gz` | 06.10. 06–18 UTC, 3-stündlich | alle Termine +0 h (abgerufen 11.10.). Wellende Front über Großbritannien, Barentssee-Tief. Vergleichskarten: DWD und KNMI 12 UTC, DWD 18 UTC |
 | `icon_eu_2026-10-08.json.gz` | 08.10. 09–21 UTC, 3-stündlich | alle Termine +0 h. Schleifende Kaltfront an den Alpen, Island- und Ostsee-Tief. Vergleichskarten: DWD und KNMI 12/18 UTC |
 | `icon_eu_2026-10-09.json.gz` | 08.10. 18 UTC – 09.10. 15 UTC, 3-stündlich | 18–12 UTC Analyse, 15 UTC +0 h aus dem 15-UTC-Lauf. Island-Tief mit Okklusion, Ostsee-Tief, Ligurien-Tief. Vergleichskarten: DWD 00/12 UTC, KNMI und GeoSphere 00/06/12 UTC |
 | `icon_eu_2026-10-10.json.gz` | 10.10. 00–09 UTC, 3-stündlich | 00–06 UTC Analyse, 09 UTC +3 h. Lehrbuchnahe Tiefs: Finnland-/Russlandtief, Ostseewelle mit Skagerraktief, Nordseetief, Wellen auf der Atlantikfront, Tief über Tunesien. Vergleichskarten: DWD, KNMI, GeoSphere 06 UTC; Handanalyse 06 UTC (Skagerrak- und Russlandtief) |
+| `icon_global_<Name>.json.gz` | wie die ICON-EU-Fixture gleichen Namens | 25–78° N, 50° W–60° E, alle Termine +0 h (abgerufen 11.10.), für die Zusammensetzung |
 | `icon_eu_850_2026100900_an.json` u. a. | ein Termin | Format v1, nur 850 hPa, aus dem Spike. Die Debug-Seite liest sie weiterhin |
 
 ## Debug-Seite
@@ -249,7 +303,10 @@ python3 -m http.server 8765    # im Repo-Root
 # http://127.0.0.1:8765/tools/fronts/debug.html?fixture=fixtures/icon_eu_2026-10-09.json.gz
 ```
 
-Die Seite bietet eine Auswahl von Termin und Druckfläche. Fronten werden mit den üblichen Symbolen gezeichnet (Okklusionen violett), Tiefs als rotes T mit Kerndruck. Als Schattierung
+Die Seite bietet eine Auswahl von Termin und Druckfläche. „ICON Global
+außen“ (Vorgabe an) lädt zur ICON-EU-Fixture die ICON-Global-Fixture
+gleichen Namens und setzt die Felder zusammen; die Termine sind dann die,
+die beide haben. Fronten werden mit den üblichen Symbolen gezeichnet (Okklusionen violett), Tiefs als rotes T mit Kerndruck. Als Schattierung
 stehen zur Wahl:
 
 - θe, θw, T, |∇θw|, TFP
@@ -313,13 +370,24 @@ ungeprüfte, aus der Automatik übernommene Linien entfernt, bei
 Teilanalysen `partial: true` und eine `note`, was geprüft wurde.
 
 Unter den Knöpfen steht der Vergleich der Automatik mit der Handanalyse am
-aktuellen Termin, mit den aktuellen Reglern. Über alle Referenzen zugleich
+aktuellen Termin, mit den aktuellen Reglern. Er zählt das ganze geladene Gebiet;
+bei zusammengesetzten Feldern zählen Fronten außerhalb einer nur auf
+ICON-EU gezeichneten Referenz als Fehlalarm. Über alle Referenzen zugleich
 rechnet das Skript:
 
 ```bash
 node tools/fronts/compare.mjs                  # Standardparameter
 node tools/fronts/compare.mjs '{"sigmaKm":100}' --tol 150
+node tools/fronts/compare.mjs --no-merge        # nur ICON-EU
+node tools/fronts/compare.mjs --model icon_global --clip 30,70,-23.5,44.5
 ```
+
+Standardmäßig setzt das Skript die Felder zusammen (ICON-EU innen, ICON
+Global außen), wenn es eine ICON-Global-Fixture mit dem Termin gibt, und
+wertet nur das Gebiet der ICON-EU-Fixture aus, auf dem die Referenzen
+gezeichnet sind. `--model` rechnet nur auf einem Modell, `--clip` legt das
+ausgewertete Gebiet fest, `--fixtures` nimmt Fixtures aus einem anderen
+Verzeichnis.
 
 Maße (`tools/fronts/compare.js`, längengewichtet, Abtastung 25 km):
 

@@ -45,6 +45,18 @@ export const OCCLUSION_DEFAULTS = {
   branchProbeKm: 300,   // Richtung eines Asts: Punkt in diesem Abstand
   lowStopKm: 80,        // Okklusion endet so weit vor dem Tiefkern (Referenzanalyse: dicht um den Kern)
   towardLowMin: 0.3,    // cos des Winkels zwischen Okklusionsast und Richtung zum Tief
+  // Treffpunkt so nah an einem Tiefkern: offenes Tief (Warm- und Kaltfront
+  // treffen sich im Kern), kein Okklusionspunkt. Sonst griff der Punkt am
+  // Russlandtief (10.10. 06 UTC, mit ICON Global im Gebiet) das 1400 km
+  // entfernte Skagerraktief und verdrängte dessen Okklusion. Größer geht
+  // nicht: der Okklusionspunkt am Skagerraktief (10.10. 03 UTC) liegt nur
+  // rund 270 km vom Kern, 250 km verwarf ihn schon.
+  coreSkipKm: 150,
+  // Längere Okklusionen entfallen (die Kette bleibt, wie sie war). Am
+  // Russlandtief (10.10. 03 UTC, Treffpunkt 230 km vom Kern) wurde die
+  // Kaltfront sonst zu einer 3900 km langen Okklusion bis zum Schwarzen Meer;
+  // längste echte Okklusion der Fälle: Island 09.10. 12 UTC, 1780 km.
+  occMaxKm: 2500,
   edgeLowDrop: 8,       // hPa Druckfall bis zum Gebietsrand für ein Randtief
   edgeKm: 150,          // Minimum so nah am Gebietsrand -> Randtief
   // Okklusionspunkt zum stärksten 3-h-Druckfall entlang der Achse des
@@ -201,6 +213,7 @@ export function markOcclusions(features, ff, lows, opts = {}, ridges = null, ctx
       // Berührt das Ende nur das Ende der anderen Kette, stoßen zwei Fronten
       // aneinander -- kein Okklusionspunkt.
       if (Math.min(along(B, m, 0), along(B, m, B.pts.length - 1)) < o.endGapKm) continue;
+      if (lows.some((l) => distKm(P, [l.lat, l.lon]) <= o.coreSkipKm)) continue;
       const nA = nAt(E), nB = nAt(P);
       if (!nA || !nB) continue;
       const w = unitV([nA[0] + nB[0], nA[1] + nB[1]]);
@@ -306,6 +319,7 @@ export function markOcclusions(features, ff, lows, opts = {}, ridges = null, ctx
       if (occ.length > before) spiralKm = Math.round(lineLengthKm(occ.slice(before - 1)));
     }
     occ = smoothLine(occ, o.occSmoothKm, 2); // "wie Segel": keine Zacken
+    if (lineLengthKm(occ) > o.occMaxKm) continue;
 
     // 5. Kaltfront und Okklusion als ein durchgehender Bogen (die Okklusion
     // setzt die Kaltfront ohne Knick fort, die Warmfront setzt mit Knick an).

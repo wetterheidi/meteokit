@@ -46,6 +46,7 @@
     <option value="fixtures/icon_eu_2026-10-08.json.gz">08.10. schleifende Front an den Alpen</option>
     <option value="fixtures/icon_eu_2026-10-06.json.gz">06.10. wellende Front über Großbritannien</option>
   </datalist>
+  <label class="chk" title="Zu einer ICON-EU-Fixture die ICON-Global-Fixture gleichen Namens laden und die Felder zusammensetzen (ICON-EU innen, ICON Global außen, Übergang 2,5°), wie im Betrieb."><input id="mergeGlobal" type="checkbox" checked> ICON Global außen</label>
   <div class="row" style="margin-top:6px">
     <select id="stepSel" title="Termin" style="flex:1"></select>
     <select id="presSel" title="Druckfläche"></select>
@@ -150,7 +151,7 @@ import { gaussianSmooth, gradient, isolineSegments, chainSegments, sampleBilinea
 import { compareFronts, fcToLines } from "./compare.js";
 import { detectFronts, frontFields, DETECT_DEFAULTS } from "../../src/fronts/detect.js";
 import { ridgeLines } from "../../src/fronts/occlusion.js";
-import { fieldAt } from "../../src/fronts/field.js";
+import { fieldAt, mergeFields } from "../../src/fronts/field.js";
 
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -228,14 +229,39 @@ function toTyped(obj) {
   }
 }
 
+async function fetchCase(url) {
+  const resp = await fetch(url);
+  if (!resp.ok) return null;
+  const body = url.endsWith(".gz") ? new Response(resp.body.pipeThrough(new DecompressionStream("gzip"))) : resp;
+  const C = asCase(await body.json());
+  for (const st of C.steps) toTyped(st);
+  return C;
+}
+
+// ICON-EU innen, ICON Global außen (mergeFields), je Termin, für den es
+// beide gibt; Termine nur in ICON-EU bleiben auf dem ICON-EU-Raster nicht
+// erhalten (die Schrittliste soll ein Raster haben).
+function mergeCase(eu, gl) {
+  const steps = [];
+  eu.steps.forEach((st, n) => {
+    const m = gl.steps.findIndex((s) => s.validTime === st.validTime);
+    if (m < 0) return;
+    const f = mergeFields(fieldAt(eu, n, eu.pressures[0]), fieldAt(gl, m, gl.pressures[0]));
+    steps.push({ validTime: st.validTime, leadH: st.leadH, levels: f.levels, psfc: f.psfc, u10: f.u10, v10: f.v10, sfc: f.sfc, thickness: f.thickness });
+  });
+  return { ...gl, model: `${eu.model}+${gl.model}`, steps, times: steps.map((s) => s.validTime), lastRunAtFetch: eu.lastRunAtFetch };
+}
+
 async function load() {
   const url = $("fixture").value;
   $("meta").textContent = `lade ${url} …`;
-  const resp = await fetch(url);
-  if (!resp.ok) { $("meta").textContent = `Fehler ${resp.status}: ${url}`; return; }
-  const body = url.endsWith(".gz") ? new Response(resp.body.pipeThrough(new DecompressionStream("gzip"))) : resp;
-  CASE = asCase(await body.json());
-  for (const st of CASE.steps) toTyped(st);
+  CASE = await fetchCase(url);
+  if (!CASE) { $("meta").textContent = `Fehler beim Laden: ${url}`; return; }
+  const glUrl = url.replace("icon_eu_", "icon_global_");
+  if ($("mergeGlobal").checked && glUrl !== url) {
+    const gl = await fetchCase(glUrl);
+    if (gl) CASE = mergeCase(CASE, gl);
+  }
   $("stepSel").innerHTML = CASE.steps.map((st, n) =>
     `<option value="${n}">${st.validTime.replace("T", " ")} UTC${st.leadH ? ` (+${st.leadH} h)` : st.leadH === 0 ? " (Analyse)" : ""}</option>`).join("");
   $("presSel").innerHTML = CASE.pressures.map((p) => `<option value="${p}">${p} hPa</option>`).join("");
@@ -506,6 +532,8 @@ function drawFronts() {
         + (pr.method === "stau" ? `<br><i>schleift am Gebirgsrand</i> (Stau: Druckanstieg ${cr?.tendency_rim} hPa/3 h, RR ${cr?.precip} mm/h)` : "")
         + (pr.method === "precip" ? `<br><i>aus Niederschlagsachse</i>, RR ${cr?.precip} mm/h, Advektion ${cr?.advection_k10h} K/10 h` : "")
         + (pr.unlinked ? "<br><b>ohne Anschluss an einen Tiefkern</b> (entfällt)" : "")
+        + (pr.bridge ? "<br><b>Brücke</b>: ohne Wetter, verbindet die Front mit dem Tief (frontolytisch)" : "")
+        + (pr.duplicate ? "<br><b>Doppellinie</b> neben einer stärkeren Front (entfällt)" : "")
         + `<br>|∇θw| ${pr.gradient}  TFP ${pr.tfp}  Querwind ${pr.cross_wind} m/s`
         + (cr ? `<br>ΔT850 ${cr.contrast_k} K  Rinne ${cr.trough}  Konv. ${cr.convergence}  Vort. ${cr.vorticity}`
           + `<br>Tendenzsprung ${cr.tendency_jump} hPa/3h  RR ${cr.precip} mm/h  tiefe Wolken ${cr.cloud_low} %  w700 ${cr.w700} cm/s`
@@ -881,6 +909,7 @@ map.on("mousemove", (e) => {
 });
 
 $("load").onclick = load;
+$("mergeGlobal").onchange = load;
 $("stepSel").onchange = selectStep;
 $("presSel").onchange = selectStep;
 $("isobars").onchange = drawIsobars;

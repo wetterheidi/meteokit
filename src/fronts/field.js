@@ -28,11 +28,15 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // bei 55–57; bei tiefem Kerndruck rutscht beides nach oben. 50–70 deckt
 // etwa 550–960 hPa ab. Das unterste Level (nLevels) kommt immer dazu: sein
 // Druck ist der Bodendruck der Maske, sein Wind der "10-m-Wind".
-const DEFAULT_LEVELS = { icon_eu: [50, 70] };
+// ICON Global (Stichprobe 2026-10-06 18 UTC, 72° N bei 977 hPa Kerndruck
+// und 52° N): 850 hPa bei Level 108–112, 700 hPa bei 100–104, Level 96
+// ≈ 550–585 hPa; unterstes Level 120.
+const DEFAULT_LEVELS = { icon_eu: [50, 70], icon_global: [96, 120] };
 // Zusätzliche Level für die Schichtdicke 500/1000 hPa (nur Druck und Höhe):
 // 500 hPa liegt bei ICON-EU etwa bei Level 44–48 (Stichprobe 2026-10-09:
 // Level 48 ≈ 530 hPa, Level 38 ≈ 350 hPa).
-const THICKNESS_LEVELS = { icon_eu: [40, 49] };
+// ICON Global: 500 hPa bei Level 92–93 (Level 88 ≈ 390–430 hPa).
+const THICKNESS_LEVELS = { icon_eu: [40, 49], icon_global: [88, 95] };
 const RD = 287.05, G0 = 9.80665;
 
 // Felder je Druckfläche: API-Name -> [Schlüssel, Faktor]. w kommt nativ in m/s.
@@ -242,5 +246,66 @@ export function fieldAt(fixture, stepIndex = 0, pressure = fixture.pressures[0])
     validTime: s.validTime, pressure, levels: s.levels,
     T: L.T, q: L.q, u: L.u, v: L.v, w: L.w, below: L.below,
     psfc: s.psfc, u10: s.u10, v10: s.v10, sfc: s.sfc, thickness: s.thickness,
+  };
+}
+
+/**
+ * Zwei Felder desselben Termins zusammensetzen: `inner` (ICON-EU) im
+ * eigenen Gebiet, `outer` (ICON Global) außen, auf dem Raster von `outer`.
+ * Zum Rand von `inner` hin wird über blendDeg linear auf `outer`
+ * übergeblendet (am Rand selbst nur `outer`). So bleibt die an ICON-EU
+ * abgestimmte Analyse innen unverändert, außen kommen Randtiefs und ihre
+ * Fronten dazu, ohne Naht in den Linien. Beide Raster müssen dieselbe
+ * Weite haben und aufeinander liegen (Vielfache von res).
+ *
+ * Wo nur ein Feld einen Wert hat (z. B. unter Grund), gilt dieses; die
+ * Geländemaske `below` kommt aus dem Feld mit dem größeren Gewicht.
+ */
+export function mergeFields(inner, outer, { blendDeg = 2.5 } = {}) {
+  const res = outer.res;
+  if (Math.abs(inner.res - res) > 1e-9) throw new Error("mergeFields: unterschiedliche Rasterweite");
+  const di = (inner.lon0 - outer.lon0) / res, dj = (inner.lat0 - outer.lat0) / res;
+  if (Math.abs(di - Math.round(di)) > 1e-6 || Math.abs(dj - Math.round(dj)) > 1e-6) throw new Error("mergeFields: Raster liegen nicht aufeinander");
+  const n = outer.nx * outer.ny;
+  const idx = new Int32Array(n).fill(-1), wt = new Float32Array(n);
+  for (let j = 0; j < outer.ny; j++) for (let i = 0; i < outer.nx; i++) {
+    const ii = i - Math.round(di), jj = j - Math.round(dj);
+    if (ii < 0 || jj < 0 || ii >= inner.nx || jj >= inner.ny) continue;
+    const k = j * outer.nx + i;
+    idx[k] = jj * inner.nx + ii;
+    wt[k] = Math.min(1, (Math.min(ii, inner.nx - 1 - ii, jj, inner.ny - 1 - jj) * res) / blendDeg);
+  }
+  const mix = (a, b) => {
+    if (!a) return b;
+    if (!b) return null;
+    const out = new Float32Array(n);
+    for (let k = 0; k < n; k++) {
+      const y = b[k];
+      if (idx[k] < 0) { out[k] = y; continue; }
+      const x = a[idx[k]], w = wt[k];
+      out[k] = Number.isFinite(x) && Number.isFinite(y) ? w * x + (1 - w) * y : w >= 0.5 ? x : y;
+    }
+    return out;
+  };
+  const mixMask = (a, b) => {
+    const out = Uint8Array.from(b);
+    for (let k = 0; k < n; k++) if (idx[k] >= 0 && wt[k] >= 0.5) out[k] = a[idx[k]];
+    return out;
+  };
+  const levels = {};
+  for (const p of Object.keys(outer.levels || {})) {
+    const A = inner.levels?.[p], B = outer.levels[p];
+    if (!A) { levels[p] = B; continue; }
+    levels[p] = { below: mixMask(A.below, B.below) };
+    for (const key of Object.keys(B)) if (key !== "below") levels[p][key] = mix(A[key], B[key]);
+  }
+  const sfc = {};
+  for (const [key, arr] of Object.entries(outer.sfc || {})) sfc[key] = mix(inner.sfc?.[key], arr);
+  const L = levels[outer.pressure];
+  return {
+    ...outer, model: `${inner.model}+${outer.model}`, levels,
+    T: L.T, q: L.q, u: L.u, v: L.v, w: L.w, below: L.below,
+    psfc: mix(inner.psfc, outer.psfc), u10: mix(inner.u10, outer.u10), v10: mix(inner.v10, outer.v10),
+    sfc, thickness: mix(inner.thickness, outer.thickness),
   };
 }

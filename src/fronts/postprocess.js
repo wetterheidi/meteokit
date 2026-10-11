@@ -27,6 +27,16 @@ export const POSTPROCESS_DEFAULTS = {
   lowLink: true,        // jede Front hängt (über ihr Frontsystem) an einem Tiefkern
   lowKm: 300,           // so nah muss eine Front des Systems am Tiefkern liegen
   linkKm: 150,          // Fronten gelten als verbunden, wenn ein Ende so nah an der anderen liegt
+  // Brücken: Stücke ohne Wetter, aber mit deutlichem Kontrast, verbinden eine
+  // aktive Front mit einem Tief (dieselbe Zyklonenfamilie; Welle 06.10. 18 UTC
+  // über der Nordsee). Sie werden schwach mit bridge: true.
+  bridges: true,
+  bridgeContrastMin: 4, // K, Mittel über das Stück
+  // Doppellinien: eine Front, die fast ganz auf einer stärkeren liegt, entfällt
+  // (mit ICON Global im Gebiet lief eine schwache Warmfront 20 km neben der
+  // Islandokklusion, 09.10. 12 UTC).
+  dupKm: 100,
+  dupShare: 0.7,
 };
 
 // Richtung, in die eine Linie an ihrem Ende hinausläuft (über ~100 km).
@@ -152,6 +162,32 @@ export function smoothFeatures(features, opts = {}) {
 }
 
 /**
+ * Doppellinien entfernen: Liegt eine Front zu mindestens dupShare ihrer
+ * Punkte höchstens dupKm neben einer anderen, entfällt die schwächere
+ * (Rang: Okklusion vor aktiv vor schwach, bei Gleichstand die kürzere).
+ * Sie wird zu "none" mit `duplicate: true`.
+ */
+export function dropDuplicates(features, opts = {}) {
+  const o = { ...POSTPROCESS_DEFAULTS, ...opts };
+  if (!(o.dupKm > 0)) return features;
+  const pts = features.map((f) => f.geometry.coordinates.map(([lo, la]) => [la, lo]));
+  const live = features.map((f) => f.properties.activity_class !== "none");
+  const rank = (f) => (f.properties.front_type === "occluded" ? 3 : f.properties.activity_class === "active" ? 2 : 1);
+  const len = pts.map((l) => lineLengthKm(l));
+  const dropped = new Set();
+  for (let a = 0; a < features.length; a++) {
+    if (!live[a]) continue;
+    for (let b = 0; b < features.length; b++) {
+      if (a === b || !live[b] || dropped.has(b)) continue;
+      if (rank(features[a]) > rank(features[b]) || (rank(features[a]) === rank(features[b]) && len[a] >= len[b])) continue;
+      const share = pts[a].filter((p) => pts[b].some((q) => distKm(p, q) <= o.dupKm)).length / pts[a].length;
+      if (share >= o.dupShare) { dropped.add(a); break; }
+    }
+  }
+  return features.map((f, i) => (dropped.has(i) ? { ...f, properties: { ...f.properties, activity_class: "none", duplicate: true } } : f));
+}
+
+/**
  * Jede Front hängt an einem analysierten Tiefkern, direkt oder über ihr
  * Frontsystem (bei teilokkludierten Tiefs über die Okklusion). Fronten sind
  * verbunden, wenn ein Ende höchstens linkKm von der anderen Linie entfernt
@@ -160,6 +196,12 @@ export function smoothFeatures(features, opts = {}) {
  * jenseits des Gebiets führt (occlusion_low "edge"). Betrachtet werden nur
  * Fronten mit Wetter (activity_class nicht "none"); Systeme ohne Anschluss
  * werden zu "none" mit `unlinked: true`.
+ *
+ * Brücken (bridges): Erreicht ein System mit einer aktiven Front den
+ * Anschluss nur über Stücke ohne Wetter, die im Mittel mindestens
+ * bridgeContrastMin Kontrast haben (eine Folge solcher Stücke, Enden je
+ * höchstens linkKm auseinander), werden diese Stücke schwach mit
+ * `bridge: true` (frontolytisch, gehören zur selben Zyklonenfamilie).
  */
 export function requireLowLink(features, lows, opts = {}) {
   const o = { ...POSTPROCESS_DEFAULTS, ...opts };
@@ -167,30 +209,58 @@ export function requireLowLink(features, lows, opts = {}) {
   const pts = features.map((f) => f.geometry.coordinates.map(([lo, la]) => [la, lo]));
   const live = features.map((f) => f.properties.activity_class !== "none");
   const n = features.length;
-  // Zusammenhangskomponenten (Union-Find).
+  const near = (p, line, km) => line.some((q) => distKm(p, q) <= km);
+  const touch = (a, b) => {
+    const A = pts[a], B = pts[b];
+    return [A[0], A[A.length - 1]].some((p) => near(p, B, o.linkKm)) || [B[0], B[B.length - 1]].some((p) => near(p, A, o.linkKm));
+  };
+  const atLow = (i) => {
+    const pr = features[i].properties;
+    return lows.some((l) => near([l.lat, l.lon], pts[i], o.lowKm)) || pr.occlusion_low === "edge" || (pr.occlusion_low && typeof pr.occlusion_low === "object");
+  };
+  // Zusammenhangskomponenten (Union-Find) der Fronten mit Wetter.
   const parent = features.map((_, i) => i);
   const find = (i) => (parent[i] === i ? i : (parent[i] = find(parent[i])));
-  const near = (p, line, km) => line.some((q) => distKm(p, q) <= km);
   for (let a = 0; a < n; a++) {
     if (!live[a]) continue;
-    for (let b = a + 1; b < n; b++) {
-      if (!live[b]) continue;
-      const A = pts[a], B = pts[b];
-      if ([A[0], A[A.length - 1]].some((p) => near(p, B, o.linkKm)) || [B[0], B[B.length - 1]].some((p) => near(p, A, o.linkKm))) {
-        parent[find(a)] = find(b);
-      }
-    }
+    for (let b = a + 1; b < n; b++) if (live[b] && touch(a, b)) parent[find(a)] = find(b);
   }
   const anchored = new Set();
-  for (let i = 0; i < n; i++) {
-    if (!live[i]) continue;
-    const pr = features[i].properties;
-    const atLow = lows.some((l) => near([l.lat, l.lon], pts[i], o.lowKm)) || pr.occlusion_low === "edge" || (pr.occlusion_low && typeof pr.occlusion_low === "object");
-    if (atLow) anchored.add(find(i));
+  for (let i = 0; i < n; i++) if (live[i] && atLow(i)) anchored.add(find(i));
+
+  // Brücken: Breitensuche von jedem nicht angeschlossenen System mit aktiver
+  // Front über Brückenkandidaten bis zu einem angeschlossenen System oder
+  // einem Tiefkern.
+  const bridged = new Set();
+  if (o.bridges) {
+    const cand = features.map((f, i) => {
+      const pr = f.properties;
+      return !live[i] && !pr.unlinked && !pr.duplicate && ["cold", "warm", "stationary"].includes(pr.front_type)
+        && pr.criteria?.contrast_k >= o.bridgeContrastMin;
+    });
+    const comps = new Map();
+    for (let i = 0; i < n; i++) if (live[i]) { const r = find(i); if (!comps.has(r)) comps.set(r, []); comps.get(r).push(i); }
+    for (const [root, members] of comps) {
+      if (anchored.has(root) || !members.some((i) => features[i].properties.activity_class === "active")) continue;
+      const prev = new Map();
+      const queue = [];
+      for (let c = 0; c < n; c++) if (cand[c] && members.some((m) => touch(m, c))) { prev.set(c, -1); queue.push(c); }
+      let goal = -1;
+      while (queue.length && goal < 0) {
+        const c = queue.shift();
+        if (atLow(c) || features.some((_, j) => live[j] && anchored.has(find(j)) && touch(c, j))) { goal = c; break; }
+        for (let d = 0; d < n; d++) if (cand[d] && !prev.has(d) && touch(c, d)) { prev.set(d, c); queue.push(d); }
+      }
+      if (goal < 0) continue;
+      for (let c = goal; c >= 0; c = prev.get(c)) bridged.add(c);
+      anchored.add(root);
+    }
   }
-  return features.map((f, i) => (live[i] && !anchored.has(find(i))
-    ? { ...f, properties: { ...f.properties, activity_class: "none", unlinked: true } }
-    : f));
+  return features.map((f, i) => {
+    if (bridged.has(i)) return { ...f, properties: { ...f.properties, activity_class: "weak", bridge: true } };
+    if (live[i] && !anchored.has(find(i))) return { ...f, properties: { ...f.properties, activity_class: "none", unlinked: true } };
+    return f;
+  });
 }
 
 /**

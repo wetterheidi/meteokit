@@ -756,3 +756,58 @@ Ostseewelle und ein Teil der Kaltfront des Finnland-Tiefs.
   Bodenposition von der θw-Prüfung ab, in der Lage auf 850 hPa nicht.
   Vermutlich ein Fehlalarm der Prüfung, noch zu bestätigen.
 
+
+### ICON Global außen, Brücken (2026-10-11, Entscheidung der Projektleitung)
+
+Anlass: Welle über Großbritannien am 06.10. 18 UTC (DWD-Analyse). Sie hängt
+am Tief nördlich von Norwegen, das außerhalb des ICON-EU-Gebiets liegt.
+
+**Modell.** ICON Global allein (25–78° N, 50° W–60° E) traf an den
+Referenzen ebenso viel (94 % / 99 %), hatte im ICON-EU-Gebiet aber 18 statt
+5 % Fehlalarme: die Ostsee-Kaltfront lief am 09.10. über den Balkan bis in
+die Genua-Warmfront (ausgeschlossen, keine Zyklonenfamilie), die
+Russland-Warmfront bog weit nach Süden. Vermutlich ist der Niederschlag von
+ICON Global flächiger und erfüllt die Wetterpflicht leichter. Entscheidung:
+die Felder vor der Analyse zusammensetzen (`mergeFields`), ICON-EU innen,
+ICON Global außen, Übergang 2,5°. Innen bleibt die Abstimmung gültig.
+
+Was das größere Gebiet zusätzlich auslöste und wie es behoben ist:
+
+- **Scheinokklusionspunkt im Kern:** Am Russlandtief (10.10. 06 UTC)
+  treffen sich Warm- und Kaltfront im Kern (Lücke 0 km). Das galt als
+  Okklusionspunkt und griff das 1400 km entfernte Skagerraktief; weil der
+  engste Anschluss gewinnt, verdrängte es dessen echte Okklusion. Neu:
+  Treffpunkt höchstens 150 km von einem Kern = offenes Tief, kein
+  Okklusionspunkt (`coreSkipKm`). 250 km verwarf schon den echten Punkt am
+  Skagerraktief (rund 270 km vom Kern, 03 UTC).
+- **Riesenokklusion:** Um 03 UTC lag der Treffpunkt am Russlandtief 230 km
+  vom Kern, die Kaltfront wurde zu einer 3900 km langen Okklusion bis zum
+  Schwarzen Meer. Neu: Okklusionen über 2500 km entfallen (`occMaxKm`;
+  längste echte: Island 09.10. 12 UTC, 1780 km).
+- **Doppellinie:** Nördlich der Islandokklusion (09.10. 12 UTC) lief eine
+  schwache Warmfront im Median 20 km neben der Okklusion; im
+  ICON-EU-Ausschnitt war sie am Nordrand abgeschnitten und unter der
+  Mindestlänge. Neu: `dropDuplicates` (70 % der Punkte höchstens 100 km
+  neben einer stärkeren Front).
+- **Geländefüllung:** Die harmonische Füllung über Skandinavien hing am
+  Nordrand des ICON-EU-Ausschnitts; mit ICON Global außen ändert sie sich
+  (Ursache der geänderten Linienführung am Skagerrak, nicht falsch).
+
+Ergebnis (zusammengesetzt, ausgewertet im ICON-EU-Gebiet): Treffer 94 %,
+nur Lage 98 %, Fehlalarm 11 %, 32 km; ICON-EU allein unverändert 96 % /
+99 % / 5 % / 32 km. Der Rest geht fast ganz auf das Russlandtief östlich
+von 40° E zurück: am 09.10. läuft die Warmfront weiter nach Süden, am 10.10.
+06 UTC wird es ein okkludiertes System mit dem Okklusionspunkt bei 50° E.
+Beides liegt dort, wo die Handanalysen auf ICON-EU nicht zeichnen konnten.
+Das Islandsystem 08.10. 12/15 UTC ist jetzt vollständig da (Tief 63° N
+32° W).
+
+**Brücken** (Vorgabe wie vorgeschlagen, Schwelle ggf. nachjustieren):
+Stücke ohne Wetter mit im Mittel mindestens 4 K Kontrast dürfen eine
+aktive Front mit einem Tief verbinden, auch mehrere hintereinander; sie
+werden schwach mit `bridge: true`. An den Fällen entsteht damit keine
+Brücke. Am 06.10. 18 UTC reicht es auch mit 1,5 K nicht: Die Kette von der
+Kaltfront England–Atlantik (5 K) über Nordsee (4,6 K), Ostsee und Litauen
+(1,6–2,0 K) reißt bei 57° N 33° E rund 400 km vor dem nächsten Stück ab,
+keine Linie kommt dem Barentssee-Tief näher als 300 km. Die Kaltfront
+entfällt deshalb weiter über die Anschlussregel.
