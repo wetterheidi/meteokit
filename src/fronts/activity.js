@@ -40,6 +40,18 @@ export const ACTIVITY_DEFAULTS = {
   weatherMin: 0.2,          // geglättetes Wettermaß, darunter keine Front (Luftmassengrenze MIT Wetter)
   weatherSmoothKm: 800,     // … gemittelt über diese Länge entlang der Front
   contrastMin: 3.5,         // K: an freien Linienenden endet die Front darunter, auch mit Wetter
+  // Linien am Zentraltief (in Erprobung): Alternde Tiefs verschmieren die
+  // Kontraste (Barentssee-Tief 06.10. 18 UTC: 1,6–1,7 K, aber Niederschlag
+  // und Handanalyse). Reicht eine Linie bis centralKm an ein Zentraltief
+  // (markCentralLows) heran, gelten dort diese Werte statt
+  // contrastRamp/contrastMin (je Punkt; centralMask setzt detect.js).
+  // An den übrigen Referenzen (08.–10.10.) ändert die Regel nichts; 06.10.
+  // 18 UTC Treffer 0 → 68 % (1500 km: 53 %, die Linien reichen bis 1700 km
+  // vom Kern).
+  central: true,
+  centralKm: 1800,
+  centralRamp: [0.5, 3],
+  centralContrastMin: 1,
   // Suchfenster der Bodenfront auf der warmen Seite der 850-hPa-Linie [km]
   sfcWindow: { warm: [0, 450], cold: [0, 250], stationary: [-100, 300] },
   sfcPrecipWeight: 1,       // Gewicht des Niederschlags bei der Suche der Bodenposition (0 = nur Rinne)
@@ -104,7 +116,7 @@ export function assessPoints(pts, type, ff, af, opts = {}) {
   const [w0, w1] = o.sfcWindow[type];
   const h = o.curvStepKm;
 
-  return pts.map((p) => {
+  return pts.map((p, m) => {
     let nx = at(ff.nx, p), ny = at(ff.ny, p);
     const len = Math.hypot(nx, ny);
     if (!(len > 0)) return { activity: NaN };
@@ -143,7 +155,7 @@ export function assessPoints(pts, type, ff, af, opts = {}) {
     const weather = Math.max(ramp(precip, o.precipRamp) || 0,
       (ramp(cloudLow, o.cloudLowRamp) || 0) * (ramp(w700, o.w700Ramp) || 0));
     const dyn = meanFinite([ramp(trough, o.curvRamp), ramp(conv, o.convRamp), ramp(vort, o.vortRamp), ramp(tendJump, o.tendRamp)]);
-    const cf = Math.max(ramp(contrast, o.contrastRamp) || 0, ramp(contrastE, o.contrastRampE) || 0);
+    const cf = Math.max(ramp(contrast, o.centralMask?.[m] ? o.centralRamp : o.contrastRamp) || 0, ramp(contrastE, o.contrastRampE) || 0);
     const activity = cf * (0.5 * weather + 0.5 * (dyn || 0));
     return { activity, weather, contrast, contrastE, trough, conv, vort, tendJump, precip, cloudLow, w700, sfcOffsetKm: sb };
   });

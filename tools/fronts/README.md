@@ -139,6 +139,19 @@ liegt eine Front zu mindestens 70 % ihrer Punkte höchstens 100 km neben
 einer stärkeren (Okklusion vor aktiv vor schwach), entfällt sie
 (`duplicate: true`).
 
+**Zentraltiefs** (`markCentralLows`, `activity.central`, Vorgabe seit
+2026-10-11, Idee der Projektleitung): Alternde Tiefs verschmieren Kontraste
+und Frontkriterien. Junge Tiefs sind vom Boden zur Höhe stromaufwärts
+geneigt, Zentraltiefs stehen senkrecht. Z500 ≈ 8 m/hPa · (MSLP − 1000) +
+Schichtdicke 500/1000; liegt das Z500-Minimum höchstens 150 km vom
+Bodentief und ist das Tief mindestens 8 hPa tief (gegen den 500-km-Ring),
+gilt es als Zentraltief (`central: true`, `tilt_km`). Die Tiefe trennt
+junge Tiefs unter einem abgeschnürten Höhentief ab (Genuatief). Für
+Linienpunkte bis 1800 km vom Zentraltief gelten die Kontrastrampe
+[0,5; 3] K statt [1,5; 3,5] K und 1 K statt 3,5 K Mindestkontrast an
+freien Enden. Die Debug-Seite zeigt Zentraltiefs mit Ring, die Achse im
+Tooltip.
+
 **Zusammengesetzte Felder** (`mergeFields` in `src/fronts/field.js`, seit
 2026-10-11): ICON-EU deckt im Norden und Westen nicht genug ab; Tiefs bei
 Island, Grönland oder über der Barentssee lagen am Rand oder außerhalb, und
@@ -216,6 +229,9 @@ Noch offen:
 - Russlandtief 10.10. 06 UTC: Mit ICON Global außen liegt der
   Okklusionspunkt bei 50° E, außerhalb des Gebiets der Handanalyse
   (Okklusion statt Warmfront entlang 64° N). Synoptisch zu prüfen.
+- Barentssee-Tief 06.10. 18 UTC (Zentraltief): Die Okklusion folgt dem
+  Niederschlagsband rund 100 km östlich der Handanalyse und läuft östlich
+  um den Kern nach Norden, statt eng in den Kern zu spiralen.
 - Seitenprüfung: vier Okklusionen und eine Kaltfront außerhalb des
   ICON-EU-Gebiets (Grönland, Nordmeer, Barentssee, Russland) widersprechen
   der θw-Seite; innen keine Abweichung.

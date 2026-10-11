@@ -552,14 +552,17 @@ function drawFronts() {
   if ($("ridges").checked && fronts?.properties?.ridges) {
     L.polyline(fronts.properties.ridges, { pane: "lines", color: "#8e24aa", weight: 1.5, dashArray: "1 5", interactive: false }).addTo(frontLayer);
   }
-  // Tiefzentren (Bodendruck) als rotes T mit Kerndruck.
+  // Tiefzentren (Bodendruck) als rotes T mit Kerndruck; Zentraltiefs
+  // (Achse zum 500-hPa-Tief senkrecht) mit Ring.
   if ($("fronts").checked) {
     for (const l of fronts?.properties?.lows || []) {
+      const ring = l.central ? "border:2px solid #d7191c;border-radius:50%;padding:2px 4px;" : "";
       L.marker([l.lat, l.lon], {
-        pane: "lines", interactive: false,
+        pane: "lines",
         icon: L.divIcon({ className: "", iconSize: [40, 30], iconAnchor: [20, 15],
-          html: `<div style="text-align:center;color:#d7191c;font:bold 20px/1 sans-serif">T<div style="font-size:11px">${Math.round(l.pressure)}</div></div>` }),
-      }).addTo(frontLayer);
+          html: `<div style="text-align:center;color:#d7191c;font:bold 20px/1 sans-serif;${ring}">T<div style="font-size:11px">${Math.round(l.pressure)}</div></div>` }),
+      }).bindTooltip(`Tief ${l.pressure} hPa, Tiefe ${l.depth} hPa<br>Achse zum 500-hPa-Tief: ${l.tilt_km == null ? "kein geschlossenes Höhentief" : `${l.tilt_km} km`}`
+        + (l.central ? "<br><b>Zentraltief</b>: niedrigere Kontrastschwellen bis 1800 km" : "")).addTo(frontLayer);
     }
   }
   frontLayer.addTo(map);

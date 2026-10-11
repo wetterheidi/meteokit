@@ -832,3 +832,33 @@ Kontrastrampe [1,5; 3,5] K macht sie zu "none". Mit [0,5; 3] K: Treffer
 500-km-Ring) hebt sich kaum von den übrigen Tiefs ab (8–11 hPa).
 Offen: Wie lassen sich Fronten eines Systems in Auflösung mit wenig
 Kontrast, aber Wetter halten, ohne anderswo Fehlalarme zu erzeugen?
+
+### Zentraltiefs (2026-10-11, Idee der Projektleitung)
+
+Abgrenzung alternder Tiefs über die Neigung der Achse Boden → Höhe: Junge
+Tiefs sind stromaufwärts (meist nach Westen) geneigt, Zentraltiefs stehen
+senkrecht, sterbende Tiefs kurz stromabwärts geneigt. Umsetzung ohne neue
+Daten: Z500 ≈ 8 m/hPa · (MSLP − 1000) + Schichtdicke 500/1000, Minimum im
+Umkreis von 700 km um das Bodentief (am Rand des Suchkreises = kein
+geschlossenes Höhentief).
+
+| Tief | Achse | Tiefe | Deutung |
+|---|---|---|---|
+| Barentssee 06.10. 18 UTC | 68 km | 12,5 hPa | Zentraltief, in Auflösung (Handanalyse) |
+| Nordmeer 05.10. 12 UTC | 67 km | 8,2 hPa | Zentraltief |
+| Karasee 08.10. 18 / 09.10. 12 UTC | 33 / 58 km | 10,6 / 9,3 hPa | Zentraltief |
+| Island 09.10. 12 UTC | 113 km nach NW | 7,5 hPa | fast senkrecht |
+| Ostsee 09.10. 12 UTC | 176 km nach SSE | 10,5 hPa | stromab geneigt |
+| Genua 09.10. 12 UTC | 69 km | < 6 hPa | jung, unter abgeschnürtem Höhentief |
+| Nordsee 10.10. 06 UTC | 346 km nach W | 5,5 hPa | jung |
+| Russland 10.10. 06 UTC, Island und Skandinavien 08.10. | kein Höhentief | | jung, offene Welle |
+
+Regel: Zentraltief = Achse ≤ 150 km und Tiefe ≥ 8 hPa (ohne die Tiefe galt
+das Genuatief als Zentraltief, der Fehlalarm am 09.10. stieg von 11 auf
+14 %). Für Linienpunkte bis 1800 km davon: Kontrastrampe [0,5; 3] K,
+Mindestkontrast an freien Enden 1 K. Ergebnis: 08.–10.10. unverändert,
+06.10. 18 UTC Treffer 0 → 68 %, nur Lage 78 %, Fehlalarm 33 %, 95 km
+(Biskaya-Warmfront 243 km, Nordteil der Okklusion 532 km östlich um den
+Kern). Mit 1500 km nur 53 %, weil die Linien bis 1700 km vom Kern reichen.
+Gesamt 90 % / 95 % / 13 % / 38 km. Am 05.10. entstehen damit am
+Nordmeertief Fronten; dort steht die Handanalyse noch aus.

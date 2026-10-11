@@ -50,7 +50,7 @@ import {
   sampleBilinear, lineLengthKm, distKm,
 } from "./grid.js";
 import { activityFields, assessPoints, activityClass, ACTIVITY_DEFAULTS } from "./activity.js";
-import { findLows, markOcclusions, ridgeLines, OCCLUSION_DEFAULTS } from "./occlusion.js";
+import { findLows, markCentralLows, markOcclusions, ridgeLines, OCCLUSION_DEFAULTS } from "./occlusion.js";
 import { closeGaps, smoothFeatures, requireLowLink, junctionToCore, occlusionToPrecip, dropDuplicates } from "./postprocess.js";
 import { precipFronts, PRECIP_FRONT_DEFAULTS } from "./precipfronts.js";
 import { stauFronts } from "./staufronts.js";
@@ -180,9 +180,14 @@ export function detectFronts(field, opts = {}) {
   // Freie Linienenden: keine andere Linie in Reichweite (dort könnte ein
   // Okklusionspunkt liegen). Nur an ihnen greift der Kontrastschnitt.
   const freeEnd = (line, p) => !lines.some((other) => other !== line && other.some((q) => distKm(p, q) < o.contrastFreeKm));
+  // Tiefs (Bodendruck): für Zentraltiefs, Niederschlagsfronten, Okklusionen
+  // und die Anschlussregel.
+  const lows = field.sfc ? markCentralLows(findLows(field, g, o.occlusion), field, g) : [];
+  const act = { ...ACTIVITY_DEFAULTS, ...o.activity };
+  const central = act.central ? lows.filter((l) => l.central).map((l) => [l.lat, l.lon]) : [];
   for (const line of lines) {
     const ends = { first: 0, last: line.length - 1, free: [freeEnd(line, line[0]), freeEnd(line, line[line.length - 1])] };
-    const pieces = classify(line, ff, o).flatMap((typed) => byActivity(typed, ff, af, o, ends));
+    const pieces = classify(line, ff, o).flatMap((typed) => byActivity(typed, ff, af, o, ends, central));
     // Bodenposition: ganze Linie auf einmal verschieben (stetig über
     // Typwechsel), dann die Stücke aus der verschobenen Linie neu schneiden.
     const shift = surface ? surfaceShift(line, pieces, ff, o) : null;
@@ -228,9 +233,6 @@ export function detectFronts(field, opts = {}) {
   }
   // Lücken zwischen Fronten gleichen Typs schließen, wo Niederschlag fällt
   // (Kaltfront südlich Großbritanniens 12 UTC), vor der Okklusionsanalyse.
-  // Tiefs (Bodendruck): für Niederschlagsfronten, Okklusionen und die
-  // Anschlussregel.
-  const lows = field.sfc ? findLows(field, g, o.occlusion) : [];
   // Kaltfronten, die am Gebirge hängen bleiben, schleifen am Rand entlang.
   if (o.stauFronts && af) features.push(...stauFronts(features, field, prev, g, o.stau));
   const joined = closeGaps(features, af, g, o.post);
@@ -382,9 +384,12 @@ function classify(line, ff, o) {
 
 // Typreines Stück nach Aktivitätsklasse weiter teilen (aktiv / schwach /
 // keine Front). Ohne Oberflächenfelder bleibt es ein Stück ohne Bewertung.
-function byActivity(piece, ff, af, o, ends) {
+function byActivity(piece, ff, af, o, ends, central = []) {
   if (!af) return [{ ...piece, assess: [], activityClass: null }];
-  const assess = assessPoints(piece.pts, piece.type, ff, af, o.activity);
+  // Punkte am Zentraltief: niedrigere Kontrastschwellen (activity.central).
+  const ao = { ...ACTIVITY_DEFAULTS, ...o.activity };
+  const nearC = piece.pts.map((p) => central.some((c) => distKm(p, c) <= ao.centralKm));
+  const assess = assessPoints(piece.pts, piece.type, ff, af, { ...o.activity, centralMask: nearC });
   const s = cumDist(piece.pts);
   const act = runningMean(assess.map((x) => x.activity), s, o.activitySmoothKm);
   assess.forEach((x, m) => { x.activity = act[m]; });
@@ -395,7 +400,7 @@ function byActivity(piece, ff, af, o, ends) {
   // endet die Front dort, auch wenn es noch regnet (Ostsee-Warmfront
   // 12 UTC, Südast). Nicht an Enden nahe anderen Linien: am Okklusionspunkt
   // ist der Kontrast in 850 hPa oft klein, die Linie gehört trotzdem dazu.
-  const cmin = o.activity.contrastMin ?? ACTIVITY_DEFAULTS.contrastMin;
+  const cminAt = (m) => (nearC[m] ? ao.centralContrastMin : ao.contrastMin);
   const con = runningMean(assess.map((x) => x.contrast), s, o.activitySmoothKm);
   const label = act.map((a) => activityClass(a, o.activity));
   const n = label.length;
@@ -410,8 +415,8 @@ function byActivity(piece, ff, af, o, ends) {
     const wx = runningMean(assess.map((x) => x.weather), s, o.activity.weatherSmoothKm ?? ACTIVITY_DEFAULTS.weatherSmoothKm);
     wx.forEach((w, m) => { if (!(w >= wmin)) label[m] = "none"; });
   }
-  if (ends?.free[0] && piece.lineIdx[0] === ends.first) for (let m = 0; m < n && !(con[m] >= cmin); m++) label[m] = "none";
-  if (ends?.free[1] && piece.lineIdx[n - 1] === ends.last) for (let m = n - 1; m >= 0 && !(con[m] >= cmin); m--) label[m] = "none";
+  if (ends?.free[0] && piece.lineIdx[0] === ends.first) for (let m = 0; m < n && !(con[m] >= cminAt(m)); m++) label[m] = "none";
+  if (ends?.free[1] && piece.lineIdx[n - 1] === ends.last) for (let m = n - 1; m >= 0 && !(con[m] >= cminAt(m)); m--) label[m] = "none";
   return splitRuns(label, s, o.minPieceKm).map((p) => {
     const pts = p.idx.map((m) => piece.pts[m]);
     return {

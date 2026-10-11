@@ -11,7 +11,7 @@ export { thetaE, thetaWFromThetaE, thetaFields, esHpa } from "./thermo.js";
 export { gaussianSmooth, gradient, isolineSegments, chainSegments, sampleBilinear, lineLengthKm, distKm } from "./grid.js";
 export { detectFronts, frontFields, DETECT_DEFAULTS } from "./detect.js";
 export { activityFields, assessPoints, activityClass, ACTIVITY_DEFAULTS } from "./activity.js";
-export { findLows, markOcclusions, ridgeLines, OCCLUSION_DEFAULTS } from "./occlusion.js";
+export { findLows, markCentralLows, markOcclusions, ridgeLines, OCCLUSION_DEFAULTS } from "./occlusion.js";
 export { closeGaps, smoothFeatures, smoothPolyline, requireLowLink, dropDuplicates, junctionToCore, POSTPROCESS_DEFAULTS } from "./postprocess.js";
 export { precipFronts, PRECIP_FRONT_DEFAULTS } from "./precipfronts.js";
 export { stauFronts, STAU_DEFAULTS } from "./staufronts.js";

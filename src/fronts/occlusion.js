@@ -105,6 +105,35 @@ export const OCCLUSION_DEFAULTS = {
   lowRangeKm: 1600,
 };
 
+/**
+ * Zentraltiefs: Achse vom Bodentief zum 500-hPa-Tief annähernd senkrecht.
+ * Junge Tiefs sind stromaufwärts geneigt, Zentraltiefs stehen senkrecht,
+ * sterbende Tiefs kurz stromabwärts geneigt (Projektleitung 2026-10-11).
+ * Z500 ≈ Z1000 + Schichtdicke 500/1000, Z1000 ≈ 8 m/hPa · (MSLP − 1000).
+ * Liegt das Z500-Minimum im Umkreis searchKm höchstens tiltKm vom Bodentief
+ * und ist das Tief mindestens depthMin tief (gegen den 500-km-Ring), bekommt
+ * es `central: true`; `tilt_km` ist der Abstand (null ohne geschlossenes
+ * Höhentief, d. h. Minimum am Rand des Suchkreises). Die Tiefe trennt junge
+ * Tiefs unter einem abgeschnürten Höhentief ab (Genuatief 09.10. 12 UTC:
+ * Achse 69 km, aber flach).
+ */
+export function markCentralLows(lows, field, g, { tiltKm = 150, searchKm = 700, depthMin = 8 } = {}) {
+  if (!field.thickness || !field.sfc?.pressure_msl) return lows;
+  const z = gaussianSmooth(Float32Array.from(field.sfc.pressure_msl, (p, k) => 8 * (p - 1000) + field.thickness[k]), g, 100);
+  return lows.map((l) => {
+    let best = null;
+    for (let j = 0; j < g.ny; j++) for (let i = 0; i < g.nx; i++) {
+      const p = [g.lat0 + j * g.res, g.lon0 + i * g.res];
+      const d = distKm(p, [l.lat, l.lon]);
+      if (d > searchKm) continue;
+      const v = z[j * g.nx + i];
+      if (Number.isFinite(v) && (!best || v < best.v)) best = { v, d };
+    }
+    const closed = best && best.d < searchKm - 2 * g.res * KM_PER_DEG;
+    return { ...l, tilt_km: closed ? Math.round(best.d) : null, central: !!closed && best.d <= tiltKm && l.depth >= depthMin };
+  });
+}
+
 /** Tiefzentren als lokale Minima des geglätteten Bodendrucks mit Mindesttiefe. */
 export function findLows(field, g, opts = {}) {
   const o = { ...OCCLUSION_DEFAULTS, ...opts };
