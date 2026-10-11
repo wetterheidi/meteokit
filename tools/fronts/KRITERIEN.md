@@ -811,3 +811,24 @@ Kaltfront England–Atlantik (5 K) über Nordsee (4,6 K), Ostsee und Litauen
 (1,6–2,0 K) reißt bei 57° N 33° E rund 400 km vor dem nächsten Stück ab,
 keine Linie kommt dem Barentssee-Tief näher als 300 km. Die Kaltfront
 entfällt deshalb weiter über die Anschlussregel.
+
+### Handanalyse 06.10. 18 UTC (vollständig, Blindtest)
+
+Erste vollständige Referenz über das zusammengesetzte Gebiet. Die
+Projektleitung zeichnet nur das fast ganz okkludierte Barentssee-Tief
+(Okklusion spiralig zum Kern, Okklusionspunkt bei 60° N 45° E, kurze
+Warm- und Kaltfront nach Süden). Die Linie ohne Wetter südlich Irland –
+England – deutsch-dänische Grenze – Nordpolen ist eine Luftmassengrenze,
+keine Front (allenfalls gestrichelt ohne Symbole; der DWD zeichnet sie als
+Front). Die Kaltfront England–Atlantik zeichnet sie nicht; dass die
+Anschlussregel sie verwirft, ist also richtig.
+
+Ergebnis: 0 % Treffer, 100 % Fehlalarm (nur 275 km: schwache Warmfront am
+Biskayatief). Die TFP findet am Barentssee-Tief Linien nahe der
+Handanalyse (0,4–0,7 mm/h), aber mit 1,6–1,7 K Kontrast; die
+Kontrastrampe [1,5; 3,5] K macht sie zu "none". Mit [0,5; 3] K: Treffer
+06.10. 68 %, aber Fehlalarm dort 46 % (u. a. Warmfront bei Island) und am
+10.10. 19 statt 8 %. Die Tiefe des Barentssee-Tiefs (12,5 hPa gegen den
+500-km-Ring) hebt sich kaum von den übrigen Tiefs ab (8–11 hPa).
+Offen: Wie lassen sich Fronten eines Systems in Auflösung mit wenig
+Kontrast, aber Wetter halten, ohne anderswo Fehlalarme zu erzeugen?
