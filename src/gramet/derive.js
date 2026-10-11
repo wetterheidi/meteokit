@@ -144,9 +144,12 @@ function isothermPolylines(grid, thresholdC) {
     // Nullgradgrenze am Boden ("FZLVL SFC"): liegt die Bodentemperatur unter
     // 0 °C, gilt in der Fliegerei der Boden als Freezing Level -- auch wenn
     // weiter oben noch eine warme Schicht folgt. Die 0-°C-Linie läuft dann am
-    // Boden entlang statt abzubrechen (s. Feedback). Nur für 0 °C; z = 0 AGL,
-    // `sfc` markiert den Punkt für den Renderer (Log-Achse beginnt über 0).
-    const sfc = thresholdC === 0 && surfaceTempK(grid, i) < thrK;
+    // Boden entlang statt abzubrechen (s. Feedback). Ebenso, wenn erst das
+    // unterste Modelllevel (~10 m) unter 0 °C liegt: die Kreuzung läge dann
+    // unterhalb des Gitters, wird von `columnCrossings` nicht gefunden, und die
+    // Linie endete in der Luft. Nur für 0 °C; z = 0 AGL, `sfc` markiert den
+    // Punkt für den Renderer (Log-Achse beginnt über 0).
+    const sfc = thresholdC === 0 && (surfaceTempK(grid, i) < thrK || grid.T[i * nk] < thrK);
     const zs = sfc ? [0] : allZs.length ? [allZs[0]] : [];
     const usedZ = new Array(zs.length).fill(false);
 

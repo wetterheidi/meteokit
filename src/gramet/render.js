@@ -163,6 +163,9 @@ const TURB_SYMBOL_INK = "#c62828";
 // Oliv), auf dem Tag/Nacht-Verlauf kaum zu trennen (s. Feedback).
 const ISOTACH_COLOR = "#7b2fbf";
 const ISOTACH_DASH = [7, 3, 1, 3];
+// Abstand (px) der 0-°C-Linie über dem Boden bei FZLVL SFC: halbe Linien-
+// breite inkl. Halo (1,4 + 1,6 px) plus Luft, damit sie ganz sichtbar bleibt.
+const ISOTHERM_SFC_LIFT_PX = 2.5;
 // Isentropen: eine dichte Linienschar, deshalb dünn, durchgezogen und in
 // einer eigenen Farbfamilie (Gold) -- mit dunklem statt weißem Halo, sonst
 // würde die Schar aus weißen Säumen den Himmel aufhellen. Gold bleibt auf
@@ -1837,10 +1840,13 @@ function drawIsotherms(ctx, isotherms, x, y) {
     // Auf den sichtbaren Höhenbereich geschnitten (s. `clipPolylineZ`) --
     // sonst klebt eine Isotherme weit außerhalb des Zooms als Phantomlinie +
     // Label am Panelrand (s. Feedback).
-    // Bodenpunkte ("FZLVL SFC", z = 0 AGL bzw. Geländehöhe) auf die Unterkante
-    // heben: die Log-Achse beginnt über 0 und würde sie sonst wegschneiden.
+    // Bodenpunkte ("FZLVL SFC", z = 0 AGL bzw. Geländehöhe) knapp ÜBER den
+    // Boden heben: die Log-Achse beginnt über 0 und würde sie sonst
+    // wegschneiden, und Bodenstreifen bzw. Geländesilhouette werden erst nach
+    // den Isothermen gezeichnet und deckten die untere Linienhälfte ab.
+    const sfcZ = (z) => y.inv(Math.min(y(z), y.bot) - ISOTHERM_SFC_LIFT_PX);
     const polylines = raw
-      .map((pl) => pl.map((p) => (p.sfc && p.z < zMin ? { ...p, z: zMin } : p)))
+      .map((pl) => pl.map((p) => (p.sfc ? { ...p, z: sfcZ(p.z) } : p)))
       .flatMap((pl) => clipPolylineZ(pl, zMin, zMax));
     if (!polylines.length) continue;
     const color = tempC === 0 ? "#1d4c8c" : "#7a1414";
