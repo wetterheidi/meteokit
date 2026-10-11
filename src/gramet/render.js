@@ -988,6 +988,9 @@ function amslViewOf(view, grid) {
       ...e,
       zTop: e.zTop + eAt(e.t),
       freezingZ: Number.isFinite(e.freezingZ) ? e.freezingZ + eAt(e.t) : e.freezingZ,
+      // ±Infinity/NaN bleiben durch die Addition erhalten.
+      snowZ: e.snowZ + eAt(e.t),
+      mixBelowZ: e.mixBelowZ + eAt(e.t),
     })),
     cb: view.cb.map((c, i) => (c
       ? { ...c, base: c.base + grid.elevation[i], top: c.top + grid.elevation[i] }
@@ -1749,12 +1752,13 @@ function drawPrecip(ctx, entries, pos, x, y, seed, groundAt = null) {
       const px = clamp(cx + jx, x.left + 3, x.right - 3);
       // Phase aus der Höhe, die dieses Pixel tatsächlich meint.
       const z = y.inv(py);
-      // Oberhalb der Nullgradgrenze immer Schnee (physikalisch, unabhängig
-      // vom Boden-METAR), darunter immer Regen -- `type` entscheidet nur,
-      // wenn keine Nullgradgrenze im Profil gefunden wurde (s. Feedback:
-      // "sn" durfte den ganzen Vorhang bis zum Boden einfärben, auch weit
-      // unterhalb der Nullgradgrenze).
-      const snowHere = Number.isFinite(e.freezingZ) ? z > e.freezingZ : e.type === "sn";
+      // Oberhalb der Schneefallgrenze Schnee, darunter Regen; unterhalb
+      // `mixBelowZ` (Schneeregen) abwechselnd. Die Grenzen kommen aus
+      // `derive.js` `phaseHeights()` (Modellwetter + Feuchttemperatur) --
+      // `type` entscheidet nur, wenn dort keine Grenze bestimmbar war.
+      const snowHere = Number.isFinite(e.mixBelowZ) && z <= e.mixBelowZ
+        ? s % 2 === 0
+        : Number.isNaN(e.snowZ) ? e.type === "sn" : z > e.snowZ;
       const size = PRECIP_SIZE_MIN + hashRand(seed, col, s, 2) * PRECIP_SIZE_SPAN;
       const rot = hashRand(seed, col, s, 3);
       // Flocke: Drehung über 60° reicht, ein 3-Strich-Stern ist so periodisch.

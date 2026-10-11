@@ -448,6 +448,59 @@ function freezingHeightAt(grid, i) {
   return NaN;
 }
 
+// Psychrometerkonstante je Druckeinheit: γ = c_p / (ε·L_v)
+// = 1005 / (0,622 · 2,5e6) ≈ 6,46e-4 1/K (Lehrbuchwerte für c_p, ε = R_d/R_v
+// und L_v bei 0 °C). Magnus-Koeffizienten wie `clouds.js` `esatWater`.
+const PSYCHRO_GAMMA_PER_K = 1005 / (0.622 * 2.5e6);
+function esatWaterHpa(tC) { return 6.112 * Math.exp((17.62 * tC) / (243.12 + tC)); }
+
+/**
+ * Feuchttemperatur (°C) aus T (°C), RH (%) und p (hPa): Nullstelle der
+ * Psychrometergleichung `e_s(Tw) − e − γ·p·(T − Tw) = 0`, per Bisektion
+ * zwischen Taupunkt-Untergrenze (−60 °C) und T -- die Funktion ist in Tw
+ * streng monoton, Bisektion also robust. NaN bei fehlenden Eingaben.
+ */
+function wetBulbC(tC, rh, pHpa) {
+  if (!Number.isFinite(tC) || !Number.isFinite(rh) || !Number.isFinite(pHpa) || rh <= 0) return NaN;
+  const e = Math.min(rh, 100) / 100 * esatWaterHpa(tC);
+  const f = (tw) => esatWaterHpa(tw) - e - PSYCHRO_GAMMA_PER_K * pHpa * (tC - tw);
+  let lo = Math.min(tC, -60), hi = tC;
+  if (f(hi) <= 0) return tC; // gesättigt
+  for (let n = 0; n < 40; n++) {
+    const mid = 0.5 * (lo + hi);
+    if (f(mid) > 0) hi = mid; else lo = mid;
+  }
+  return 0.5 * (lo + hi);
+}
+
+/**
+ * Schneefallgrenze (m AGL) als Höhe der 0-°C-Feuchttemperatur: fallender
+ * Schnee kühlt seine Umgebung durch Schmelzen UND Verdunsten, maßgeblich ist
+ * deshalb Tw statt T -- die Feuchttemperatur-Nullgradgrenze liegt immer
+ * unter (bei trockener Luft deutlich unter) der 0-°C-Isotherme. Vorher
+ * wechselte der Vorhang exakt an der 0-°C-Isotherme auf Regen (s. Feedback:
+ * "-SN" im Modellwetter, GRAMET zeichnete darunter Tropfen). Erster
+ * Durchgang von unten (wie `freezingHeightAt`, bei einer Warmnase also deren
+ * Oberkante); ist Tw im ganzen Profil < 0, fällt Schnee bis zum Boden
+ * (−Infinity). NaN, wenn RH/Druck fehlen.
+ */
+function snowLineAt(grid, i) {
+  const { nk } = grid;
+  let prev = NaN, anyAbove = false;
+  for (let k = 0; k < nk; k++) {
+    const ix = i * nk + k;
+    const tw = wetBulbC(grid.T[ix] - KELVIN, grid.rh[ix], grid.p[ix] / 100);
+    if (!Number.isFinite(tw)) return NaN;
+    if (k > 0 && prev >= 0 && tw < 0) {
+      const z0 = grid.z[ix - 1], z1 = grid.z[ix];
+      return z0 + (prev / (prev - tw)) * (z1 - z0);
+    }
+    if (tw >= 0) anyAbove = true;
+    prev = tw;
+  }
+  return anyAbove ? NaN : -Infinity;
+}
+
 /**
  * Niederschlagseintrag je Stunde: `weather_code` (als METAR-Kürzel, dieselbe
  * Tabelle wie die Wetter-Zeile) entscheidet OB und ALS WAS gezeichnet wird,
@@ -508,9 +561,35 @@ function precipEntries(grid, cloudBase, fogCols, cbCols) {
     // Nominale Mindestrate, wenn nur weather_code (nicht die Menge) den
     // Niederschlag anzeigt -- sonst bliebe der Vorhang trotz "-RA" unsichtbar.
     const rate = hasAmount ? amt : 0.3;
-    out.push({ t: pos[i], zTop, freezingZ, type: isSnow ? "sn" : "ra", rate });
+    const { snowZ, mixBelowZ } = phaseHeights(label, hasWx, snowLineAt(grid, i), freezingZ);
+    out.push({ t: pos[i], zTop, freezingZ, snowZ, mixBelowZ, type: isSnow ? "sn" : "ra", rate });
   }
   return out;
+}
+
+/**
+ * Phasengrenzen des Vorhangs (m AGL): oberhalb `snowZ` Flocken, darunter
+ * Tropfen; unterhalb `mixBelowZ` (nur bei Schneeregen) beides abwechselnd.
+ * `snowZ` NaN = keine Grenze bestimmbar, der Renderer fällt auf `type`
+ * zurück. Das Modellwetter (`weather_code`) entscheidet die Phase AM BODEN,
+ * die Feuchttemperatur-Nullgradgrenze (`snowLineAt`) nur, wo darüber der
+ * Übergang liegt:
+ *   - Schnee (SN/SG, ohne RA): Flocken bis zum Boden, auch wenn T/Tw dort
+ *     knapp über 0 liegen -- das Modell rechnet den Schmelzvorgang selbst.
+ *   - Schneeregen (RASN): Flocken bis zur Tw-Grenze, darunter gemischt.
+ *   - Regen/Niesel (auch FZ, SH, TS): Tw-Grenze; liegt die nicht über dem
+ *     Boden (Widerspruch zum Code), die 0-°C-Isotherme wie bisher.
+ *   - Kein Modellwetter (nur Menge): Tw-Grenze, sonst 0-°C-Isotherme.
+ */
+function phaseHeights(label, hasWx, twZ, freezingZ) {
+  const hasSnow = hasWx && (label.includes("SN") || label.includes("SG"));
+  const hasRain = hasWx && (label.includes("RA") || label.includes("DZ"));
+  if (hasSnow && !hasRain) return { snowZ: -Infinity, mixBelowZ: NaN };
+  if (hasSnow && hasRain) {
+    return { snowZ: -Infinity, mixBelowZ: twZ > 0 ? twZ : Number.isFinite(freezingZ) ? freezingZ : NaN };
+  }
+  if (hasRain) return { snowZ: twZ > 0 ? twZ : freezingZ, mixBelowZ: NaN };
+  return { snowZ: Number.isNaN(twZ) ? freezingZ : twZ, mixBelowZ: NaN };
 }
 
 /**
