@@ -862,3 +862,27 @@ Mindestkontrast an freien Enden 1 K. Ergebnis: 08.–10.10. unverändert,
 Kern). Mit 1500 km nur 53 %, weil die Linien bis 1700 km vom Kern reichen.
 Gesamt 90 % / 95 % / 13 % / 38 km. Am 05.10. entstehen damit am
 Nordmeertief Fronten; dort steht die Handanalyse noch aus.
+
+### 06.10. 18 UTC verfeinert: Spirale am Kern, Okklusionspunkt
+
+Rückmeldung der Projektleitung: Lage der Okklusion gut, am Kern aber
+weiter spiralig herumführen, um die Niederschläge nahe am Kern
+einzufangen. Die Spirale lief bis zur Höchstlänge (1500 km) in rund 330 km
+Abstand um den Kern, weil sie je 50-km-Schritt nur 8 km einwärts musste;
+die Handanalyse zieht ab 500 km Abstand stetig bis in den Kern. Mit
+`spiralInwardKm: 25`: 06.10. Treffer 68 → 84 %, nur Lage 78 → 93 %,
+Fehlalarm 33 → 18 %; 09.10. Treffer 95 → 94 %, 32 → 35 km; übrige
+unverändert. Gesamt 93 % / 97 % / 12 % / 41 km. Die Wahl der Richtung mit
+dem meisten Niederschlag (`spiralPrecip`) ändert mit Drehungsabzug nichts,
+ohne Abzug fallen die Treffer am 09.10. auf 88 % (bleibt aus).
+
+Okklusionspunkt: automatisch geometrisch (Ende einer Front trifft die
+andere, Ecke der Restlinie, dann bis 150 km entlang der Kaltfront zurück,
+damit die Okklusion sie ohne Knick fortsetzt); `opRefine` (stärkster
+Druckfall entlang der Rückenachse) greift hier nicht, weil die Okklusion
+dem Frontast folgt. Die Handanalyse setzt den Punkt nach dem stärksten
+Druckfall, 240 km nordnordöstlich (60,3° N 45,2° E). Entlang der Okklusion
+ist der 3-h-Druckfall ein flaches Plateau (−3,1 bis −3,2 hPa zwischen 59
+und 62,5° N); der automatische Punkt liegt an dessen Südrand (−2,5 hPa),
+der Handpunkt darin (−2,5 hPa in der 60-km-Glättung). Der stärkste Fall
+insgesamt liegt am Kern (−4,2 hPa, das Tief vertieft sich bzw. zieht).

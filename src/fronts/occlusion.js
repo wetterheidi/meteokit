@@ -81,7 +81,15 @@ export const OCCLUSION_DEFAULTS = {
   spiralMaxKm: 1500,
   passLowKm: 50,        // Achse verlassen, sobald sie sich so weit wieder vom Kern entfernt
   spiralMaxTurn: 200,   // Grad, höchstens so weit um den Kern
-  spiralInwardKm: 8,    // je Schritt mindestens so viel näher an den Kern
+  // je Schritt mindestens so viel näher an den Kern. 8 km ließ die Spirale am
+  // Barentssee-Tief (06.10. 18 UTC) bis zur Höchstlänge in 330 km Abstand
+  // kreisen; die Handanalyse zieht ab 500 km stetig in den Kern.
+  spiralInwardKm: 25,
+  // Unter den zulässigen Richtungen die mit dem meisten Niederschlag (die
+  // Okklusion fängt die Niederschläge am Kern ein, Projektleitung), je 10°
+  // Drehung spiralTurnPen mm/h Abzug; aus: die geradeste.
+  spiralPrecip: false,
+  spiralTurnPen: 0.02,
   spiralMaxStepTurn: 60, // Grad je Schritt -- enger wird es zur Zacke
   // Glättung ("Fronten spannen sich wie Segel")
   occSmoothKm: 150,     // Okklusion insgesamt
@@ -344,7 +352,7 @@ export function markOcclusions(features, ff, lows, opts = {}, ridges = null, ctx
     let spiralKm = 0;
     if (ctx?.msl && !cut.low.edge) {
       const before = occ.length;
-      occ = spiralToLow(occ, cut.low, ctx.msl, g, o);
+      occ = spiralToLow(occ, cut.low, ctx.msl, g, o, ctx.precip);
       if (occ.length > before) spiralKm = Math.round(lineLengthKm(occ.slice(before - 1)));
     }
     occ = smoothLine(occ, o.occSmoothKm, 2); // "wie Segel": keine Zacken
@@ -462,7 +470,7 @@ function refineJunction(P, tend, g, o, ridges, dir = null) {
 // Linksdrehung (gegen den Uhrzeigersinn), bei der der Bodendruck fällt und
 // der Abstand zum Kern nicht wächst. So wickelt sich die Okklusion spiralig
 // um den Kern, und der Druck nimmt entlang der Front zum Kern hin ab (K4).
-function spiralToLow(occ, low, msl, g, o) {
+function spiralToLow(occ, low, msl, g, o, precip = null) {
   const L = [low.lat, low.lon];
   let E = occ[occ.length - 1];
   if (distKm(E, L) <= o.lowStopKm) return occ;
@@ -482,8 +490,9 @@ function spiralToLow(occ, low, msl, g, o) {
       if (!(pQ < pE - o.spiralMinDrop)) continue;
       // Echt einwärts (sonst kreist sie bei schwachem Druckfall um den Kern).
       if (distKm(Q, L) > distKm(E, L) - o.spiralInwardKm) continue;
-      next = { Q, d, pQ, a };
-      break;
+      if (!(o.spiralPrecip && precip)) { next = { Q, d, pQ, a }; break; }
+      const score = (sampleBilinear(precip, g, Q[0], Q[1]) || 0) - (o.spiralTurnPen * a) / 10;
+      if (!next || score > next.score) next = { Q, d, pQ, a, score };
     }
     if (!next) break;
     ext.push(next.Q);

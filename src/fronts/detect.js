@@ -251,10 +251,11 @@ export function detectFronts(field, opts = {}) {
   }
   // Okklusionen auf allen Stücken bestimmen, auch denen ohne Wetter: der
   // Okklusionsast ist in 850 hPa oft schwach und gehört trotzdem zur Linie.
+  const occRain = o.occlusions && field.sfc?.precipitation ? gaussianSmooth(Float32Array.from(field.sfc.precipitation, (x) => (x == null ? NaN : x)), g, 50) : null;
   const msl = o.occlusions && field.sfc ? gaussianSmooth(Float32Array.from(field.sfc.pressure_msl, (x) => (x == null ? NaN : x)), g, oo.lowSmoothKm) : null;
   const tend = o.occlusions && prev?.sfc?.pressure_msl
     ? gaussianSmooth(Float32Array.from(field.sfc.pressure_msl, (x, k) => x - prev.sfc.pressure_msl[k]), g, 100) : null;
-  let marked = o.occlusions && field.sfc ? markOcclusions(joined, ff, lows, oo, ridges, { msl, tend }) : joined;
+  let marked = o.occlusions && field.sfc ? markOcclusions(joined, ff, lows, oo, ridges, { msl, tend, precip: occRain }) : joined;
   // Tiefs mit schwachem Kontrast, an denen danach keine Front liegt
   // (Genuatief): Fronten aus Niederschlagsachsen, mit eigener Lücken- und
   // Okklusionsanalyse, damit sie nicht mit TFP-Fronten verschmelzen.
@@ -262,7 +263,7 @@ export function detectFronts(field, opts = {}) {
     const pf = precipFronts(field, g, lows, marked, o.precip, { split: (l) => splitAtCorners(l, o.precip.cornerDeg ?? PRECIP_FRONT_DEFAULTS.cornerDeg, o.cornerChordKm) });
     if (pf.length) {
       const pj = closeGaps(pf, af, g, o.post);
-      marked = [...marked, ...(o.occlusions ? markOcclusions(pj, ff, lows, oo, ridges, { msl, tend }) : pj)];
+      marked = [...marked, ...(o.occlusions ? markOcclusions(pj, ff, lows, oo, ridges, { msl, tend, precip: occRain }) : pj)];
     }
   }
   // Abschließend alle Fronten glätten ("wie Segel"), Endpunkte fest.

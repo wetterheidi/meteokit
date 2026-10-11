@@ -212,7 +212,10 @@ Am Okklusionspunkt gelten die Zeichenregeln der Referenzanalyse
   ab. Dafür wird der Punkt bei Bedarf bis 150 km entlang der Kaltfront
   zurückgelegt (`opSlideKm`).
 - Die Okklusion läuft spiralig gegen den Uhrzeigersinn bis 80 km vor den
-  Kern, der Druck fällt dabei zum Kern hin.
+  Kern, der Druck fällt dabei zum Kern hin. Je 50-km-Schritt rückt sie
+  mindestens 25 km näher an den Kern (`spiralInwardKm`); mit 8 km kreiste
+  sie am Barentssee-Tief weit außen. Optional (`spiralPrecip`, aus) wählt
+  sie unter den zulässigen Richtungen die mit dem meisten Niederschlag.
 - Fronten machen keine Kehrtwenden („wie Segel“). Die Tiefs stehen in
 `properties.lows` der FeatureCollection.
 
@@ -229,9 +232,11 @@ Noch offen:
 - Russlandtief 10.10. 06 UTC: Mit ICON Global außen liegt der
   Okklusionspunkt bei 50° E, außerhalb des Gebiets der Handanalyse
   (Okklusion statt Warmfront entlang 64° N). Synoptisch zu prüfen.
-- Barentssee-Tief 06.10. 18 UTC (Zentraltief): Die Okklusion folgt dem
-  Niederschlagsband rund 100 km östlich der Handanalyse und läuft östlich
-  um den Kern nach Norden, statt eng in den Kern zu spiralen.
+- Barentssee-Tief 06.10. 18 UTC (Zentraltief): Der Okklusionspunkt liegt
+  rund 240 km südsüdwestlich der Handanalyse. Diese setzt ihn nach dem
+  stärksten Druckfall; entlang der Okklusion ist der 3-h-Druckfall dort ein
+  flaches Plateau (−3,1 bis −3,2 hPa zwischen 59 und 62,5° N), der
+  automatische Punkt liegt an dessen Südrand (−2,5 hPa).
 - Seitenprüfung: vier Okklusionen und eine Kaltfront außerhalb des
   ICON-EU-Gebiets (Grönland, Nordmeer, Barentssee, Russland) widersprechen
   der θw-Seite; innen keine Abweichung.
