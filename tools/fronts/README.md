@@ -116,7 +116,8 @@ Okklusion ihre Eigenschaften übernimmt; den Charakter bestimmt die Analyse
 nicht (Zeichenregel, s. KRITERIEN.md). **Nachbearbeitung** (`src/fronts/postprocess.js`): Lücken zwischen Fronten
 gleichen Typs werden geschlossen, wenn entlang der Lücke Niederschlag
 fällt; seitlich versetzte, parallele Enden (bis 200 km) werden vorher
-gekürzt. Zum Schluss werden alle Fronten geglättet. **Offenes Tief** (`junctionToCore`, Vorgabe): Treffen sich
+gekürzt; verbunden wird nur, wenn die warme Luft auf beiden Stücken auf
+derselben Seite liegt. Zum Schluss werden alle Fronten geglättet. **Offenes Tief** (`junctionToCore`, Vorgabe): Treffen sich
 Warm- und Kaltfront höchstens 300 km vom Kern eines Tiefs ohne Okklusion,
 wird der Übergang in den Tiefkern gelegt (`core_junction: true`).
 **Okklusion am Niederschlag** (`post.occPrecip`, Vorgabe): die Okklusion
@@ -210,7 +211,10 @@ gemittelt), `activity.contrastE` (θe-Kontrast).
 Die Okklusion muss zu einem Tief hin zeigen (auch zu einem Randtief
 jenseits des Gebiets), pro Tief gibt es höchstens eine. Liegt der
 Treffpunkt höchstens 150 km von einem Tiefkern (`coreSkipKm`), ist es ein
-offenes Tief und kein Okklusionspunkt. Okklusionen über 2500 km
+offenes Tief und kein Okklusionspunkt. Konkurrieren mehrere Punkte um ein
+Tief, gewinnt der näher am Tief (`cutRank: "lowDist"`; vorher der engste
+Anschluss, dann verdrängte am Goose-Bay-Tief ein kleiner Punkt an der
+Labradorküste das Hauptsystem). Okklusionen über 2500 km
 (`occMaxKm`) entfallen; beides kam erst mit dem größeren Gebiet vor
 (Russlandtief 10.10.).
 

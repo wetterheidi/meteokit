@@ -72,6 +72,8 @@ function bridge(A, tA, B, tB, stepKm = 40) {
  * @param {object[]} features  GeoJSON-Features ([lon, lat])
  * @param {object} af          activityFields (für den Niederschlag) oder null
  */
+const flipSide = (s) => (s === "left" ? "right" : s === "right" ? "left" : s);
+
 export function closeGaps(features, af, g, opts = {}) {
   const o = { ...POSTPROCESS_DEFAULTS, ...opts };
   if (!af?.precip) return features;
@@ -114,6 +116,12 @@ export function closeGaps(features, af, g, opts = {}) {
             let rr = 0;
             for (let s = 0.1; s < 1; s += 0.1) rr = Math.max(rr, sampleBilinear(af.precip, g, pa[0] + s * (pb[0] - pa[0]), pa[1] + s * (pb[1] - pa[1])) || 0);
             if (rr < o.gapPrecipMin) continue;
+            // Warme Luft auf derselben Seite (in der Laufrichtung der
+            // Verbindung): sonst entstand eine Front mit teils vertauschten
+            // Symbolen (09.10. 12 UTC östlich Goose Bay, Glättung 120 km).
+            const sideA = ea ? A.f.properties.warm_side : flipSide(A.f.properties.warm_side);
+            const sideB = eb ? flipSide(B.f.properties.warm_side) : B.f.properties.warm_side;
+            if (sideA && sideB && sideA !== sideB) continue;
             best = { a, b, ea, eb, d, tA, tB, pa, pb, aP, bP };
           }
         }

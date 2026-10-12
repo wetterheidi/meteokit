@@ -1012,3 +1012,39 @@ vom Tief bei Neuschottland (42° N 66° W) über den Atlantik bis 52° N
 Tief lag außerhalb). Fehlalarm gesamt (5° Randstreifen) 14 → 27 %, fast
 ganz im Westen der vollständigen Referenzen 05., 06. und 09.10.; diese
 sind im Westen neu zu prüfen.
+
+### Erweiterte Handanalysen bis 80° W, Glättung (2026-10-12)
+
+Handanalysen 05., 06. und 09.10. bis 80° W ergänzt (Neuschottland-,
+Goose-Bay-Tief, Tief östlich Goose Bay, junges Tief 39° N 50° W an der
+Welle der Polarfront). Atlantik-Linien am 05.10. sind Luftmassengrenzen
+(nicht gezeichnet); das Tief bei 52,5° N 77° W bleibt bewusst offen (sehr
+schwache Kontraste, ohne Historie geraten).
+
+Beobachtung der Projektleitung: Am 06.10. fand die Automatik am
+Goose-Bay-Tief nur mit 90 km Glättung "seltsame Fronten", mit anderen
+Längen passte sie gut. Ursache: zwei Okklusionspunkte um dasselbe Tief;
+der engste Anschluss gewann (Labradorküste, Lücke 63 km, Kaltfront
+394 km) gegen das Hauptsystem (97 km, Kaltfront 3284 km), dessen Fronten
+dann ohne Anschluss wegfielen. Neu: der Punkt näher am Tief gewinnt
+(`cutRank: "lowDist"`). Glättung 90 km: 06.10. 22 → 61 %, gesamt 68 → 79 %
+Treffer (mit 5° Randstreifen).
+
+09.10. östlich Goose Bay (120 km): Warmfront mit vertauschten Symbolen.
+Ursache: `closeGaps` verband das Warmfrontstück am Okklusionspunkt über
+Lücken von 238 und 446 km mit einem Stück, auf dem die warme Luft auf der
+anderen Seite lag. Neu: verbunden wird nur bei gleicher Seite der Warmluft.
+
+Glättung über alle Referenzen (5° Randstreifen):
+
+| σ | Treffer | nur Lage | Fehlalarm | Abstand |
+|---|---|---|---|---|
+| 60 km | 65 % | 68 % | 40 % | 42 km |
+| 90 km | 79 % | 85 % | 29 % | 36 km |
+| 120 km | 71 % | 76 % | 31 % | 39 km |
+| 150 km | 45 % | 55 % | 37 % | 44 km |
+
+90 km bleibt Vorgabe. Einzelne Systeme liegen bei 120 km besser (09.10.
+Tief östlich Goose Bay); eine Analyse über mehrere Glättungslängen wäre
+ein möglicher späterer Schritt. Der Fehlalarm geht großteils auf die
+Atlantik-Luftmassengrenzen (05.10.) zurück.

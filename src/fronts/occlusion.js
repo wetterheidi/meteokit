@@ -52,6 +52,11 @@ export const OCCLUSION_DEFAULTS = {
   // nicht: der Okklusionspunkt am Skagerraktief (10.10. 03 UTC) liegt nur
   // rund 270 km vom Kern, 250 km verwarf ihn schon.
   coreSkipKm: 150,
+  // Konkurrieren Okklusionspunkte um ein Tief, gewinnt der näher am Tief.
+  // Mit "gap" (engster Anschluss) verdrängte am Goose-Bay-Tief (06.10. 18 UTC)
+  // ein kleiner Punkt an der Labradorküste (Lücke 63 km, Kaltfront 394 km) den
+  // des Hauptsystems (97 km, Kaltfront 3284 km). Gesamt 68 → 79 % Treffer.
+  cutRank: "lowDist",
   // Längere Okklusionen entfallen (die Kette bleibt, wie sie war). Am
   // Russlandtief (10.10. 03 UTC, Treffpunkt 230 km vom Kern) wurde die
   // Kaltfront sonst zu einer 3900 km langen Okklusion bis zum Schwarzen Meer;
@@ -323,7 +328,9 @@ export function markOcclusions(features, ff, lows, opts = {}, ridges = null, ctx
   // Kandidaten gewinnt der engste Anschluss (kleinste Lücke Frontende <->
   // andere Front).
   const applied = [];
-  for (const c of cuts.sort((a, b) => a.gap - b.gap)) {
+  const rankOf = (c) => o.cutRank === "lowDist" ? distKm(c.P, [c.low.lat, c.low.lon])
+    : o.cutRank === "length" ? -(props(c.from).length_km || 0) : c.gap;
+  for (const c of cuts.sort((a, b) => rankOf(a) - rankOf(b))) {
     const key = (x) => (x.low.edge ? "edge" : x.low);
     if (!applied.some((a) => a.chain === c.chain || key(a) === key(c))) applied.push(c);
   }
