@@ -991,3 +991,15 @@ Analyse verwertbar:
   Warmluftadvektion nach rechts, bei Kaltluftadvektion nach links. Idee für
   später: Typ der Front daraus statt aus dem Querwind in 850 hPa (beides
   liegt in den Fixtures: Bodendruck und Schichtdicke).
+
+Rückmeldung (2026-10-12): Die Atlantikwelle bei 54° N 45,5° W ist für die
+Projektleitung am Rand kaum zu analysieren (laut DWD Tief bei Goose Bay,
+Neufundland); dafür müsste ICON Global weiter nach Westen reichen. Die Welle
+über England sieht sie als Fortführung der Kaltfront des Barentssee-Tiefs;
+der niederschlagsfreie Teil über Nordsee und Polen spräche für eine
+Luftmassengrenze. "Stärkster Druckfall am Okklusionspunkt" ist ein
+zyklogenetisches Argument und darf als Anker dienen. Umgesetzt: `waveLows`
+als Vorgabe, aber nur Druckfallminima höchstens 900 km von einem
+analysierten Tief (`wave.nearLowKm`; 600–1200 km gleichwertig). 05.10.
+Treffer 0 → 38 %, 06.10. kein zusätzlicher Fehlalarm mehr, übrige
+unverändert; gesamt mit 5° Randstreifen 78 % / 81 % / 14 % / 38 km.

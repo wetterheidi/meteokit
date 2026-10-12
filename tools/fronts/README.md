@@ -153,11 +153,14 @@ Projektleitung keine Fronten, 05.10. 12 UTC) gelten die Kontrastrampe
 freien Enden. Die Debug-Seite zeigt Zentraltiefs mit Ring, die Achse im
 Tooltip.
 
-**Randtiefs ohne geschlossene Isobare** (`findWaveLows`, in Erprobung,
-`waveLows: true`, aus): lokale Minima der 3-h-Drucktendenz bis −3 hPa mit
-zyklonalem Wirbel in 850 hPa ab 5·10⁻⁵ s⁻¹ zählen als Anker der
-Anschlussregel (`properties.waves`). 05.10. 12 UTC: Treffer 0 → 38 %, aber
-06.10. Fehlalarm 13 → 33 % (Atlantikwelle am Westrand).
+**Werdende Teil- und Randtiefs** (`findWaveLows`, `waveLows`, Vorgabe seit
+2026-10-12): lokale Minima der 3-h-Drucktendenz bis −3 hPa mit
+zyklonalem Wirbel in 850 hPa ab 5·10⁻⁵ s⁻¹, höchstens 900 km von einem
+analysierten Tief (`wave.nearLowKm`; zyklogenetisch: stärkster Druckfall am
+Okklusionspunkt bzw. im Vorfeld eines Teiltiefs), zählen als Anker der
+Anschlussregel (`properties.waves`). 05.10. 12 UTC: Treffer 0 → 38 %,
+übrige Referenzen unverändert. Ohne die Nähe zu einem Tief griff eine
+Atlantikwelle am Westrand (06.10., Fehlalarm 13 → 33 %).
 
 **Zusammengesetzte Felder** (`mergeFields` in `src/fronts/field.js`, seit
 2026-10-11): ICON-EU deckt im Norden und Westen nicht genug ab; Tiefs bei

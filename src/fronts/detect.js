@@ -83,8 +83,11 @@ export const DETECT_DEFAULTS = {
   post: {},           // überschreibt POSTPROCESS_DEFAULTS (Lücken, Glättung)
   activitySmoothKm: 300, // Glättung der Aktivität entlang der Linie
   activity: {},       // überschreibt ACTIVITY_DEFAULTS (activity.js)
-  waveLows: false,    // Randtiefs (findWaveLows) als Anker der Anschlussregel
-  wave: {},           // { tendMax, vortMin }
+  // Druckfallminima mit zyklonalem Wirbel im Umfeld eines analysierten Tiefs
+  // (werdende Teil-/Randtiefs, findWaveLows) als Anker der Anschlussregel.
+  // 05.10. 12 UTC Treffer 0 → 38 %, übrige Referenzen unverändert.
+  waveLows: true,
+  wave: {},           // { tendMax, vortMin, nearLowKm }
   // Bodenposition: Linien von der Analysefläche auf die Bodenfront schieben.
   // Die 850-hPa-Warmfront liegt 250–450 km vor, die Kaltfront 50–250 km
   // hinter der Bodenfront (Leitfaden) -- beides heißt: zur warmen Seite hin.
@@ -275,7 +278,12 @@ export function detectFronts(field, opts = {}) {
   marked = occlusionToPrecip(marked, af, g, o.post);
   const smoothed = dropDuplicates(smoothFeatures(marked, o.post), o.post);
   // Randtiefs ohne geschlossene Isobare zählen als Anker der Anschlussregel.
-  const waves = o.waveLows && field.sfc ? findWaveLows(field, prev, g, o.wave) : [];
+  // Nur im Umfeld eines analysierten Tiefs (zyklogenetisch: stärkster Druckfall
+  // am Okklusionspunkt bzw. im Vorfeld eines Teiltiefs, Projektleitung 12.10.).
+  const waveNear = o.wave?.nearLowKm ?? 900;
+  const waves = o.waveLows && field.sfc
+    ? findWaveLows(field, prev, g, o.wave).filter((w) => lows.some((l) => distKm([l.lat, l.lon], [w.lat, w.lon]) <= waveNear))
+    : [];
   const all = field.sfc ? requireLowLink(smoothed, [...lows, ...waves], o.post) : smoothed;
   const out = keepInactive ? all : all.filter((f) => f.properties.activity_class !== "none");
   return { type: "FeatureCollection", features: out, properties: { params: o, lows, waves, ridges, ridgeSource } };
