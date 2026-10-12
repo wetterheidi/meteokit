@@ -1003,3 +1003,12 @@ als Vorgabe, aber nur Druckfallminima höchstens 900 km von einem
 analysierten Tief (`wave.nearLowKm`; 600–1200 km gleichwertig). 05.10.
 Treffer 0 → 38 %, 06.10. kein zusätzlicher Fehlalarm mehr, übrige
 unverändert; gesamt mit 5° Randstreifen 78 % / 81 % / 14 % / 38 km.
+
+ICON Global seit 2026-10-12 bis 80° W (vorher 50° W). 06.10. 18 UTC: Tief
+bei Goose Bay (53° N 60° W, 981 hPa) jetzt im Gebiet; die Warmfront der
+Atlantikwelle am bisherigen Westrand entfällt. 05.10. 12 UTC: lange Front
+vom Tief bei Neuschottland (42° N 66° W) über den Atlantik bis 52° N
+16° W, im bisher gezeichneten Gebiet, aber nicht in der Handanalyse (das
+Tief lag außerhalb). Fehlalarm gesamt (5° Randstreifen) 14 → 27 %, fast
+ganz im Westen der vollständigen Referenzen 05., 06. und 09.10.; diese
+sind im Westen neu zu prüfen.
