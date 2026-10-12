@@ -20,6 +20,7 @@
  * Modells (ohne Zusammensetzen). --fixtures und --refs nehmen Fixtures bzw.
  * Referenzen aus einem anderen Verzeichnis, --clip legt das ausgewertete
  * Gebiet fest, --rim spart einen Randstreifen aus (Referenz und Automatik).
+ * Ausschlussgebiete der Referenz (properties.exclude) zählen nicht.
  */
 
 import { readFileSync, readdirSync, existsSync } from "node:fs";
@@ -45,6 +46,19 @@ const clipLines = (lines, clip) => !clip ? lines : lines.flatMap((l) => {
   let cur = [];
   for (const p of l.ll) {
     if (p[0] >= clip[0] && p[0] <= clip[1] && p[1] >= clip[2] && p[1] <= clip[3]) cur.push(p);
+    else { if (cur.length > 1) out.push({ ...l, ll: cur }); cur = []; }
+  }
+  if (cur.length > 1) out.push({ ...l, ll: cur });
+  return out;
+});
+// Ausschlussgebiete der Referenz (properties.exclude: [{latMin, latMax,
+// lonMin, lonMax, note}]): Systeme, die die Analystin bewusst offen lässt;
+// dort zählen weder Referenz noch Automatik.
+const dropBoxes = (lines, boxes) => !boxes?.length ? lines : lines.flatMap((l) => {
+  const out = [];
+  let cur = [];
+  for (const p of l.ll) {
+    if (!boxes.some((b) => p[0] >= b.latMin && p[0] <= b.latMax && p[1] >= b.lonMin && p[1] <= b.lonMax)) cur.push(p);
     else { if (cur.length > 1) out.push({ ...l, ll: cur }); cur = []; }
   }
   if (cur.length > 1) out.push({ ...l, ll: cur });
@@ -111,7 +125,8 @@ for (const file of refs) {
   const clip = clip0 && rimDeg > 0 ? [clip0[0] + rimDeg, clip0[1] - rimDeg, clip0[2] + rimDeg, clip0[3] - rimDeg] : clip0;
   const auto = detectFronts(field, { ...detectOpts, prev });
   // Teilanalyse (properties.partial): Fehlalarme nur nahe den geprüften Linien.
-  const r = compareFronts(clipLines(fcToLines(fc), rimDeg > 0 ? clip : null), clipLines(fcToLines(auto), clip), { ...(tolKm ? { tolKm } : {}), ...(fc.properties?.partial ? { partialKm: 300 } : {}) });
+  const ex = fc.properties?.exclude;
+  const r = compareFronts(dropBoxes(clipLines(fcToLines(fc), rimDeg > 0 ? clip : null), ex), dropBoxes(clipLines(fcToLines(auto), clip), ex), { ...(tolKm ? { tolKm } : {}), ...(fc.properties?.partial ? { partialKm: 300 } : {}) });
   for (const k of Object.keys(tot)) tot[k] += r[k];
   console.log(`${vt}${fc.properties?.partial ? "*" : " "} ${(hit.name.replace(/\.json\.gz$/, "") + (isMerged ? " +global" : "")).padEnd(30)}  ${pct(r.pod)}  ${pct(r.podAny)}    ${pct(r.far)}   ${km(r.meanDistKm)} km  ${km(r.refKm)}/${km(r.testKm)}${prev ? "" : "  (ohne Vortermin)"}`);
 }

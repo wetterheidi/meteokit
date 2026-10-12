@@ -156,12 +156,20 @@ Tooltip.
 
 **Werdende Teil- und Randtiefs** (`findWaveLows`, `waveLows`, Vorgabe seit
 2026-10-12): lokale Minima der 3-h-Drucktendenz bis −3 hPa mit
-zyklonalem Wirbel in 850 hPa ab 5·10⁻⁵ s⁻¹, höchstens 900 km von einem
-analysierten Tief (`wave.nearLowKm`; zyklogenetisch: stärkster Druckfall am
-Okklusionspunkt bzw. im Vorfeld eines Teiltiefs), zählen als Anker der
-Anschlussregel (`properties.waves`). 05.10. 12 UTC: Treffer 0 → 38 %,
-übrige Referenzen unverändert. Ohne die Nähe zu einem Tief griff eine
-Atlantikwelle am Westrand (06.10., Fehlalarm 13 → 33 %).
+zyklonalem Wirbel in 850 hPa ab 5·10⁻⁵ s⁻¹, höchstens 1250 km von einem
+analysierten Tief (`wave.nearLowKm`, bis 12.10. 900 km; zyklogenetisch:
+stärkster Druckfall am Okklusionspunkt bzw. im Vorfeld eines Teiltiefs),
+zählen als Anker der Anschlussregel (`properties.waves`). 05.10. 12 UTC:
+Treffer 0 → 38 %, übrige Referenzen unverändert. Ohne die Nähe zu einem
+Tief griff eine Atlantikwelle am Westrand (06.10., Fehlalarm 13 → 33 %).
+
+**Entstehende Teiltiefs** (seit 2026-10-12): liegt unter dem
+Druckfallminimum (bis 150 km, `wave.minKm`) ein Minimum des auf 50 km
+geglätteten Bodendrucks (`wave.minSmoothKm`, Tiefe ab 1 hPa), entfällt die
+Nähe zu einem Tief (`genesis: true`): geschlossene Isobare plus
+Zyklogenese. Welle 12.10. 06 UTC bei 50° N 18° W (997 hPa, −3,9 hPa/3 h,
+8·10⁻⁵ s⁻¹), unter rund 100 flachen Minima der sechs Fälle das einzige mit
+beiden Signalen.
 
 **Zusammengesetzte Felder** (`mergeFields` in `src/fronts/field.js`, seit
 2026-10-11): ICON-EU deckt im Norden und Westen nicht genug ab; Tiefs bei
@@ -341,6 +349,7 @@ Vorhandene Fälle:
 | `icon_eu_2026-10-08.json.gz` | 08.10. 09–21 UTC, 3-stündlich | alle Termine +0 h. Schleifende Kaltfront an den Alpen, Island- und Ostsee-Tief. Vergleichskarten: DWD und KNMI 12/18 UTC |
 | `icon_eu_2026-10-09.json.gz` | 08.10. 18 UTC – 09.10. 15 UTC, 3-stündlich | 18–12 UTC Analyse, 15 UTC +0 h aus dem 15-UTC-Lauf. Island-Tief mit Okklusion, Ostsee-Tief, Ligurien-Tief. Vergleichskarten: DWD 00/12 UTC, KNMI und GeoSphere 00/06/12 UTC |
 | `icon_eu_2026-10-10.json.gz` | 10.10. 00–09 UTC, 3-stündlich | 00–06 UTC Analyse, 09 UTC +3 h. Lehrbuchnahe Tiefs: Finnland-/Russlandtief, Ostseewelle mit Skagerraktief, Nordseetief, Wellen auf der Atlantikfront, Tief über Tunesien. Vergleichskarten: DWD, KNMI, GeoSphere 06 UTC; Handanalyse 06 UTC (Skagerrak- und Russlandtief) |
+| `icon_eu_2026-10-12.json.gz` | 11.10. 21 UTC – 12.10. 12 UTC, 3-stündlich | alle Termine +0 h (abgerufen 12.10.). Blindtest ohne vorherige Abstimmung: Hoch über Mitteleuropa, Tiefs vor Grönland und über dem Baltikum. Handanalyse 06 UTC folgt |
 | `icon_global_<Name>.json.gz` | wie die ICON-EU-Fixture gleichen Namens | 25–78° N, 80° W–60° E (281×107), alle Termine +0 h (abgerufen 12.10.), für die Zusammensetzung |
 | `icon_eu_850_2026100900_an.json` u. a. | ein Termin | Format v1, nur 850 hPa, aus dem Spike. Die Debug-Seite liest sie weiterhin |
 
@@ -434,13 +443,17 @@ Standardmäßig setzt das Skript die Felder zusammen (ICON-EU innen, ICON
 Global außen), wenn es eine ICON-Global-Fixture mit dem Termin gibt, und
 wertet nur das Gebiet aus, auf dem die Referenz gezeichnet ist: Die
 Debug-Seite speichert es seit 2026-10-11 als `properties.domain` (mit
-„ICON Global außen“ das zusammengesetzte Gebiet; `partial` und `note`
-der geladenen Referenz bleiben beim Speichern erhalten); ältere Referenzen ohne
+„ICON Global außen“ das zusammengesetzte Gebiet; `partial`, `note` und
+`exclude` der geladenen Referenz bleiben beim Speichern erhalten); ältere Referenzen ohne
 Angabe gelten als auf ICON-EU gezeichnet. `--model` rechnet nur auf einem
 Modell, `--clip` legt das ausgewertete Gebiet fest, `--fixtures` und
 `--refs` nehmen Fixtures bzw. Referenzen aus einem anderen Verzeichnis. `--rim 5` spart einen
 Randstreifen (Grad) aus, in Referenz und Automatik: am Rand kann die
 Handanalyse nicht beurteilen, wie es jenseits des Gebiets weitergeht.
+Ausschlussgebiete der Referenz (`properties.exclude`, Liste von
+`{latMin, latMax, lonMin, lonMax, note}`, von Hand eingetragen) zählen
+weder in Referenz noch Automatik: Systeme, die die Analystin bewusst offen
+lässt (Dipoltief 12.10.).
 
 Maße (`tools/fronts/compare.js`, längengewichtet, Abtastung 25 km):
 

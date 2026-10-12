@@ -87,7 +87,7 @@ export const DETECT_DEFAULTS = {
   // (werdende Teil-/Randtiefs, findWaveLows) als Anker der Anschlussregel.
   // 05.10. 12 UTC Treffer 0 → 38 %, übrige Referenzen unverändert.
   waveLows: true,
-  wave: {},           // { tendMax, vortMin, nearLowKm }
+  wave: {},           // { tendMax, vortMin, nearLowKm, minSmoothKm, minKm }
   // Bodenposition: Linien von der Analysefläche auf die Bodenfront schieben.
   // Die 850-hPa-Warmfront liegt 250–450 km vor, die Kaltfront 50–250 km
   // hinter der Bodenfront (Leitfaden) -- beides heißt: zur warmen Seite hin.
@@ -280,9 +280,22 @@ export function detectFronts(field, opts = {}) {
   // Randtiefs ohne geschlossene Isobare zählen als Anker der Anschlussregel.
   // Nur im Umfeld eines analysierten Tiefs (zyklogenetisch: stärkster Druckfall
   // am Okklusionspunkt bzw. im Vorfeld eines Teiltiefs, Projektleitung 12.10.).
-  const waveNear = o.wave?.nearLowKm ?? 900;
+  // Entstehende Teiltiefs: liegt unter dem Druckfallminimum ein (flaches)
+  // Druckminimum, gilt die Nähe zu einem Tief nicht -- das Teiltief ist
+  // selbst eins (geschlossene Isobare, Zyklogenese). Welle 12.10. 06 UTC bei
+  // 50° N 18° W (997 hPa, −3,9 hPa/3 h, 8·10⁻⁵ s⁻¹), 1700 km vom Grönlandtief;
+  // im auf 100 km geglätteten Druck kein Minimum, auf 50 km schon.
+  // 1250 km (vorher 900): der stärkste Druckfall am Okklusionspunkt liegt bei
+  // langen Okklusionen weit vom Kern (12.10. 06 UTC: 64° N 14,5° W, 1200 km
+  // vom Grönlandtief); übrige Referenzen unverändert.
+  const waveNear = o.wave?.nearLowKm ?? 1250;
+  const shallow = o.waveLows && field.sfc
+    ? findLows(field, g, { ...o.occlusion, lowSmoothKm: o.wave?.minSmoothKm ?? 50, lowMinDepth: 1 }) : [];
+  const near = (list, w, km) => list.some((l) => distKm([l.lat, l.lon], [w.lat, w.lon]) <= km);
   const waves = o.waveLows && field.sfc
-    ? findWaveLows(field, prev, g, o.wave).filter((w) => lows.some((l) => distKm([l.lat, l.lon], [w.lat, w.lon]) <= waveNear))
+    ? findWaveLows(field, prev, g, o.wave)
+      .map((w) => (near(shallow, w, o.wave?.minKm ?? 150) ? { ...w, genesis: true } : w))
+      .filter((w) => w.genesis || near(lows, w, waveNear))
     : [];
   const all = field.sfc ? requireLowLink(smoothed, [...lows, ...waves], o.post) : smoothed;
   const out = keepInactive ? all : all.filter((f) => f.properties.activity_class !== "none");

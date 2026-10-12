@@ -1048,3 +1048,70 @@ Glättung über alle Referenzen (5° Randstreifen):
 Tief östlich Goose Bay); eine Analyse über mehrere Glättungslängen wäre
 ein möglicher späterer Schritt. Der Fehlalarm geht großteils auf die
 Atlantik-Luftmassengrenzen (05.10.) zurück.
+
+### Blindtest 12.10. 06 UTC (2026-10-12)
+
+Erster Fall, an dem vorher nichts eingestellt wurde: Hoch über
+Mitteleuropa, Tief vor Grönland (961 hPa) mit Okklusion südlich von Island
+und Tripelpunkt bei 61,5° N 12° W, Welle mit Teiltief bei 50° N 18° W,
+Tief über dem Baltikum mit Okklusion, Tief bei Neufundland. Das
+Dipoltief vor der nordamerikanischen Küste hat die Projektleitung offen
+gelassen (Einordnung unsicher); automatische Linien dort zählen als
+Fehlalarm.
+
+Ergebnis mit unveränderten Vorgaben (5° Randstreifen): **12 % Treffer,
+22 % Lage, 75 % Fehlalarm**. Die passenden Linien entstehen fast alle
+und sind aktiv (Atlantik-Kaltfront 3044 km, Aktivität 0,94; Welle 0,8–0,9;
+Kaltfront westlich Schottland 0,53; Baltikum 0,71), fallen aber durch die
+Anschlussregel weg:
+
+- Das Teiltief der Welle (997,5 hPa) ist im auf 100 km geglätteten
+  Bodendruck kein Minimum. Mit 70 km Glättung (`lowSmoothKm`) wird es
+  gefunden: 12.10. 12 → 55 % Treffer, 77 % Lage; über alle Fälle 79 → 73 %
+  Treffer (09.10. 86 → 81 %, 10.10. 94 → 91 %, 05.10. 65 → 81 %), weil
+  zusätzliche flache Tiefs (z. B. Tyrrhenis, Nordmeer) neue Anker liefern.
+  Noch nicht übernommen.
+- Die Fronten über Schottland hängen über die Okklusion südlich von Island
+  am Grönlandtief. Die Automatik legt ihre Linie nördlich um Island
+  (Warmfront 67,5° N 24° W – 60,5° N 38° W), der Anschluss fehlt.
+- Baltikum: die Automatik zieht eine Warmfront über 16–50° E, die Referenz
+  eine Okklusion (18–35° E) und eine Kaltfront (35–52° E); die
+  Kaltfront nach Süden liegt 3–5° zu weit östlich.
+
+Weitere Fehlalarme: Arktikfront bei Jan Mayen (1256 km, nicht
+analysiert), Verlängerung der Atlantik-Kaltfront bis 27° N 44° W, eine
+zweite, parallele Kaltfront an der Welle, Warmfront über Schottland bis
+Frankreich (46° N), wieder der Warmfront-Haken am Neufundlandtief.
+
+Umgesetzt nach Rückmeldung der Projektleitung (12.10.):
+
+- Dipoltief: als Ausschlussgebiet in der Referenz (`properties.exclude`,
+  34–43° N, 80–62° W); `compare.mjs` wertet dort weder Referenz noch
+  Automatik, die Debug-Seite erhält die Angabe beim Speichern.
+- Jan Mayen: für die Projektleitung zu nah am Rand (liegt großteils im
+  5°-Randstreifen).
+- Teiltief der Welle: hat eine geschlossene Isobare (997 hPa) und entsteht
+  gerade (Folgetermine). Kriterium Zyklogenese: Druckfallminimum (≤ −3 hPa/3 h,
+  Wirbel ≥ 5·10⁻⁵ s⁻¹) über einem Minimum des auf 50 km geglätteten
+  Drucks zählt als Anker, auch fern von einem Tief. Unter rund 100
+  flachen Minima der sechs Fälle erfüllt nur dieses beide Signale; die
+  übrigen Referenzen bleiben unverändert. Die Glättung der Tiefsuche
+  insgesamt zu senken (70 km) hätte dagegen 09./10.10. verschlechtert.
+- Anker-Radius `wave.nearLowKm` 900 → 1250 km: der stärkste Druckfall am
+  Okklusionspunkt (64° N 14,5° W, −4,3 hPa/3 h) liegt 1200 km vom
+  Grönlandtief; damit hängen Kalt- und Warmfront über Schottland an.
+
+12.10.: 12 → 48 % Treffer, 63 % Lage, 50 % Fehlalarm; übrige Referenzen
+unverändert; gesamt 73 % / 80 % / 34 % / 38 km.
+
+Offen am 12.10.:
+
+- Die Okklusion südlich von Island zum Grönlandtief fehlt (keine
+  TFP-Linie entlang 64,5° N zwischen 32° und 18° W); die Automatik hat
+  stattdessen eine Warmfront nördlich um Island.
+- Die Warmfront über Schottland läuft bis Frankreich (46° N) weiter,
+  die Referenz endet bei 55° N.
+- Baltikum: Okklusion und Kaltfront nach Osten als eine Warmfront
+  typisiert, Kaltfront nach Süden ohne Anschluss.
+- Zweite, parallele Kaltfront an der Welle; Verlängerung der
+  Atlantik-Kaltfront bis 27° N.
