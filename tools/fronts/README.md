@@ -429,7 +429,9 @@ Debug-Seite speichert es seit 2026-10-11 als `properties.domain` (mit
 der geladenen Referenz bleiben beim Speichern erhalten); ältere Referenzen ohne
 Angabe gelten als auf ICON-EU gezeichnet. `--model` rechnet nur auf einem
 Modell, `--clip` legt das ausgewertete Gebiet fest, `--fixtures` und
-`--refs` nehmen Fixtures bzw. Referenzen aus einem anderen Verzeichnis.
+`--refs` nehmen Fixtures bzw. Referenzen aus einem anderen Verzeichnis. `--rim 5` spart einen
+Randstreifen (Grad) aus, in Referenz und Automatik: am Rand kann die
+Handanalyse nicht beurteilen, wie es jenseits des Gebiets weitergeht.
 
 Maße (`tools/fronts/compare.js`, längengewichtet, Abtastung 25 km):
 

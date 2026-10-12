@@ -938,3 +938,56 @@ geladenen Referenz (der 10.10. kam ohne `partial`); behoben.
 
 Stand: 05.10. 0 %, 06.10. 94 %, 08.10. 100 %, 09.10. 86 %, 10.10. 93 %;
 gesamt 87 % / 90 % / 15 % / 38 km.
+
+### Nachträge 06.10. und 09.10., Randtiefs, Skript Smith (2026-10-12)
+
+**06.10. 18 UTC** (Handanalyse ergänzt): Die Projektleitung zeichnet jetzt
+auch die Welle über England als Fronten (Kaltfront Barentssee–Polen,
+Warmfront Polen–England, Kaltfront England–Biskaya), wie der DWD. Die
+Atlantikwelle bei 54° N 45,5° W ist nicht gezeichnet. Die Automatik findet
+die Kette nicht: Die Kaltfront England–Biskaya (5 K, 0,3 mm/h) hängt an
+keinem Tief; über Nordsee und Polen haben die Stücke 1,6–4,6 K und keinen
+Niederschlag, und die Kette reißt bei 57° N 33° E rund 400 km ab. Treffer
+06.10. 94 → 36 %. Offen: Gilt die Wetterpflicht für diese Kette nicht
+(erste Analyse: Luftmassengrenze ohne Wetter)?
+
+**09.10. 12 UTC**: Die Atlantik-Kaltfront endet bei 24° W (Projektleitung:
+"Deine Analyse war hier besser"; wie es Richtung Nordamerika weitergeht,
+ist am Rand nicht zu beurteilen). Treffer 86 → 95 %. Daraus die Option
+`--rim` im Vergleich (Randstreifen aussparen).
+
+**Randtiefs** (Projektleitung): oft nur aus mehreren Terminen zu erkennen;
+am 05.10. entstand es durch den sehr starken Druckfall am Okklusionspunkt
+und bildete bis 18 UTC einen eigenen Kern. DWD (Thema des Tages,
+12.04.2017): Teiltief = am Okklusionspunkt, im Vorfeld der stärkste
+Druckfall, Teiltief ab geschlossener Isobare; Randtief = meist am Südrand
+des steuernden Tiefs an der Kaltfront, aus einer flachen Welle, wird später
+ins Zentrum gesaugt. Gemessen: Die Kandidaten von `findWaveLows` sind über
+mehrere Termine stetig (05.10. 06–12 UTC 63,5° N 0,5° W → 65° N 5° E →
+66° N 11° E; Atlantikwelle 06.10. 12–18 UTC 50,5° N → 54° N 45,5° W);
+zeitliche Beständigkeit trennt sie also nicht. Mit `waveLows`: 05.10.
+Treffer 0 → 38 %, 06.10. Fehlalarm 13 → 27–33 % (Warmfront der
+Atlantikwelle, 880 km, auch mit 5° Randstreifen). Bleibt aus.
+
+**Skript Smith, Einführung in die Meteorologie II (2003)**, für die
+Analyse verwertbar:
+- Die Front liegt am warmen Rand der Frontalzone und fällt mit der
+  Konfluenzlinie im Windfeld zusammen (so die TFP-Linie).
+- In 850 hPa ist die Frontalzone schärfer als am Boden; die Warmfront liegt
+  in 850 hPa weiter nördlich, die Kaltfront in 850 hPa hinter der
+  Bodenfront (Grundlage der Bodenposition).
+- Vor der Warmfront fällt der Druck langsam, hinter der Kaltfront steigt er
+  in einem schmalen Streifen stark (Drucksprung, `tendency_jump`); nur
+  3-h-Tendenzen über 1 hPa zählen (Tagesgang).
+- Die Okklusion ist durch ein Temperaturmaximum markiert und lässt sich am
+  besten mit der Schichtdicke 500/1000 festlegen (so umgesetzt).
+- Achse: junge Tiefs stromaufwärts geneigt, im Okklusionsstadium richtet
+  sie sich auf, bis sie senkrecht steht (Zentraltief, umgesetzt).
+- Wellen entstehen an stationären Fronten durch Druckfall am Wellenscheitel;
+  neue Tiefs am Okklusionspunkt oder an der langgestreckten Kaltfront, wo
+  noch Temperaturkontrast ist.
+- Schichtdickenadvektion durch den geostrophischen Bodenwind (Gl. 2.45)
+  zeigt Warm- und Kaltluftadvektion; Wind dreht mit der Höhe bei
+  Warmluftadvektion nach rechts, bei Kaltluftadvektion nach links. Idee für
+  später: Typ der Front daraus statt aus dem Querwind in 850 hPa (beides
+  liegt in den Fixtures: Bodendruck und Schichtdicke).

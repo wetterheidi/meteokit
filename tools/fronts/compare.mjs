@@ -6,7 +6,7 @@
  * Vortermin (für die Drucktendenz).
  *
  *   node tools/fronts/compare.mjs ['{"sigmaKm":100}'] [--tol 150] [--no-merge]
- *     [--fixtures dir] [--refs dir] [--model icon_global] [--clip latMin,latMax,lonMin,lonMax]
+ *     [--fixtures dir] [--refs dir] [--model icon_global] [--clip latMin,latMax,lonMin,lonMax] [--rim Grad]
  *
  * Das optionale JSON überschreibt DETECT_DEFAULTS, so lassen sich
  * Parameter gegen alle Referenzen zugleich prüfen.
@@ -19,7 +19,7 @@
  * --no-merge rechnet nur auf ICON-EU, --model nur auf den Fixtures dieses
  * Modells (ohne Zusammensetzen). --fixtures und --refs nehmen Fixtures bzw.
  * Referenzen aus einem anderen Verzeichnis, --clip legt das ausgewertete
- * Gebiet fest.
+ * Gebiet fest, --rim spart einen Randstreifen aus (Referenz und Automatik).
  */
 
 import { readFileSync, readdirSync, existsSync } from "node:fs";
@@ -37,6 +37,7 @@ const FLAGS = ["--no-merge"]; // Schalter ohne Wert
 const fixDir = arg("--fixtures") ? `${arg("--fixtures").replace(/\/$/, "")}/` : `${dir}fixtures/`;
 const modelArg = arg("--model");
 const mergeModel = argv.includes("--no-merge") || modelArg ? null : "icon_global";
+const rimDeg = arg("--rim") != null ? Number(arg("--rim")) : 0;
 const clipArg = arg("--clip")?.split(",").map(Number);
 // Linien auf das Gebiet zuschneiden (Stücke innerhalb bleiben getrennt erhalten).
 const clipLines = (lines, clip) => !clip ? lines : lines.flatMap((l) => {
@@ -103,11 +104,14 @@ for (const file of refs) {
   // (properties.domain, von der Debug-Seite gespeichert); ältere Referenzen
   // ohne Angabe sind auf ICON-EU gezeichnet.
   const d = fc.properties?.domain;
-  const clip = clipArg || (d ? [d.latMin, d.latMax, d.lonMin, d.lonMax]
+  const clip0 = clipArg || (d ? [d.latMin, d.latMax, d.lonMin, d.lonMax]
     : isMerged ? [inner.lat0, inner.lat0 + (inner.ny - 1) * inner.res, inner.lon0, inner.lon0 + (inner.nx - 1) * inner.res] : null);
+  // Randstreifen aussparen: am Rand kann die Handanalyse nicht beurteilen,
+  // wie es jenseits des Gebiets weitergeht (Projektleitung, 09.10. Atlantik).
+  const clip = clip0 && rimDeg > 0 ? [clip0[0] + rimDeg, clip0[1] - rimDeg, clip0[2] + rimDeg, clip0[3] - rimDeg] : clip0;
   const auto = detectFronts(field, { ...detectOpts, prev });
   // Teilanalyse (properties.partial): Fehlalarme nur nahe den geprüften Linien.
-  const r = compareFronts(fcToLines(fc), clipLines(fcToLines(auto), clip), { ...(tolKm ? { tolKm } : {}), ...(fc.properties?.partial ? { partialKm: 300 } : {}) });
+  const r = compareFronts(clipLines(fcToLines(fc), rimDeg > 0 ? clip : null), clipLines(fcToLines(auto), clip), { ...(tolKm ? { tolKm } : {}), ...(fc.properties?.partial ? { partialKm: 300 } : {}) });
   for (const k of Object.keys(tot)) tot[k] += r[k];
   console.log(`${vt}${fc.properties?.partial ? "*" : " "} ${(hit.name.replace(/\.json\.gz$/, "") + (isMerged ? " +global" : "")).padEnd(30)}  ${pct(r.pod)}  ${pct(r.podAny)}    ${pct(r.far)}   ${km(r.meanDistKm)} km  ${km(r.refKm)}/${km(r.testKm)}${prev ? "" : "  (ohne Vortermin)"}`);
 }
