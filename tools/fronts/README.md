@@ -169,7 +169,8 @@ ihre Fronten fielen über die Anschlussregel weg. ICON Global allein hatte an
 den Referenzen dreimal so viele Fehlalarme (18 statt 5 %), weil sein
 Niederschlag flächiger ist und die Wetterpflicht leichter erfüllt. Deshalb
 werden die Felder vor der Analyse zusammengesetzt: ICON-EU im eigenen
-Gebiet, ICON Global außen (25–78° N, 50° W–60° E), auf dem gemeinsamen
+Gebiet, ICON Global außen (25–78° N, 80° W–60° E; bis 2026-10-12 nur bis 50° W, dann fehlte
+das Tief bei Goose Bay am 06.10.), auf dem gemeinsamen
 0,5°-Raster mit einem linearen Übergang über 2,5° zum ICON-EU-Rand. Innen
 bleibt die Abstimmung an ICON-EU gültig, und an der Nahtstelle entstehen
 keine Brüche in den Linien.
@@ -290,7 +291,7 @@ Optionen:
 ICON Global für die Zusammensetzung (Level 96–120, Schichtdicke 88–95):
 
 ```bash
-node tools/fronts/fetch-case.mjs --model icon_global --bbox 25,78,-50,60 \
+node tools/fronts/fetch-case.mjs --model icon_global --bbox 25,78,-80,60 \
   --start 2026-10-06T06:00 --end 2026-10-06T18:00 --name 2026-10-06
 ```
 
@@ -300,7 +301,8 @@ ICON-Global-Fixture gleichen Namens zusammen.
 **Dauer** (gemessen 2026-10-11): ein Termin rund 150 Variablen je Punkt
 (Level 50–70 bzw. 96–120 plus Oberfläche und Druck der Level für die
 Schichtdicke). ICON-EU (137×81 Punkte) braucht etwa **11 s**, ICON Global
-über 25–78° N, 50° W–60° E (221×107 Punkte) etwa **25 s**. Die
+über 25–78° N, 50° W–60° E (221×107 Punkte) etwa **25 s**, bis 80° W
+(281×107) rund 25–30 s (30 Termine in gut 10 min, 2026-10-12). Die
 Levelhöhen über Grund sind zeitlich konstant und werden nur beim ersten
 Termin geholt. Am 2026-10-09 dauerte ein ICON-EU-Termin noch 3 min; der
 Server ist seither deutlich schneller. Damit ist eine Vorberechnung im Cron
@@ -335,7 +337,7 @@ Vorhandene Fälle:
 | `icon_eu_2026-10-08.json.gz` | 08.10. 09–21 UTC, 3-stündlich | alle Termine +0 h. Schleifende Kaltfront an den Alpen, Island- und Ostsee-Tief. Vergleichskarten: DWD und KNMI 12/18 UTC |
 | `icon_eu_2026-10-09.json.gz` | 08.10. 18 UTC – 09.10. 15 UTC, 3-stündlich | 18–12 UTC Analyse, 15 UTC +0 h aus dem 15-UTC-Lauf. Island-Tief mit Okklusion, Ostsee-Tief, Ligurien-Tief. Vergleichskarten: DWD 00/12 UTC, KNMI und GeoSphere 00/06/12 UTC |
 | `icon_eu_2026-10-10.json.gz` | 10.10. 00–09 UTC, 3-stündlich | 00–06 UTC Analyse, 09 UTC +3 h. Lehrbuchnahe Tiefs: Finnland-/Russlandtief, Ostseewelle mit Skagerraktief, Nordseetief, Wellen auf der Atlantikfront, Tief über Tunesien. Vergleichskarten: DWD, KNMI, GeoSphere 06 UTC; Handanalyse 06 UTC (Skagerrak- und Russlandtief) |
-| `icon_global_<Name>.json.gz` | wie die ICON-EU-Fixture gleichen Namens | 25–78° N, 50° W–60° E, alle Termine +0 h (abgerufen 11.10.), für die Zusammensetzung |
+| `icon_global_<Name>.json.gz` | wie die ICON-EU-Fixture gleichen Namens | 25–78° N, 80° W–60° E (281×107), alle Termine +0 h (abgerufen 12.10.), für die Zusammensetzung |
 | `icon_eu_850_2026100900_an.json` u. a. | ein Termin | Format v1, nur 850 hPa, aus dem Spike. Die Debug-Seite liest sie weiterhin |
 
 ## Debug-Seite
