@@ -903,3 +903,38 @@ zurückgeschrieben wird (in der Restkette verschob das Neuverteilen der
 Punkte die Stückgrenzen; am Russlandtief 10.10. 09 UTC lag ein Stück mit
 falscher Symbolseite auf der Verlängerung). Gesamt 94 % / 97 % / 11 % /
 39 km.
+
+### Handanalysen 05.10. 12 UTC, 09.10. (Atlantik) und 10.10. (Russland) mit ICON Global (2026-10-12)
+
+**05.10. 12 UTC** (vollständig): Das Zentraltief im Nordmeer bleibt ohne
+Fronten. Ein Randtief vor der norwegischen Küste ohne geschlossene Isobare
+im Kern trägt Kalt- und Warmfront (Wellenscheitel 66,2° N 7,4° E). Die
+Automatik zeichnete mit der Zentraltief-Regel Warm- und Kaltfront 300–500
+km um den Kern (1375 km Fehlalarm), ohne sie keine Front. Neu: niedrigere
+Schwellen erst ab 800 km vom Zentraltief (`centralMinKm`); 06.10. bleibt
+bei 94 %, am 05.10. kein Fehlalarm mehr. Die Fronten des Randtiefs findet
+die TFP (Warmfront über Mittelnorwegen 1,4 mm/h, Kaltfront Nordsee 4,8 K),
+die Anschlussregel verwirft sie, weil das Randtief kein Tief im Sinne von
+`findLows` ist. Messbar ist es: Isallobaren-Minimum −5,8 hPa/3 h bei 66° N
+11° E mit 6,8·10⁻⁵ s⁻¹ Wirbel in 850 hPa (bis 15 UTC −5,9, Wirbel 10).
+Als Anker (`findWaveLows`, aus): 05.10. Treffer 0 → 38 %, aber 06.10.
+Fehlalarm 13 → 33 % durch eine Atlantikwelle am Westrand (54° N 45,5° W,
+−8,6 hPa/3 h), die die Handanalyse nicht zeichnet.
+
+**09.10. 12 UTC** (vollständig, jetzt über das ganze Gebiet): Atlantik-
+Kaltfront bis 42,7° W ergänzt. Treffer 95 → 86 % (die Automatik endet bei
+28° W, obwohl das Niederschlagsband weiterläuft); Fehlalarme: Russland-
+Warmfront nach Süden, Kaltfront am Karasee-Tief am Nordrand (auch ohne
+Zentraltief-Regel).
+
+**10.10. 06 UTC** (Teilanalyse): Das Russlandtief ist mit ICON Global neu
+analysiert, jetzt okkludiert (Okklusionspunkt 63,5° N 49,5° E, Kaltfront
+nach Südwesten, Warmfront nach Südosten) – wie die Automatik. Okklusion
+und Kaltfront treffen gut; die automatische Warmfront läuft mit Haken
+nördlich parallel zur Okklusion zurück. Treffer 93 %, 28 km.
+
+Die Debug-Seite verlor beim erneuten Speichern `partial` und `note` der
+geladenen Referenz (der 10.10. kam ohne `partial`); behoben.
+
+Stand: 05.10. 0 %, 06.10. 94 %, 08.10. 100 %, 09.10. 86 %, 10.10. 93 %;
+gesamt 87 % / 90 % / 15 % / 38 km.

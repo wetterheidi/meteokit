@@ -147,10 +147,17 @@ Schichtdicke 500/1000; liegt das Z500-Minimum höchstens 150 km vom
 Bodentief und ist das Tief mindestens 8 hPa tief (gegen den 500-km-Ring),
 gilt es als Zentraltief (`central: true`, `tilt_km`). Die Tiefe trennt
 junge Tiefs unter einem abgeschnürten Höhentief ab (Genuatief). Für
-Linienpunkte bis 1800 km vom Zentraltief gelten die Kontrastrampe
+Linienpunkte 800–1800 km vom Zentraltief (nahe am Kern zeichnet die
+Projektleitung keine Fronten, 05.10. 12 UTC) gelten die Kontrastrampe
 [0,5; 3] K statt [1,5; 3,5] K und 1 K statt 3,5 K Mindestkontrast an
 freien Enden. Die Debug-Seite zeigt Zentraltiefs mit Ring, die Achse im
 Tooltip.
+
+**Randtiefs ohne geschlossene Isobare** (`findWaveLows`, in Erprobung,
+`waveLows: true`, aus): lokale Minima der 3-h-Drucktendenz bis −3 hPa mit
+zyklonalem Wirbel in 850 hPa ab 5·10⁻⁵ s⁻¹ zählen als Anker der
+Anschlussregel (`properties.waves`). 05.10. 12 UTC: Treffer 0 → 38 %, aber
+06.10. Fehlalarm 13 → 33 % (Atlantikwelle am Westrand).
 
 **Zusammengesetzte Felder** (`mergeFields` in `src/fronts/field.js`, seit
 2026-10-11): ICON-EU deckt im Norden und Westen nicht genug ab; Tiefs bei
@@ -239,6 +246,14 @@ Noch offen:
 - Russlandtief 10.10. 06 UTC: Mit ICON Global außen liegt der
   Okklusionspunkt bei 50° E, außerhalb des Gebiets der Handanalyse
   (Okklusion statt Warmfront entlang 64° N). Synoptisch zu prüfen.
+- Randtief vor Norwegen 05.10. 12 UTC (ohne geschlossene Isobare) wird
+  nicht erkannt, seine Fronten fallen über die Anschlussregel weg.
+- 09.10. 12 UTC: Die Atlantik-Kaltfront endet bei 28° W, die Handanalyse
+  führt sie bis 43° W; Kaltfront am Karasee-Tief (Nordrand) und
+  Russland-Warmfront nach Süden sind Fehlalarme.
+- Russlandtief 10.10. 06 UTC: Okklusion und Kaltfront wie in der neuen
+  Handanalyse, aber die Warmfront läuft mit Haken nördlich parallel zur
+  Okklusion zurück statt nach Südosten.
 - Seitenprüfung: vier Okklusionen und eine Kaltfront außerhalb des
   ICON-EU-Gebiets (Grönland, Nordmeer, Barentssee, Russland) widersprechen
   der θw-Seite; innen keine Abweichung.
@@ -410,7 +425,8 @@ Standardmäßig setzt das Skript die Felder zusammen (ICON-EU innen, ICON
 Global außen), wenn es eine ICON-Global-Fixture mit dem Termin gibt, und
 wertet nur das Gebiet aus, auf dem die Referenz gezeichnet ist: Die
 Debug-Seite speichert es seit 2026-10-11 als `properties.domain` (mit
-„ICON Global außen“ das zusammengesetzte Gebiet); ältere Referenzen ohne
+„ICON Global außen“ das zusammengesetzte Gebiet; `partial` und `note`
+der geladenen Referenz bleiben beim Speichern erhalten); ältere Referenzen ohne
 Angabe gelten als auf ICON-EU gezeichnet. `--model` rechnet nur auf einem
 Modell, `--clip` legt das ausgewertete Gebiet fest, `--fixtures` und
 `--refs` nehmen Fixtures bzw. Referenzen aus einem anderen Verzeichnis.

@@ -50,6 +50,7 @@ export const ACTIVITY_DEFAULTS = {
   // vom Kern).
   central: true,
   centralKm: 1800,
+  centralMinKm: 800,   // erst ab hier: nahe am Kern zeichnet die Projektleitung keine Fronten (05.10. 12 UTC)
   centralRamp: [0.5, 3],
   centralContrastMin: 1,
   // Suchfenster der Bodenfront auf der warmen Seite der 850-hPa-Linie [km]

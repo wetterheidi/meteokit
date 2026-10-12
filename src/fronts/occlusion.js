@@ -152,6 +152,31 @@ export function markCentralLows(lows, field, g, { tiltKm = 150, searchKm = 700, 
   });
 }
 
+/**
+ * Randtiefs (Wellen) ohne geschlossene Isobare: lokale Minima der 3-h-
+ * Drucktendenz (60 km geglättet) bis höchstens tendMax mit zyklonalem
+ * Wirbel in 850 hPa (100 km geglättet) ab vortMin. Randtief vor der
+ * norwegischen Küste 05.10. 12 UTC (Projektleitung): −5,8 hPa/3 h,
+ * 6,8·10⁻⁵ s⁻¹. Dienen nur als Anker der Anschlussregel (`wave: true`).
+ */
+export function findWaveLows(field, prev, g, { tendMax = -3, vortMin = 5 } = {}) {
+  if (!prev?.sfc?.pressure_msl || !field.sfc?.pressure_msl) return [];
+  const tend = gaussianSmooth(Float32Array.from(field.sfc.pressure_msl, (v, k) => v - prev.sfc.pressure_msl[k]), g, 60);
+  const u = gaussianSmooth(field.u, g, 100), v = gaussianSmooth(field.v, g, 100);
+  const out = [];
+  for (let j = 2; j < g.ny - 2; j++) for (let i = 2; i < g.nx - 2; i++) {
+    const k = j * g.nx + i, t = tend[k];
+    if (!(t <= tendMax)) continue;
+    const la = g.lat0 + j * g.res, c = Math.cos(la * DEG), dx = g.res * KM_PER_DEG * 1e3 * c, dy = g.res * KM_PER_DEG * 1e3;
+    const vort = ((v[k + 1] - v[k - 1]) / (2 * dx) - (u[k + g.nx] - u[k - g.nx]) / (2 * dy)) * 1e5;
+    if (!(vort >= vortMin)) continue;
+    let isMin = true;
+    for (let a = -2; a <= 2 && isMin; a++) for (let b = -2; b <= 2; b++) { const kk = k + a * g.nx + b; if (kk !== k && tend[kk] < t) { isMin = false; break; } }
+    if (isMin) out.push({ lat: la, lon: g.lon0 + i * g.res, tendency: +t.toFixed(1), vorticity: +vort.toFixed(1), wave: true });
+  }
+  return out;
+}
+
 /** Tiefzentren als lokale Minima des geglätteten Bodendrucks mit Mindesttiefe. */
 export function findLows(field, g, opts = {}) {
   const o = { ...OCCLUSION_DEFAULTS, ...opts };

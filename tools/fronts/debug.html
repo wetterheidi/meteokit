@@ -595,7 +595,10 @@ function exportGeoJSON() {
 // Eine Linie ist { type, weak, warm, cps }: Typ, gestrichelt, Seite der
 // warmen Luft in Punktreihenfolge ("left"/"right"), Stützpunkte [lat, lon].
 // Gezeichnet wird ein Spline durch die Stützpunkte ("wie Segel").
-const ED = { lines: [], sel: -1, drawing: null, undo: [], layer: null, handles: null, preview: null, loadTok: 0 };
+const ED = { lines: [], sel: -1, drawing: null, undo: [], layer: null, handles: null, preview: null, loadTok: 0, meta: {} };
+// Kennzeichen der geladenen Referenz, die beim Speichern erhalten bleiben
+// (sonst ging z. B. "partial" beim erneuten Speichern verloren).
+const keepMeta = (fc) => { const p = fc?.properties || {}; return { ...(p.partial ? { partial: true } : {}), ...(p.note ? { note: p.note } : {}) }; };
 
 // Centripetaler Catmull-Rom-Spline (keine Schleifen bei ungleichen
 // Abständen), lokal metrisch. seg[k]: Abschnitt, zu dem Punkt k gehört.
@@ -669,6 +672,7 @@ function toGeoJSON() {
       source: "manual", valid_time: F.validTime, fixture: $("fixture").value, model: F.model,
       domain: { latMin: G.lat0, latMax: +(G.lat0 + (G.ny - 1) * G.res).toFixed(4), lonMin: G.lon0, lonMax: +(G.lon0 + (G.nx - 1) * G.res).toFixed(4) },
       created: new Date().toISOString(),
+      ...ED.meta,
     },
     features: ED.lines.map((ln) => ({
       type: "Feature",
@@ -697,21 +701,22 @@ function saveDraft() {
 async function loadManual() {
   const tok = ++ED.loadTok;
   if (ED.drawing) finishDrawing(true);
-  ED.lines = []; ED.sel = -1; ED.undo = [];
-  let draft = null;
+  ED.lines = []; ED.sel = -1; ED.undo = []; ED.meta = {};
+  let draft = null, ref = null;
   try { draft = localStorage.getItem(draftKey()); } catch { /* kein Speicher */ }
+  // Die Referenzdatei auch bei einem Entwurf lesen: ihre Kennzeichen bleiben.
+  try {
+    const r = await fetch(refPath(), { cache: "no-store" });
+    if (r.ok) ref = await r.json();
+  } catch { /* keine Referenz */ }
+  if (tok !== ED.loadTok) return;
+  ED.meta = keepMeta(ref);
   if (draft) {
     ED.lines = JSON.parse(draft);
     setStatus("Entwurf aus dem Browser (nicht als Datei gespeichert).");
-  } else {
-    setStatus("");
-    try {
-      const r = await fetch(refPath(), { cache: "no-store" });
-      if (tok !== ED.loadTok) return;
-      if (r.ok) { ED.lines = fromGeoJSON(await r.json()); setStatus(`Referenz ${refPath()}`); }
-      else setStatus("Keine Referenz für diesen Termin.");
-    } catch { setStatus("Keine Referenz für diesen Termin."); }
-  }
+  } else if (ref) {
+    ED.lines = fromGeoJSON(ref); setStatus(`Referenz ${refPath()}`);
+  } else setStatus("Keine Referenz für diesen Termin.");
   if (tok !== ED.loadTok) return;
   renderManual(); renderHandles(); updateEdButtons(); updateCompare();
 }
@@ -882,7 +887,7 @@ $("edFile").onchange = async () => {
   if (!file) return;
   try {
     const fc = JSON.parse(await file.text());
-    pushUndo(); ED.lines = fromGeoJSON(fc); ED.sel = -1; changed();
+    pushUndo(); ED.lines = fromGeoJSON(fc); ED.meta = keepMeta(fc); ED.sel = -1; changed();
     const vt = fc.properties?.valid_time;
     setStatus(`${file.name} geladen${vt && vt !== F.validTime ? ` – Achtung: Termin ${vt}` : ""}.`);
   } catch (err) { setStatus(`${file.name}: ${err.message}`); }

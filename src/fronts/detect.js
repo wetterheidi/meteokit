@@ -50,7 +50,7 @@ import {
   sampleBilinear, lineLengthKm, distKm,
 } from "./grid.js";
 import { activityFields, assessPoints, activityClass, ACTIVITY_DEFAULTS } from "./activity.js";
-import { findLows, markCentralLows, markOcclusions, ridgeLines, OCCLUSION_DEFAULTS } from "./occlusion.js";
+import { findLows, findWaveLows, markCentralLows, markOcclusions, ridgeLines, OCCLUSION_DEFAULTS } from "./occlusion.js";
 import { closeGaps, smoothFeatures, requireLowLink, junctionToCore, occlusionToPrecip, dropDuplicates } from "./postprocess.js";
 import { precipFronts, PRECIP_FRONT_DEFAULTS } from "./precipfronts.js";
 import { stauFronts } from "./staufronts.js";
@@ -83,6 +83,8 @@ export const DETECT_DEFAULTS = {
   post: {},           // überschreibt POSTPROCESS_DEFAULTS (Lücken, Glättung)
   activitySmoothKm: 300, // Glättung der Aktivität entlang der Linie
   activity: {},       // überschreibt ACTIVITY_DEFAULTS (activity.js)
+  waveLows: false,    // Randtiefs (findWaveLows) als Anker der Anschlussregel
+  wave: {},           // { tendMax, vortMin }
   // Bodenposition: Linien von der Analysefläche auf die Bodenfront schieben.
   // Die 850-hPa-Warmfront liegt 250–450 km vor, die Kaltfront 50–250 km
   // hinter der Bodenfront (Leitfaden) -- beides heißt: zur warmen Seite hin.
@@ -272,9 +274,11 @@ export function detectFronts(field, opts = {}) {
   if (field.sfc) marked = junctionToCore(marked, lows, o.post);
   marked = occlusionToPrecip(marked, af, g, o.post);
   const smoothed = dropDuplicates(smoothFeatures(marked, o.post), o.post);
-  const all = field.sfc ? requireLowLink(smoothed, lows, o.post) : smoothed;
+  // Randtiefs ohne geschlossene Isobare zählen als Anker der Anschlussregel.
+  const waves = o.waveLows && field.sfc ? findWaveLows(field, prev, g, o.wave) : [];
+  const all = field.sfc ? requireLowLink(smoothed, [...lows, ...waves], o.post) : smoothed;
   const out = keepInactive ? all : all.filter((f) => f.properties.activity_class !== "none");
-  return { type: "FeatureCollection", features: out, properties: { params: o, lows, ridges, ridgeSource } };
+  return { type: "FeatureCollection", features: out, properties: { params: o, lows, waves, ridges, ridgeSource } };
 }
 
 // Fronten spannen sich "wie Segel" im Wind auf: Kehrtwenden und scharfe
@@ -389,7 +393,7 @@ function byActivity(piece, ff, af, o, ends, central = []) {
   if (!af) return [{ ...piece, assess: [], activityClass: null }];
   // Punkte am Zentraltief: niedrigere Kontrastschwellen (activity.central).
   const ao = { ...ACTIVITY_DEFAULTS, ...o.activity };
-  const nearC = piece.pts.map((p) => central.some((c) => distKm(p, c) <= ao.centralKm));
+  const nearC = piece.pts.map((p) => central.some((c) => { const d = distKm(p, c); return d <= ao.centralKm && d >= ao.centralMinKm; }));
   const assess = assessPoints(piece.pts, piece.type, ff, af, { ...o.activity, centralMask: nearC });
   const s = cumDist(piece.pts);
   const act = runningMean(assess.map((x) => x.activity), s, o.activitySmoothKm);
