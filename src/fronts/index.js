@@ -15,3 +15,4 @@ export { findLows, markCentralLows, markOcclusions, ridgeLines, OCCLUSION_DEFAUL
 export { closeGaps, smoothFeatures, smoothPolyline, requireLowLink, dropDuplicates, junctionToCore, POSTPROCESS_DEFAULTS } from "./postprocess.js";
 export { precipFronts, PRECIP_FRONT_DEFAULTS } from "./precipfronts.js";
 export { stauFronts, STAU_DEFAULTS } from "./staufronts.js";
+export { frontogenesis } from "./frontogenesis.js";

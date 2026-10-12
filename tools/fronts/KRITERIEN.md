@@ -1115,3 +1115,54 @@ Offen am 12.10.:
   typisiert, Kaltfront nach Süden ohne Anschluss.
 - Zweite, parallele Kaltfront an der Welle; Verlängerung der
   Atlantik-Kaltfront bis 27° N.
+
+Rückmeldung der Projektleitung zu den offenen Punkten (12.10.):
+
+- Okklusion südlich von Island: die Warmluft ist dort schon weit
+  abgehoben. Auf **700 hPa** zeichnet die Automatik die Okklusion.
+- Warmfront über Schottland bis Frankreich: fast besser als die
+  Handanalyse, dort liegt noch ein übersehenes Niederschlagssignal. Die
+  Referenz bleibt unverändert (keine Angleichung an die Automatik).
+- Baltikum: auch hier passt **700 hPa** besser; Referenztief ist das
+  östliche der beiden. Wieder ein Dipoltief, im Bereich der beiden Kerne
+  meist sehr schwer zu analysieren.
+- Zweite Kaltfront an der Welle: die Handanalyse folgt dort deutlich dem
+  Niederschlag.
+- Atlantik-Kaltfront bis 27° N: Kandidat für die Unterscheidung Front /
+  Luftmassengrenze.
+
+Idee daraus (noch nicht umgesetzt): bei alten, okkludierten Systemen die
+Analysefläche 700 hPa heranziehen, weil die Warmluft in 850 hPa schon
+ausgeräumt ist.
+
+### Frontogenese als Anzeige (2026-10-12, Idee der Projektleitung)
+
+Kinematische Frontogenese nach Petterssen auf θw und Wind der
+Analysefläche (beide mit der TFP-Glättung, 90 km), in K/(100 km · 3 h):
+`frontogenesis` in `src/fronts/frontogenesis.js`, Schattierung und
+Tooltip-Mittelwert auf der Debug-Seite. Noch keine Regel.
+
+Erste Messung über alle sechs Referenzen (850 hPa, 5° Randstreifen,
+Ausschlussgebiete ausgenommen; Werte an den Stützpunkten der Linien,
+nicht längengewichtet; „Treffer“ = Referenzlinie innerhalb 150 km):
+
+| Linien | Punkte | P25 | Median | P75 | Anteil > 0 |
+|---|---|---|---|---|---|
+| Referenz Kaltfront | 1540 | −0,02 | 0,04 | 0,14 | 68 % |
+| Referenz Warmfront | 807 | 0,00 | 0,09 | 0,20 | 74 % |
+| Referenz Okklusion | 862 | −0,12 | −0,01 | 0,08 | 45 % |
+| Automatik mit Wetter, Treffer | 1195 | −0,03 | 0,05 | 0,19 | 65 % |
+| Automatik mit Wetter, Fehlalarm | 1018 | 0,00 | 0,08 | 0,21 | 75 % |
+| Automatik ohne Wetter, Treffer | 499 | 0,01 | 0,07 | 0,12 | 82 % |
+| Automatik ohne Wetter, Fehlalarm | 3821 | −0,01 | 0,02 | 0,07 | 65 % |
+
+Befund: Auf ganzen Linien trennt die Frontogenese Treffer und Fehlalarme
+nicht; die Werte sind bei 90 km Glättung klein (Median unter
+0,1 K/(100 km · 3 h)). Physikalisch stimmig ist, dass Okklusionen im
+Mittel frontolytisch sind (alternde Systeme). Am 12.10. örtlich:
+die zweite, parallele Kaltfront an der Welle (−0,05) und der
+Warmfront-Haken am Neufundlandtief (−0,1) sind frontolytisch, die
+Verlängerung der Atlantik-Kaltfront nach Südwesten aber frontogenetisch
+(0,1–0,2) -- sie lässt sich so nicht abschneiden. Ein Einsatz käme eher
+örtlich in Frage (Doppellinien, Haken), nicht als Kriterium für ganze
+Linien. Bewertung auf der Debug-Seite durch die Projektleitung steht aus.

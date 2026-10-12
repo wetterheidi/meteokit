@@ -367,6 +367,10 @@ die beide haben. Fronten werden mit den üblichen Symbolen gezeichnet (Okklusion
 stehen zur Wahl:
 
 - θe, θw, T, |∇θw|, TFP
+- Frontogenese nach Petterssen (`frontogenesis` in `src/fronts/frontogenesis.js`,
+  aus θw und Wind der Analysefläche mit derselben Glättung, K/(100 km · 3 h);
+  rot Frontogenese, blau Frontolyse). Der Tooltip einer Front zeigt den
+  Mittelwert entlang der Linie. Bisher nur Anzeige, keine Regel
 - 3-h-Drucktendenz
 - Schichtdicke 500/1000 hPa
 - Niederschlag

@@ -61,6 +61,7 @@
     <option value="T">T [°C]</option>
     <option value="grad">|∇θw| [K/100 km]</option>
     <option value="tfp">TFP [K/(100 km)²]</option>
+    <option value="fg">Frontogenese [K/(100 km · 3 h)]</option>
     <option value="tend">Drucktendenz 3 h [hPa]</option>
     <option value="precip">Niederschlag [mm/h]</option>
     <option value="cloud">Gesamtbewölkung [%]</option>
@@ -153,6 +154,7 @@ import { gaussianSmooth, gradient, isolineSegments, chainSegments, sampleBilinea
 import { compareFronts, fcToLines } from "./compare.js";
 import { detectFronts, frontFields, DETECT_DEFAULTS } from "../../src/fronts/detect.js";
 import { ridgeLines } from "../../src/fronts/occlusion.js";
+import { frontogenesis } from "../../src/fronts/frontogenesis.js";
 import { fieldAt, mergeFields } from "../../src/fronts/field.js";
 
 const $ = (id) => document.getElementById(id);
@@ -172,6 +174,8 @@ const SCALES = {
   T: { min: -24, max: 24, step: 2, stops: STOPS },
   grad: { min: 0, max: 6, step: 0.5, stops: GRAD_STOPS },
   tfp: { min: -1, max: 1, step: 0.1, stops: ["#2166ac", "#92c5de", "#f7f7f7", "#f4a582", "#b2182b"] },
+  // Petterssen, auf θw der Analysefläche: rot Frontogenese, blau Frontolyse.
+  fg: { min: -1, max: 1, step: 0.1, stops: ["#2166ac", "#92c5de", "#f7f7f7", "#f4a582", "#b2182b"] },
   // Oberflächen- bzw. 700-hPa-Felder: keine 850-Maske (surface: true).
   tend: { min: -4, max: 4, step: 0.5, stops: ["#b2182b", "#f4a582", "#f7f7f7", "#92c5de", "#2166ac"], surface: true },
   precip: { min: 0, max: 4, step: 0.2, stops: ["#ffffff", "#c7e9c0", "#41ab5d", "#006d2c", "#08306b"], surface: true },
@@ -210,7 +214,7 @@ fetch("https://cdn.jsdelivr.net/npm/world-atlas@2.0.2/countries-50m.json")
   .catch((err) => console.warn("Grenzen nicht geladen:", err));
 
 let F = null, G = null, TH = null, overlay = null, isoLayer = null, windLayer = null, derived = null;
-let frontLayer = null, fronts = null, FF = null, CASE = null, isobarLayer = null, wind10Layer = null;
+let frontLayer = null, fronts = null, FF = null, FG = null, CASE = null, isobarLayer = null, wind10Layer = null;
 
 // Fixture v1 (ein Termin, eine Fläche) in die v2-Form heben, damit alles
 // über fieldAt() läuft.
@@ -328,7 +332,7 @@ function recompute() {
     ...surfaceDerived(),
   };
   runDetection(false);
-  derived.tfp = FF.TFP;
+  derived.tfp = FF.TFP; derived.fg = FG;
   drawField(); drawIsolines(); drawIsobars(); drawWind(); drawWind10(); drawFronts();
 }
 
@@ -454,6 +458,7 @@ function runDetection(redraw = true) {
   if (!F) return;
   const o = detectOpts();
   FF = frontFields(F, o);
+  FG = frontogenesis(FF);
   const n = Number($("stepSel").value);
   const prev = n > 0 && CASE.stepH === 3 ? fieldAt(CASE, n - 1, F.pressure) : undefined;
   fronts = detectFronts(F, { ...o, prev, keepInactive: true });
@@ -461,8 +466,18 @@ function runDetection(redraw = true) {
   $("nFronts").textContent = fronts.features[0]?.properties.activity_class != null
     ? `${cnt("active")} aktiv, ${cnt("weak")} schwach, ${cnt("none")} ohne Wetter`
     : `${fronts.features.length} Linien (ohne Bewertung)`;
-  if (redraw) { derived.tfp = FF.TFP; drawFronts(); if ($("fieldSel").value === "tfp") drawField(); }
+  if (redraw) { derived.tfp = FF.TFP; derived.fg = FG; drawFronts(); if (["tfp", "fg"].includes($("fieldSel").value)) drawField(); }
   updateCompare();
+}
+
+// Mittlere Frontogenese entlang einer Linie ([lat, lon]-Punkte), für Tooltips.
+// Gibt sie für die verschobene (Boden-)Lage aus; Frontogenese im 90-km-Feld
+// ist breit genug, dass der Versatz kaum zählt.
+function fgAlong(ll) {
+  if (!FG) return "–";
+  let s = 0, c = 0;
+  for (const [la, lo] of ll) { const x = sampleBilinear(FG, G, la, lo); if (Number.isFinite(x)) { s += x; c++; } }
+  return c ? (s / c).toFixed(2) : "–";
 }
 
 // Frontsymbole in km-Geometrie um einen Punkt (lat, lon): t = Tangente,
@@ -537,6 +552,7 @@ function drawFronts() {
         + (pr.bridge ? "<br><b>Brücke</b>: ohne Wetter, verbindet die Front mit dem Tief (frontolytisch)" : "")
         + (pr.duplicate ? "<br><b>Doppellinie</b> neben einer stärkeren Front (entfällt)" : "")
         + `<br>|∇θw| ${pr.gradient}  TFP ${pr.tfp}  Querwind ${pr.cross_wind} m/s`
+        + `<br>Frontogenese Ø ${fgAlong(ll)} K/(100 km · 3 h)`
         + (cr ? `<br>ΔT850 ${cr.contrast_k} K  Rinne ${cr.trough}  Konv. ${cr.convergence}  Vort. ${cr.vorticity}`
           + `<br>Tendenzsprung ${cr.tendency_jump} hPa/3h  RR ${cr.precip} mm/h  tiefe Wolken ${cr.cloud_low} %  w700 ${cr.w700} cm/s`
           + `<br>Rinne ~${cr.sfc_offset_km} km zur warmen Seite` + (pr.surface_offset_km != null ? `, verschoben um ${pr.surface_offset_km} km` : "") : "");
