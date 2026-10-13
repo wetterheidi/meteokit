@@ -861,7 +861,15 @@ export function ridgeLines(values, g, opts = {}, lambdaMin = null) {
 // zellweise Ausrichtung der Eigenvektoren an Vorzeichenwechseln keine
 // bitgleichen Kreuzungspunkte liefert und chainSegments dort abreißt.
 function joinLines(lines, tolKm) {
+  // Ergebnis wie "immer das erste passende Paar (a < b, Enden in der
+  // Reihenfolge Ende/Anfang) zusammenfügen, dann von vorn suchen". Statt nach
+  // jedem Zusammenfügen alle Paare neu zu prüfen (bei vielen kurzen Stücken,
+  // z. B. Knicklinien auf dem großen Gebiet, Minuten), werden nur Paare mit
+  // nahen Enden vorgemerkt; nach dem Zusammenfügen ändert sich allein die
+  // neue Linie, nur ihre Paare werden neu geprüft. Die Kennung einer Linie ist
+  // ihr ursprünglicher Index (die Reihenfolge bleibt beim Löschen erhalten).
   const ls = lines.map((l) => l.slice());
+  const alive = ls.map(() => true), ver = ls.map(() => 0);
   const endDir = (l, atEnd) => {
     // Richtung, in die die Linie an diesem Ende hinausläuft (über ~100 km).
     const n = l.length;
@@ -870,29 +878,67 @@ function joinLines(lines, tolKm) {
     while (q + st >= 0 && q + st < n && s < 100) { s += distKm(l[q], l[q + st]); q += st; }
     return unitV(vecKm(l[q], l[atEnd ? n - 1 : 0]));
   };
-  for (let merged = true; merged;) {
-    merged = false;
-    outer: for (let a = 0; a < ls.length; a++) {
-      for (let b = a + 1; b < ls.length; b++) {
-        for (const ea of [true, false]) {
-          for (const eb of [true, false]) {
-            const pa = ea ? ls[a][ls[a].length - 1] : ls[a][0];
-            const pb = eb ? ls[b][ls[b].length - 1] : ls[b][0];
-            if (distKm(pa, pb) > tolKm) continue;
-            // Weiterlaufen: Richtung aus a heraus muss zur Richtung in b hinein passen.
-            if (dotV(endDir(ls[a], ea), unitV(vecKm(pb, eb ? ls[b][0] : ls[b][ls[b].length - 1]))) < 0) continue;
-            const A = ea ? ls[a] : ls[a].slice().reverse();
-            const B = eb ? ls[b].slice().reverse() : ls[b];
-            ls[a] = [...A, ...B];
-            ls.splice(b, 1);
-            merged = true;
-            break outer;
-          }
-        }
+  const endPt = (l, atEnd) => (atEnd ? l[l.length - 1] : l[0]);
+  // Abstand nach Breite allein ist eine untere Schranke des Großkreisabstands.
+  const latKm = (p, q) => Math.abs(p[0] - q[0]) * DEG * 6371;
+  const near = (a, b) => {
+    for (const ea of [true, false]) for (const eb of [true, false]) {
+      const pa = endPt(ls[a], ea), pb = endPt(ls[b], eb);
+      if (latKm(pa, pb) <= tolKm + 1 && distKm(pa, pb) <= tolKm) return true;
+    }
+    return false;
+  };
+  // Vorgemerkte Paare als Min-Heap nach (a, b), mit Versionen der Linien.
+  const heap = [], N = ls.length;
+  const keyOf = (e) => e.a * N + e.b;
+  const push = (e) => {
+    heap.push(e);
+    for (let i = heap.length - 1; i > 0;) {
+      const p = (i - 1) >> 1;
+      if (keyOf(heap[p]) <= keyOf(heap[i])) break;
+      [heap[p], heap[i]] = [heap[i], heap[p]]; i = p;
+    }
+  };
+  const pop = () => {
+    const top = heap[0], last = heap.pop();
+    if (heap.length) {
+      heap[0] = last;
+      for (let i = 0; ;) {
+        const l = 2 * i + 1, r = l + 1;
+        let m = i;
+        if (l < heap.length && keyOf(heap[l]) < keyOf(heap[m])) m = l;
+        if (r < heap.length && keyOf(heap[r]) < keyOf(heap[m])) m = r;
+        if (m === i) break;
+        [heap[m], heap[i]] = [heap[i], heap[m]]; i = m;
       }
     }
+    return top;
+  };
+  const mark = (a, b) => { if (near(a, b)) push({ a, b, va: ver[a], vb: ver[b] }); };
+  for (let a = 0; a < N; a++) for (let b = a + 1; b < N; b++) mark(a, b);
+  while (heap.length) {
+    const { a, b, va, vb } = pop();
+    if (!alive[a] || !alive[b] || ver[a] !== va || ver[b] !== vb) continue; // veraltet
+    let joined = false;
+    for (const ea of [true, false]) {
+      for (const eb of [true, false]) {
+        const pa = endPt(ls[a], ea), pb = endPt(ls[b], eb);
+        if (distKm(pa, pb) > tolKm) continue;
+        // Weiterlaufen: Richtung aus a heraus muss zur Richtung in b hinein passen.
+        if (dotV(endDir(ls[a], ea), unitV(vecKm(pb, eb ? ls[b][0] : ls[b][ls[b].length - 1]))) < 0) continue;
+        const A = ea ? ls[a] : ls[a].slice().reverse();
+        const B = eb ? ls[b].slice().reverse() : ls[b];
+        ls[a] = [...A, ...B];
+        alive[b] = false; ver[a]++;
+        joined = true;
+        break;
+      }
+      if (joined) break;
+    }
+    // Neue Linie a: ihre Paare mit allen übrigen neu vormerken.
+    if (joined) for (let c = 0; c < N; c++) if (c !== a && alive[c]) mark(Math.min(a, c), Math.max(a, c));
   }
-  return ls;
+  return ls.filter((_, i) => alive[i]);
 }
 
 const vecKm = (a, b) => [(b[1] - a[1]) * KM_PER_DEG * Math.cos(((a[0] + b[0]) / 2) * DEG), (b[0] - a[0]) * KM_PER_DEG];
