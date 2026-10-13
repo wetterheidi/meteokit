@@ -310,6 +310,22 @@ node tools/fronts/fetch-case.mjs --model icon_global --bbox 25,78,-80,60 \
 Debug-Seite und `compare.mjs` setzen eine ICON-EU-Fixture mit der
 ICON-Global-Fixture gleichen Namens zusammen.
 
+**Höhenwind** (seit 2026-10-12, Versuch): `--upper` holt nur 500 hPa
+(T, q, u, v, w) aus den oberen Modellleveln (ICON-EU 36–54, ICON Global
+84–100), ohne Oberfläche und Schichtdicke, nach
+`fixtures/<model>_upper_<Name>.json.gz` (gleiches Raster wie die Fixture
+gleichen Namens; rund 10 s je Termin bei ICON-EU, 0,8 MB je Fall). Die
+Debug-Seite hängt die Fläche als `levels[500]` an die Termine, für die
+Vorticity-Advektion. Die Dateien liegen vorerst nur lokal (`.gitignore`),
+bis entschieden ist, ob der Versuch etwas bringt; wer sie braucht, holt sie
+mit den Befehlen unten neu.
+
+```bash
+node tools/fronts/fetch-case.mjs --upper --start 2026-10-11T21:00 --end 2026-10-12T12:00 --name 2026-10-12
+node tools/fronts/fetch-case.mjs --upper --model icon_global --bbox 25,78,-80,60 \
+  --start 2026-10-11T21:00 --end 2026-10-12T12:00 --name 2026-10-12
+```
+
 **Dauer** (gemessen 2026-10-11): ein Termin rund 150 Variablen je Punkt
 (Level 50–70 bzw. 96–120 plus Oberfläche und Druck der Level für die
 Schichtdicke). ICON-EU (137×81 Punkte) braucht etwa **11 s**, ICON Global
@@ -320,8 +336,9 @@ Termin geholt. Am 2026-10-09 dauerte ein ICON-EU-Termin noch 3 min; der
 Server ist seither deutlich schneller. Damit ist eine Vorberechnung im Cron
 über Modelllevel machbar (rund 40 s je Termin für beide Modelle); die
 Messung schwankt aber mit dem Serverausbau. ICON Global gibt es nur auf
-dem eigenen Server, nicht auf dem Ausweichserver. Der Server hält nur etwa
-eine Woche Historie, Fälle also zeitnah sichern.
+dem eigenen Server, nicht auf dem Ausweichserver. Der Server hält die
+Historie nur begrenzt (Stand 2026-10-12: zurück bis 29.09., rund zwei
+Wochen), Fälle also zeitnah sichern.
 
 Format v2:
 
@@ -351,6 +368,7 @@ Vorhandene Fälle:
 | `icon_eu_2026-10-10.json.gz` | 10.10. 00–09 UTC, 3-stündlich | 00–06 UTC Analyse, 09 UTC +3 h. Lehrbuchnahe Tiefs: Finnland-/Russlandtief, Ostseewelle mit Skagerraktief, Nordseetief, Wellen auf der Atlantikfront, Tief über Tunesien. Vergleichskarten: DWD, KNMI, GeoSphere 06 UTC; Handanalyse 06 UTC (Skagerrak- und Russlandtief) |
 | `icon_eu_2026-10-12.json.gz` | 11.10. 21 UTC – 12.10. 12 UTC, 3-stündlich | alle Termine +0 h (abgerufen 12.10.). Blindtest ohne vorherige Abstimmung: Hoch über Mitteleuropa, Tiefs vor Grönland und über dem Baltikum. Handanalyse 06 UTC folgt |
 | `icon_global_<Name>.json.gz` | wie die ICON-EU-Fixture gleichen Namens | 25–78° N, 80° W–60° E (281×107), alle Termine +0 h (abgerufen 12.10.), für die Zusammensetzung |
+| `icon_eu_upper_<Name>.json.gz`, `icon_global_upper_<Name>.json.gz` | wie die Fixture gleichen Namens | nur 500 hPa (T, q, u, v, w), abgerufen 12.10. für alle sechs Fälle; Versuch zur Vorticity-Advektion, zusammen rund 12 MB, nur lokal (nicht im Repo) |
 | `icon_eu_850_2026100900_an.json` u. a. | ein Termin | Format v1, nur 850 hPa, aus dem Spike. Die Debug-Seite liest sie weiterhin |
 
 ## Debug-Seite
@@ -371,6 +389,11 @@ stehen zur Wahl:
   aus θw und Wind der Analysefläche mit derselben Glättung, K/(100 km · 3 h);
   rot Frontogenese, blau Frontolyse). Der Tooltip einer Front zeigt den
   Mittelwert entlang der Linie. Bisher nur Anzeige, keine Regel
+- Zyklogenetische Hinweise (`src/fronts/cyclogenesis.js`, bisher nur
+  Anzeige): Vorticity-Advektion und Vorticity in 500 hPa aus dem echten
+  Wind (nur mit Höhenwind-Fixture), 3-h-Änderung der Vorticity der
+  gewählten Fläche, Z500 (Z1000 hypsometrisch aus dem Bodendruck plus
+  Schichtdicke; auch als Isolinien)
 - 3-h-Drucktendenz
 - Schichtdicke 500/1000 hPa
 - Niederschlag

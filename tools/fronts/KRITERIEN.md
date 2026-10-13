@@ -1166,3 +1166,46 @@ Verlängerung der Atlantik-Kaltfront nach Südwesten aber frontogenetisch
 (0,1–0,2) -- sie lässt sich so nicht abschneiden. Ein Einsatz käme eher
 örtlich in Frage (Doppellinien, Haken), nicht als Kriterium für ganze
 Linien. Bewertung auf der Debug-Seite durch die Projektleitung steht aus.
+
+### Zyklogenetische Hinweise an Wellen (2026-10-12, Idee der Projektleitung)
+
+Frage: herrscht an Wellen PVA vor, oder gibt es andere zyklogenetische
+Hinweise? Dafür 500 hPa aus den Modellleveln (`fetch-case.mjs --upper`,
+Fixtures `<model>_upper_<Name>`, alle sechs Fälle), Rechnung in
+`src/fronts/cyclogenesis.js`, Anzeige auf der Debug-Seite.
+
+Gemessen an allen Druckfallminima (≤ −2 hPa/3 h mit Wirbel) und Tiefs der
+sechs Referenztermine (Maxima im Umkreis):
+
+| System | PVA 500 (10⁻⁹ s⁻², 500 km) | Δζ850 ortsfest (10⁻⁵ s⁻¹/3 h, 200 km) | Δζ mitgeführt | w700 (cm/s, 300 km) |
+|---|---|---|---|---|
+| 12.10. Teiltief 50° N 18° W (entsteht) | 3,9 | 9,6 | 1,3 | 35 |
+| 05.10. Randtief vor Norwegen | 7,1 | 5,8 | 1,8 | 73 |
+| 10.10. Welle 48,5° N 29,5° W | 3,7 | 10,9 | 1,3 | 80 |
+| 09.10. junges Tief 39° N 50° W | 0,4 | 5,8 | 0,6 | 111 |
+| 06.10. Atlantikwelle 54° N 45,5° W | 7,5 | 9,4 | −0,6 | 47 |
+| 05.10. Zentraltief 975 hPa | 5,2 | 0,4 | 0,4 | 8 |
+| 12.10. Grönlandtief 961 hPa | 2,7 | 1,2 | −0,3 | 25 |
+| 09.10. Ostseetief 987 hPa | 8,1 | 5,3 | −0,8 | 24 |
+| 06.10. Barentssee-Tief 966 hPa | 1,7 | 3,2 | 2,0 | 24 |
+
+Befund:
+
+- **PVA** (echter Wind, 150 km geglättet) trennt entstehende Wellen nicht
+  von reifen Tiefs: meist 3–8 an beiden, das junge Tief am 09.10. hat
+  keine (0,4; mit 111 cm/s Hebung eher diabatisch getrieben). Gegenüber
+  der Näherung aus Bodendruck und Schichtdicke steigt der Wert am
+  Teiltief 12.10. nur von 2,5 auf 3,9.
+- **Ortsfeste Vorticity-Zunahme** sah zunächst gut aus (entstehende Wellen
+  5,8–10,9, Zentraltief 0,4), ist aber großteils Verlagerung: Folgt man
+  dem Wirbelmaximum (Maximum im Umkreis 300 km jetzt minus 400 km vor
+  3 h), bleiben überall nur −1 bis +2 -- 3 h sind für ein Entwicklungssignal
+  zu kurz.
+- Am besten trennt weiterhin, was schon im Einsatz ist: Druckfall mit
+  zyklonalem Wirbel über einem Druckminimum (`genesis`).
+
+Folgerung: keine neue Regel. Die Felder bleiben als Anzeige. Nächster
+Gedanke wäre ein längeres Zeitfenster (Vertiefung bzw. Wirbelzunahme über
+6–12 h entlang der Zugbahn), wie die Projektleitung Randtiefs aus der
+Historie mehrerer Termine erkennt; die Fixtures enthalten dafür mehrere
+Termine.

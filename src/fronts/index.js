@@ -16,3 +16,4 @@ export { closeGaps, smoothFeatures, smoothPolyline, requireLowLink, dropDuplicat
 export { precipFronts, PRECIP_FRONT_DEFAULTS } from "./precipfronts.js";
 export { stauFronts, STAU_DEFAULTS } from "./staufronts.js";
 export { frontogenesis } from "./frontogenesis.js";
+export { vorticityAdvection, vorticityTendency, geopotential500 } from "./cyclogenesis.js";

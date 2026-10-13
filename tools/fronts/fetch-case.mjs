@@ -4,11 +4,17 @@
  * Druckflächen (aus ICON-Modellleveln interpoliert) und Oberflächenfelder,
  * als gzip-komprimierte JSON-Fixture (Format v2, s. README). Mehrere
  * Termine braucht es für Drucktendenz und Frontverlagerung. Der Server hält
- * nur rund eine Woche Historie, also Fälle zeitnah sichern.
+ * Modellleveldaten nur begrenzt vor (Stand 12.10.: zurück bis 29.09.), also
+ * Fälle zeitnah sichern.
  *
  *   node tools/fronts/fetch-case.mjs --start 2026-10-08T18:00 --end 2026-10-09T12:00 \
  *     [--step 3] [--model icon_eu] [--res 0.5] [--pressures 850,700] \
- *     [--bbox latMin,latMax,lonMin,lonMax] [--name 2026-10-09] [--out …json.gz]
+ *     [--bbox latMin,latMax,lonMin,lonMax] [--name 2026-10-09] [--out …json.gz] [--upper]
+ *
+ * --upper holt nur Höhenflächen (Default 500 hPa: T, q, u, v, w) aus den
+ * oberen Modellleveln, ohne Oberfläche und Schichtdicke, nach
+ * fixtures/<model>_upper_<name>.json.gz -- Ergänzung zur Fixture gleichen
+ * Namens (gleiches Raster), z. B. für die Vorticity-Advektion (PVA).
  */
 
 import { writeFile, mkdir } from "node:fs/promises";
@@ -27,12 +33,17 @@ const start = args.start, end = args.end || args.start;
 if (!start) { console.error("--start YYYY-MM-DDTHH:00 fehlt"); process.exit(1); }
 const stepH = Number(args.step || 3);
 const res = Number(args.res || 0.5);
-const pressures = (args.pressures || "850,700").split(",").map(Number);
+const upper = "upper" in args;
+const pressures = (args.pressures || (upper ? "500" : "850,700")).split(",").map(Number);
+// Levelbereich für 500 hPa (Stichproben in field.js: ICON-EU Level 48 ≈ 530,
+// 38 ≈ 350 hPa; ICON Global 96 ≈ 550–585, 88 ≈ 390–430 hPa), mit Reserve für
+// tiefe Kerne, in denen die Fläche tiefer liegt.
+const UPPER_LEVELS = { icon_eu: [36, 54], icon_global: [84, 100] };
 // Default: ICON-EU-Gebiet in Europa (West- und Südrand = Modellrand), Raster
 // auf das 0,0625°-Gitter ausgerichtet, damit "nearest" exakt trifft.
 const [latMin, latMax, lonMin, lonMax] = (args.bbox || "30,70,-23.5,44.5").split(",").map(Number);
 const name = args.name || start.slice(0, 10);
-const out = args.out || `tools/fronts/fixtures/${model}_${name}.json.gz`;
+const out = args.out || `tools/fronts/fixtures/${model}${upper ? "_upper" : ""}_${name}.json.gz`;
 
 const times = [];
 for (let t = Date.parse(`${start}Z`); t <= Date.parse(`${end}Z`); t += stepH * 3600e3) {
@@ -49,8 +60,8 @@ const t0 = Date.now();
 let heights = null; // Levelhöhen: zeitlich konstant, nur beim ersten Termin holen
 for (const time of times) {
   const f = await fetchPlaneField({
-    model, bbox: { latMin, latMax, lonMin, lonMax }, res, time, pressures, surface: DEFAULT_SURFACE,
-    thickness: true, heights,
+    model, bbox: { latMin, latMax, lonMin, lonMax }, res, time, pressures,
+    ...(upper ? { surface: [], thickness: false, levels: UPPER_LEVELS[model] } : { surface: DEFAULT_SURFACE, thickness: true, heights }),
     onProgress: (d, n) => process.stderr.write(`\r${time}: ${d}/${n} Blöcke   `),
   });
   heights = f.heights;
@@ -65,16 +76,18 @@ for (const time of times) {
   // Vorlauf relativ zum letzten Lauf beim Abruf: <= 0 heißt, die Stunde
   // stammt aus einem Lauf zu oder kurz vor diesem Termin (ICON-EU 3-stündlich).
   const leadH = runInit ? Math.round((Date.parse(`${time}Z`) / 1000 - runInit) / 3600) : null;
-  steps.push({
-    validTime: time, leadH: leadH != null && leadH > 0 ? leadH : 0,
-    levels, psfc: round(f.psfc, DIGITS.psfc), u10: round(f.u10, 2), v10: round(f.v10, 2), sfc,
-    thickness: round(f.thickness, 0),
-  });
+  steps.push(upper
+    ? { validTime: time, leadH: leadH != null && leadH > 0 ? leadH : 0, levels }
+    : {
+      validTime: time, leadH: leadH != null && leadH > 0 ? leadH : 0,
+      levels, psfc: round(f.psfc, DIGITS.psfc), u10: round(f.u10, 2), v10: round(f.v10, 2), sfc,
+      thickness: round(f.thickness, 0),
+    });
 }
 process.stderr.write(`\n${((Date.now() - t0) / 1000).toFixed(1)} s\n`);
 
 const fixture = {
-  version: 2, model, res, lat0: latMin, lon0: lonMin,
+  version: 2, model, ...(upper ? { upper: true } : {}), res, lat0: latMin, lon0: lonMin,
   nx: Math.round((lonMax - lonMin) / res) + 1, ny: Math.round((latMax - latMin) / res) + 1,
   pressures, stepH, times,
   lastRunAtFetch: runInit ? new Date(runInit * 1000).toISOString() : null,

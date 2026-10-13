@@ -7,3 +7,6 @@ docs/Kompendien/
 
 # Rohfassungen der Handanalysen (lokale Ablage); geprüfte Fassungen in tools/fronts/reference/
 docs/Testfronten/
+
+# Höhenwind-Fixtures (500 hPa, Versuch Vorticity-Advektion): vorerst nur lokal
+tools/fronts/fixtures/*_upper_*.json.gz
