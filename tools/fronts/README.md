@@ -523,6 +523,23 @@ Earth über `world-atlas`), keine Kachelkarte und damit kein API-Key. Leaflet,
 `topojson-client` und die Grenzdaten kommen aus dem Netz. Das ist nur für
 diese Debug-Seite so, die Bibliothek selbst hat keine Abhängigkeiten.
 
+**Aufbau** (seit 2026-10-13, Phase 2 von synoptix): Die Seite enthält nur
+noch die Bedienung (Seitenleiste, Laden, URL, Ablage von Entwürfen und
+Referenzen). Zeichnen und Rechnen liegen in `src/fronts/map/`
+(`meteokit/fronts/map`), damit die synoptix-App dieselben Bausteine nutzt:
+
+| Modul | Inhalt |
+|---|---|
+| `scales.js` | Farbskalen der Schattierung (`SCALES`, `colorAt`), Legende |
+| `derive.js` | abgeleitete Felder ohne DOM: θe/θw/T/\|∇θw\| (`thermoDerived`), Tendenz, Niederschlag, w700, Spread, Schichtdicke, Z500, PVA (`caseDerived`), Knicklinien, Mittel entlang einer Linie |
+| `layers.js` | Leaflet-Ebenen: Schattierung, Isolinien, Isobaren, Windpfeile, Fronten mit Symbolen und Tooltip, Tiefs |
+| `editor.js` | Handanalyse: `createFrontEditor` (Zeichnen, Punkte ziehen/einfügen/löschen, Undo, Tastatur), Spline, GeoJSON |
+
+Leaflet wird als Parameter übergeben (wie bei `meteokit/airspace`). Der
+Editor speichert nichts selbst: Er meldet Änderungen über `onChange`, und
+die Seite legt den Entwurf im Browser ab. Beim Umbau war die Seite in 40
+Einstellungen pixelgleich mit dem vorherigen Stand (Canvas-Prüfsummen).
+
 ### Handanalyse und Vergleich
 
 Im Abschnitt „Handanalyse“ der Debug-Seite lassen sich Fronten zeichnen

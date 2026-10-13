@@ -156,14 +156,17 @@
 
 <script type="module">
 import { thetaFields } from "../../src/fronts/thermo.js";
-import { gaussianSmooth, gradient, isolineSegments, chainSegments, sampleBilinear, distKm } from "../../src/fronts/grid.js";
+import { isolineSegments, chainSegments, sampleBilinear } from "../../src/fronts/grid.js";
 import { compareFronts, fcToLines } from "./compare.js";
 import { detectFronts, frontFields, DETECT_DEFAULTS } from "../../src/fronts/detect.js";
-import { ridgeLines } from "../../src/fronts/occlusion.js";
 import { frontogenesis } from "../../src/fronts/frontogenesis.js";
-import { vorticityAdvection, vorticityTendency, geopotential500 } from "../../src/fronts/cyclogenesis.js";
 import { fieldAt } from "../../src/fronts/field.js";
 import { typedCase, mergeCases, attachUpper } from "../../src/fronts/cases.js";
+import {
+  SCALES, paintScale, scaleTicks, gridOf, prevField, thermoDerived, caseDerived, kinkLines, meanAlong,
+  fieldOverlay, isolineLayer, isobarLayer, windArrows, addAutoFronts, addLows,
+  createFrontEditor, lineFeatures, linesFromGeoJSON,
+} from "../../src/fronts/map/index.js";
 
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -175,46 +178,11 @@ $("sigma").value = DETECT_DEFAULTS.sigmaKm; // Glättung wie die Bibliothek (90 
 $("k1").value = DETECT_DEFAULTS.k1; $("k2").value = DETECT_DEFAULTS.k2;
 $("minLen").value = DETECT_DEFAULTS.minLengthKm; $("windMin").value = DETECT_DEFAULTS.windMin;
 
-// Farbskala angelehnt an die gängigen θe-Karten (violett kalt -> rot warm).
-const STOPS = ["#6a1b9a", "#d81bd0", "#2a2ad0", "#3a78ff", "#6cc8ff", "#3fd0b0",
-  "#3cbf3c", "#a6e03c", "#ffff3c", "#f5a623", "#e0601e", "#c0201e", "#7a0d3c"];
-const GRAD_STOPS = ["#ffffff", "#fff3b0", "#ffc04d", "#f46d25", "#c4161c", "#5a0a2a"];
-const SCALES = {
-  thE: { min: -9, max: 81, step: 3, stops: STOPS },
-  thW: { min: -12, max: 24, step: 1, stops: STOPS },
-  T: { min: -24, max: 24, step: 2, stops: STOPS },
-  grad: { min: 0, max: 6, step: 0.5, stops: GRAD_STOPS },
-  tfp: { min: -1, max: 1, step: 0.1, stops: ["#2166ac", "#92c5de", "#f7f7f7", "#f4a582", "#b2182b"] },
-  // Petterssen, auf θw der Analysefläche: rot Frontogenese, blau Frontolyse.
-  fg: { min: -1, max: 1, step: 0.1, stops: ["#2166ac", "#92c5de", "#f7f7f7", "#f4a582", "#b2182b"] },
-  // Oberflächen- bzw. 700-hPa-Felder: keine 850-Maske (surface: true).
-  tend: { min: -4, max: 4, step: 0.5, stops: ["#b2182b", "#f4a582", "#f7f7f7", "#92c5de", "#2166ac"], surface: true },
-  precip: { min: 0, max: 4, step: 0.2, stops: ["#ffffff", "#c7e9c0", "#41ab5d", "#006d2c", "#08306b"], surface: true },
-  cloud: { min: 0, max: 100, step: 10, stops: ["#ffffff", "#d9d9d9", "#969696", "#525252"], surface: true },
-  cloudLow: { min: 0, max: 100, step: 10, stops: ["#ffffff", "#d9d9d9", "#969696", "#525252"], surface: true },
-  w700: { min: -30, max: 30, step: 2, stops: ["#8c510a", "#d8b365", "#f5f5f5", "#5ab4ac", "#01665e"], surface: true },
-  spread700: { min: 0, max: 20, step: 1, stops: ["#1a9850", "#91cf60", "#ffffbf", "#fee08b", "#d73027"], surface: true },
-  thk: { min: 512, max: 576, step: 4, stops: STOPS, surface: true },
-  // Zyklogenese (cyclogenesis.js): rot PVA bzw. Zunahme, blau NVA bzw. Abnahme.
-  // Höhenwind aus der Fixture <model>_upper_<Name> (fetch-case.mjs --upper).
-  z500: { min: 504, max: 588, step: 4, stops: STOPS, surface: true },
-  pva: { min: -10, max: 10, step: 1, stops: ["#2166ac", "#92c5de", "#f7f7f7", "#f4a582", "#b2182b"], surface: true },
-  zeta500: { min: -15, max: 15, step: 1.5, stops: ["#2166ac", "#92c5de", "#f7f7f7", "#f4a582", "#b2182b"], surface: true },
-  vortTend: { min: -4, max: 4, step: 0.5, stops: ["#2166ac", "#92c5de", "#f7f7f7", "#f4a582", "#b2182b"], surface: true },
-};
-const hex = (h) => [1, 3, 5].map((o) => parseInt(h.slice(o, o + 2), 16));
-function colorAt(scale, value) {
-  const q = Math.floor(value / scale.step) * scale.step; // Bänder wie in Druckkarten
-  const f = Math.min(1, Math.max(0, (q - scale.min) / (scale.max - scale.min)));
-  const x = f * (scale.stops.length - 1), i = Math.min(scale.stops.length - 2, Math.floor(x));
-  const a = hex(scale.stops[i]), b = hex(scale.stops[i + 1]), t = x - i;
-  return a.map((c, n) => Math.round(c + t * (b[n] - c)));
-}
-
 const map = L.map("map", { preferCanvas: true }).setView([52, 8], 4);
 map.createPane("field").style.zIndex = 350;
 map.createPane("geo").style.zIndex = 410;
 map.createPane("lines").style.zIndex = 420;
+const pane = "lines";
 
 // Küsten und Ländergrenzen als Vektorlinien (Natural Earth 1:50 Mio. via
 // world-atlas) statt Kachelkarte -- kein API-Key, und die Felder bleiben wie
@@ -231,7 +199,7 @@ fetch("https://cdn.jsdelivr.net/npm/world-atlas@2.0.2/countries-50m.json")
   .catch((err) => console.warn("Grenzen nicht geladen:", err));
 
 let F = null, G = null, TH = null, overlay = null, isoLayer = null, windLayer = null, derived = null;
-let frontLayer = null, fronts = null, FF = null, FG = null, CASE = null, isobarLayer = null, wind10Layer = null;
+let frontLayer = null, fronts = null, FF = null, FG = null, CASE = null, isobars = null, wind10Layer = null;
 
 // Fixture v1 (ein Termin, eine Fläche) in die v2-Form heben, damit alles
 // über fieldAt() läuft.
@@ -327,7 +295,7 @@ async function load() {
 function selectStep() {
   const n = Number($("stepSel").value), p = Number($("presSel").value);
   F = fieldAt(CASE, n, p);
-  G = { nx: F.nx, ny: F.ny, lat0: F.lat0, lon0: F.lon0, res: F.res };
+  G = gridOf(F);
   TH = thetaFields(F);
   $("meta").textContent = [
     `${F.model}  ${F.pressure} hPa`,
@@ -341,169 +309,50 @@ function selectStep() {
   loadManual();
 }
 
-// Taupunktdifferenz aus T [K], q [kg/kg] und p [hPa] (Magnus wie thermo.js).
-function spread(T, q, p) {
-  const r = q / (1 - q), e = (p * r) / (0.622 + r), l = Math.log(Math.max(e, 1e-4) / 6.112);
-  return T - 273.15 - (243.5 * l) / (17.67 - l);
-}
-
-function surfaceDerived() {
-  const n = Number($("stepSel").value), st = CASE.steps[n], prev = CASE.steps[n - 1];
-  const nan = () => new Float32Array(G.nx * G.ny).fill(NaN);
-  const msl = st.sfc.pressure_msl;
-  const L7 = st.levels[700];
-  return {
-    // 3-h-Tendenz rückwärts (Termin minus Vortermin), wie in der Bodenkarte.
-    tend: msl && prev?.sfc.pressure_msl && CASE.stepH === 3 ? msl.map((x, k) => x - prev.sfc.pressure_msl[k]) : nan(),
-    precip: st.sfc.precipitation || nan(),
-    cloud: st.sfc.cloud_cover || nan(),
-    cloudLow: st.sfc.cloud_cover_low || nan(),
-    w700: L7?.w ? L7.w.map((x) => x * 100) : nan(),
-    spread700: L7 ? L7.T.map((t, k) => spread(t, L7.q[k], 700)) : nan(),
-    msl: msl || nan(),
-    thk: st.thickness ? st.thickness.map((x) => x / 10) : nan(),
-    ...cycloDerived(n, nan),
-  };
-}
-
-// Zyklogenetische Hinweise (cyclogenesis.js): PVA und Vorticity in 500 hPa
-// (falls Höhenwind geladen), Vorticity-Änderung der gewählten Fläche, Z500.
-function cycloDerived(n, nan) {
-  const cur = fieldAt(CASE, n, F.pressure);
-  const va = vorticityAdvection(cur);
-  const prev = n > 0 && CASE.stepH === 3 ? fieldAt(CASE, n - 1, F.pressure) : null;
-  return {
-    z500: geopotential500(cur) || nan(),
-    pva: va?.adv || nan(),
-    zeta500: va?.zeta || nan(),
-    vortTend: (prev && vorticityTendency(cur, prev)) || nan(),
-  };
-}
-
 function recompute() {
   if (!F) return;
   const sigma = Number($("sigma").value);
   $("sigmaVal").textContent = sigma;
-  const thE = gaussianSmooth(TH.thE, G, sigma);
-  const thW = gaussianSmooth(TH.thW, G, sigma);
-  const T = gaussianSmooth(F.T, G, sigma);
-  derived = {
-    thE: thE.map((x) => x - 273.15), thW: thW.map((x) => x - 273.15), T: T.map((x) => x - 273.15),
-    grad: gradient(thW, G).mag,
-    ...surfaceDerived(),
-  };
+  derived = { ...thermoDerived(F, sigma, TH), ...caseDerived(CASE, Number($("stepSel").value), F.pressure) };
   runDetection(false);
   derived.tfp = FF.TFP; derived.fg = FG;
   drawField(); drawIsolines(); drawIsobars(); drawWind(); drawWind10(); drawFronts();
 }
 
-// Raster in Web-Mercator auflösen, damit das Bild-Overlay lagerichtig ist
-// (Leaflet streckt ein ImageOverlay linear in Projektionskoordinaten).
 function drawField() {
-  const key = $("fieldSel").value, scale = SCALES[key], fld = derived[key];
-  const { nx, ny, lat0, lon0, res } = G;
-  const south = lat0 - res / 2, north = lat0 + (ny - 0.5) * res;
-  const west = lon0 - res / 2, east = lon0 + (nx - 0.5) * res;
-  const merc = (lat) => Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI) / 360));
-  const imerc = (y) => (360 / Math.PI) * Math.atan(Math.exp(y)) - 90;
-  const W = nx * 4, H = ny * 6, ys = merc(south), yn = merc(north);
-  const cv = document.createElement("canvas"); cv.width = W; cv.height = H;
-  const ctx = cv.getContext("2d"), img = ctx.createImageData(W, H);
-  const showMask = $("mask").checked;
-  for (let py = 0; py < H; py++) {
-    const lat = imerc(yn - ((py + 0.5) / H) * (yn - ys));
-    const j = Math.min(ny - 1, Math.max(0, Math.round((lat - lat0) / res)));
-    for (let px = 0; px < W; px++) {
-      const lon = west + ((px + 0.5) / W) * (east - west);
-      const i = Math.min(nx - 1, Math.max(0, Math.round((lon - lon0) / res)));
-      const k = j * nx + i, o = (py * W + px) * 4, v = fld[k];
-      if (F.below[k] && !scale.surface) {
-        if (showMask) { img.data.set([110, 110, 110, 170], o); }
-        continue;
-      }
-      if (!Number.isFinite(v)) continue;
-      const [r, g, b] = colorAt(scale, v);
-      img.data.set([r, g, b, 255], o);
-    }
-  }
-  ctx.putImageData(img, 0, 0);
+  const key = $("fieldSel").value, scale = SCALES[key];
   overlay?.remove();
-  overlay = L.imageOverlay(cv.toDataURL(), [[south, west], [north, east]], {
-    pane: "field", opacity: Number($("opacity").value),
+  overlay = fieldOverlay(L, derived[key], G, scale, {
+    below: F.below, showMask: $("mask").checked, pane: "field", opacity: Number($("opacity").value),
   }).addTo(map);
-  overlay.getElement().style.imageRendering = "pixelated";
-  drawLegend(scale);
-}
-
-function drawLegend(scale) {
-  const cv = $("legend").querySelector("canvas"), ctx = cv.getContext("2d");
-  for (let x = 0; x < cv.width; x++) {
-    const v = scale.min + (x / cv.width) * (scale.max - scale.min);
-    ctx.fillStyle = `rgb(${colorAt(scale, v).join(",")})`; ctx.fillRect(x, 0, 1, cv.height);
-  }
-  const n = 6, t = [];
-  for (let s = 0; s <= n; s++) t.push(`<span>${+(scale.min + (s / n) * (scale.max - scale.min)).toFixed(1)}</span>`);
-  $("legend").querySelector(".ticks").innerHTML = t.join("");
+  paintScale($("legend").querySelector("canvas"), scale);
+  $("legend").querySelector(".ticks").innerHTML = scaleTicks(scale).map((t) => `<span>${t}</span>`).join("");
 }
 
 function drawIsolines() {
   isoLayer?.remove(); isoLayer = null;
   const key = $("isoSel").value, step = Number($("isoStep").value);
   if (!key || !(step > 0)) return;
-  const fld = derived[key];
-  let lo = Infinity, hi = -Infinity;
-  for (const x of fld) if (Number.isFinite(x)) { lo = Math.min(lo, x); hi = Math.max(hi, x); }
-  isoLayer = L.layerGroup();
-  for (let lev = Math.ceil(lo / step) * step; lev <= hi; lev += step) {
-    const segs = isolineSegments(fld, G, lev);
-    if (segs.length) L.polyline(segs, { pane: "lines", color: "#333", weight: 0.8, interactive: false }).addTo(isoLayer);
-  }
-  isoLayer.addTo(map);
+  isoLayer = isolineLayer(L, derived[key], G, step, { pane }).addTo(map);
 }
 
 function drawIsobars() {
-  isobarLayer?.remove(); isobarLayer = null;
+  isobars?.remove(); isobars = null;
   if (!$("isobars").checked || !derived.msl.some(Number.isFinite)) return;
-  // Leicht geglättet (60 km, bei 1/2 hPa 40 km), damit Gitterrauschen
-  // keine Zacken erzeugt. Fein aufgelöste Isobaren zeigen die Knicke
-  // schwacher Fronten (Genuatief).
-  const dp = Number($("isoP").value);
-  const msl = gaussianSmooth(derived.msl, G, dp < 5 ? 40 : 60);
-  isobarLayer = L.layerGroup();
-  for (let lev = 950; lev <= 1060; lev += dp) {
-    const segs = isolineSegments(msl, G, lev);
-    const major = lev % 10 === 0, mid = lev % 5 === 0;
-    if (segs.length) L.polyline(segs, { pane: "lines", color: "#000", weight: major ? 1.6 : mid ? 1.1 : 0.6, opacity: mid ? 1 : 0.7, interactive: false }).addTo(isobarLayer);
-  }
-  isobarLayer.addTo(map);
-}
-
-function arrows(u, v, color) {
-  const { nx, ny, lat0, lon0, res } = G, every = 3, s = 0.04; // Grad je m/s
-  const lines = [];
-  for (let j = 0; j < ny; j += every) for (let i = 0; i < nx; i += every) {
-    const k = j * nx + i, uu = u[k], vv = v[k];
-    if (!Number.isFinite(uu) || !Number.isFinite(vv)) continue;
-    const lat = lat0 + j * res, lon = lon0 + i * res, c = Math.cos((lat * Math.PI) / 180);
-    const tip = [lat + vv * s, lon + (uu * s) / c];
-    const ang = Math.atan2(vv, uu), hl = 0.35 * Math.hypot(uu, vv) * s;
-    const head = (da) => [tip[0] - hl * Math.sin(ang + da), tip[1] - (hl * Math.cos(ang + da)) / c];
-    lines.push([[lat, lon], tip], [head(0.5), tip, head(-0.5)]);
-  }
-  return L.polyline(lines, { pane: "lines", color, weight: 1, interactive: false });
+  isobars = isobarLayer(L, derived.msl, G, Number($("isoP").value), { pane }).addTo(map);
 }
 
 function drawWind10() {
   wind10Layer?.remove(); wind10Layer = null;
   if (!$("wind10").checked || !F.u10) return;
-  wind10Layer = arrows(F.u10, F.v10, "#0a6").addTo(map);
+  wind10Layer = windArrows(L, F.u10, F.v10, G, { color: "#0a6", pane }).addTo(map);
 }
 
 function drawWind() {
   windLayer?.remove(); windLayer = null;
   if (!$("wind").checked) return;
   const mask = (a) => a.map((x, k) => (F.below[k] ? NaN : x));
-  windLayer = arrows(mask(F.u), mask(F.v), "#000").addTo(map);
+  windLayer = windArrows(L, mask(F.u), mask(F.v), G, { color: "#000", pane }).addTo(map);
 }
 
 function detectOpts() {
@@ -520,9 +369,7 @@ function runDetection(redraw = true) {
   const o = detectOpts();
   FF = frontFields(F, o);
   FG = frontogenesis(FF);
-  const n = Number($("stepSel").value);
-  const prev = n > 0 && CASE.stepH === 3 ? fieldAt(CASE, n - 1, F.pressure) : undefined;
-  fronts = detectFronts(F, { ...o, prev, keepInactive: true });
+  fronts = detectFronts(F, { ...o, prev: prevField(CASE, Number($("stepSel").value), F.pressure), keepInactive: true });
   const cnt = (c) => fronts.features.filter((f) => f.properties.activity_class === c).length;
   $("nFronts").textContent = fronts.features[0]?.properties.activity_class != null
     ? `${cnt("active")} aktiv, ${cnt("weak")} schwach, ${cnt("none")} ohne Wetter`
@@ -531,192 +378,48 @@ function runDetection(redraw = true) {
   updateCompare();
 }
 
-// Mittlere Frontogenese entlang einer Linie ([lat, lon]-Punkte), für Tooltips.
-// Gibt sie für die verschobene (Boden-)Lage aus; Frontogenese im 90-km-Feld
-// ist breit genug, dass der Versatz kaum zählt.
-function fgAlong(ll) {
-  if (!FG) return "–";
-  let s = 0, c = 0;
-  for (const [la, lo] of ll) { const x = sampleBilinear(FG, G, la, lo); if (Number.isFinite(x)) { s += x; c++; } }
-  return c ? (s / c).toFixed(2) : "–";
-}
-
-// Frontsymbole in km-Geometrie um einen Punkt (lat, lon): t = Tangente,
-// nrm = Normale zur Symbolseite, beide als Einheitsvektoren (Ost, Nord).
-const KM_PER_DEG = 111.2;
-const offset = (p, dxKm, dyKm) => [p[0] + dyKm / KM_PER_DEG, p[1] + dxKm / (KM_PER_DEG * Math.cos((p[0] * Math.PI) / 180))];
-function triangle(p, t, nrm, size) {
-  return [offset(p, -t[0] * size * 0.6, -t[1] * size * 0.6), offset(p, t[0] * size * 0.6, t[1] * size * 0.6), offset(p, nrm[0] * size, nrm[1] * size)];
-}
-function semicircle(p, t, nrm, size) {
-  const r = size * 0.55, pts = [];
-  for (let a = 0; a <= Math.PI + 1e-9; a += Math.PI / 10) {
-    pts.push(offset(p, r * (Math.cos(a) * t[0] + Math.sin(a) * nrm[0]), r * (Math.cos(a) * t[1] + Math.sin(a) * nrm[1])));
-  }
-  return pts;
-}
-
-// Eine Front mit Symbolen in `layer` zeichnen. pr: front_type,
-// activity_class, warm_side, motion_side (wie detectFronts).
-const RED = "#d7191c", BLUE = "#1f4fd8", PURPLE = "#8e24aa";
-function addFront(layer, ll, pr, { tip, onClick, bubbling = true } = {}) {
-  const base = { pane: "lines", weight: 3, bubblingMouseEvents: bubbling, ...(pr.activity_class === "weak" ? { dashArray: "10 8" } : {}) };
-  let main;
-  if (pr.front_type === "stationary") {
-    main = L.polyline(ll, { ...base, color: RED }).addTo(layer);
-    L.polyline(ll, { ...base, color: BLUE, dashArray: "14 14", interactive: false }).addTo(layer);
-  } else {
-    const color = pr.front_type === "cold" ? BLUE : pr.front_type === "occluded" ? PURPLE : RED;
-    main = L.polyline(ll, { ...base, color }).addTo(layer);
-  }
-  if (tip) main.bindTooltip(tip);
-  if (onClick) main.on("click", onClick);
-  // Symbole alle ~250 km, Seite aus motion_side bzw. warm_side.
-  const sideSign = (side) => (side === "left" ? 1 : -1);
-  let acc = 125, n = 0;
-  for (let m = 1; m < ll.length; m++) {
-    const a = ll[m - 1], b = ll[m], c = Math.cos((a[0] * Math.PI) / 180);
-    const dx = (b[1] - a[1]) * KM_PER_DEG * c, dy = (b[0] - a[0]) * KM_PER_DEG, d = Math.hypot(dx, dy);
-    if (!(d > 0)) continue;
-    const t = [dx / d, dy / d], left = [-t[1], t[0]];
-    for (; acc <= d; acc += 250, n++) {
-      const p = [a[0] + (b[0] - a[0]) * (acc / d), a[1] + (b[1] - a[1]) * (acc / d)];
-      let kind = pr.front_type, side = pr.motion_side, fill = null;
-      if (kind === "occluded") { kind = n % 2 ? "warm" : "cold"; fill = PURPLE; } // abwechselnd, gleiche Seite
-      else if (kind === "stationary") {
-        kind = n % 2 ? "warm" : "cold";
-        side = kind === "cold" ? pr.warm_side : (pr.warm_side === "left" ? "right" : "left");
-      }
-      const s = sideSign(side), nrm = [left[0] * s, left[1] * s];
-      const poly = kind === "cold" ? triangle(p, t, nrm, 55) : semicircle(p, t, nrm, 55);
-      L.polygon(poly, { pane: "lines", stroke: false, fillColor: fill || (kind === "cold" ? BLUE : RED), fillOpacity: 1, interactive: false }).addTo(layer);
-    }
-    acc -= d;
-  }
-  return main;
-}
-
 function drawFronts() {
   frontLayer?.remove(); frontLayer = L.layerGroup();
   if ($("cand").checked && FF) {
     const segs = chainSegments(isolineSegments(FF.F, FF.g, 0));
-    L.polyline(segs, { pane: "lines", color: "#777", weight: 0.8, interactive: false }).addTo(frontLayer);
+    L.polyline(segs, { pane, color: "#777", weight: 0.8, interactive: false }).addTo(frontLayer);
   }
   if ($("fronts").checked && fronts) {
-    for (const f of fronts.features) {
-      const pr = f.properties, ll = f.geometry.coordinates.map(([lo, la]) => [la, lo]);
-      const cr = pr.criteria;
-      const tip = `${pr.front_type}  ${pr.length_km} km` + (pr.activity_class ? `  <b>${pr.activity_class}</b> (Aktivität ${pr.activity})` : "")
-        + (pr.method === "stau" ? `<br><i>schleift am Gebirgsrand</i> (Stau: Druckanstieg ${cr?.tendency_rim} hPa/3 h, RR ${cr?.precip} mm/h)` : "")
-        + (pr.method === "precip" ? `<br><i>aus Niederschlagsachse</i>, RR ${cr?.precip} mm/h, Advektion ${cr?.advection_k10h} K/10 h` : "")
-        + (pr.unlinked ? "<br><b>ohne Anschluss an einen Tiefkern</b> (entfällt)" : "")
-        + (pr.bridge ? "<br><b>Brücke</b>: ohne Wetter, verbindet die Front mit dem Tief (frontolytisch)" : "")
-        + (pr.duplicate ? "<br><b>Doppellinie</b> neben einer stärkeren Front (entfällt)" : "")
-        + `<br>|∇θw| ${pr.gradient}  TFP ${pr.tfp}  Querwind ${pr.cross_wind} m/s`
-        + `<br>Frontogenese Ø ${fgAlong(ll)} K/(100 km · 3 h)`
-        + (cr ? `<br>ΔT850 ${cr.contrast_k} K  Rinne ${cr.trough}  Konv. ${cr.convergence}  Vort. ${cr.vorticity}`
-          + `<br>Tendenzsprung ${cr.tendency_jump} hPa/3h  RR ${cr.precip} mm/h  tiefe Wolken ${cr.cloud_low} %  w700 ${cr.w700} cm/s`
-          + `<br>Rinne ~${cr.sfc_offset_km} km zur warmen Seite` + (pr.surface_offset_km != null ? `, verschoben um ${pr.surface_offset_km} km` : "") : "");
-      if (pr.activity_class === "none") {
-        if ($("inactive").checked) L.polyline(ll, { pane: "lines", color: "#888", weight: 2, dashArray: "2 6" }).bindTooltip(tip).addTo(frontLayer);
-        continue;
-      }
-      addFront(frontLayer, ll, pr, { tip });
-    }
+    // Mittlere Frontogenese für den Tooltip, für die verschobene (Boden-)Lage;
+    // Frontogenese im 90-km-Feld ist breit genug, dass der Versatz kaum zählt.
+    addAutoFronts(L, frontLayer, fronts, { pane, showInactive: $("inactive").checked, fgMean: (ll) => (FG ? meanAlong(FG, G, ll) : null) });
   }
   if ($("kinks").checked && derived?.msl?.some(Number.isFinite)) {
-    L.polyline(kinkLines(), { pane: "lines", color: "#ff8c00", weight: 2, interactive: false }).addTo(frontLayer);
+    L.polyline(kinkLines(derived.msl, G), { pane, color: "#ff8c00", weight: 2, interactive: false }).addTo(frontLayer);
   }
   if ($("ridges").checked && fronts?.properties?.ridges) {
-    L.polyline(fronts.properties.ridges, { pane: "lines", color: "#8e24aa", weight: 1.5, dashArray: "1 5", interactive: false }).addTo(frontLayer);
+    L.polyline(fronts.properties.ridges, { pane, color: "#8e24aa", weight: 1.5, dashArray: "1 5", interactive: false }).addTo(frontLayer);
   }
-  // Tiefzentren (Bodendruck) als rotes T mit Kerndruck; Zentraltiefs
-  // (Achse zum 500-hPa-Tief senkrecht) mit Ring.
-  if ($("fronts").checked) {
-    for (const l of fronts?.properties?.lows || []) {
-      const ring = l.central ? "border:2px solid #d7191c;border-radius:50%;padding:2px 4px;" : "";
-      L.marker([l.lat, l.lon], {
-        pane: "lines",
-        icon: L.divIcon({ className: "", iconSize: [40, 30], iconAnchor: [20, 15],
-          html: `<div style="text-align:center;color:#d7191c;font:bold 20px/1 sans-serif;${ring}">T<div style="font-size:11px">${Math.round(l.pressure)}</div></div>` }),
-      }).bindTooltip(`Tief ${l.pressure} hPa, Tiefe ${l.depth} hPa<br>Achse zum 500-hPa-Tief: ${l.tilt_km == null ? "kein geschlossenes Höhentief" : `${l.tilt_km} km`}`
-        + (l.central ? "<br><b>Zentraltief</b>: niedrigere Kontrastschwellen bis 1800 km" : "")).addTo(frontLayer);
-    }
-  }
+  if ($("fronts").checked) addLows(L, frontLayer, fronts?.properties?.lows, { pane });
   frontLayer.addTo(map);
-  if (ED.layer) renderManual(); // Handanalyse über der Automatik
-}
-
-// Knicklinien der Isobaren: Achsen maximaler zyklonaler Krümmung
-// κ = ∇·(∇p/|∇p|) des Bodendrucks (40 km geglättet), s. KRITERIEN.md.
-function kinkLines() {
-  const p = gaussianSmooth(derived.msl, G, 40), d = gradient(p, G);
-  const ux = d.gx.map((x, k) => x / Math.max(d.mag[k], 0.3)), uy = d.gy.map((x, k) => x / Math.max(d.mag[k], 0.3));
-  const dx = gradient(ux, G), dy = gradient(uy, G);
-  return ridgeLines(ux.map((_, k) => dx.gx[k] + dy.gy[k]), G, { ridgeSmoothKm: 40, ridgeMinKm: 200 }, 0.05);
+  editor.redraw(); // Handanalyse über der Automatik
 }
 
 function exportGeoJSON() {
   if (!fronts) return;
   const { ridges, ...props } = fronts.properties;
   const out = { ...fronts, properties: props, features: fronts.features.filter((f) => f.properties.activity_class !== "none") };
-  const blob = new Blob([JSON.stringify(out, null, 1)], { type: "application/geo+json" });
+  download(out, `fronts_${F.model}_${F.pressure}_${F.validTime.replace(/[-:]/g, "").slice(0, 11)}.geojson`);
+}
+
+function download(obj, name) {
+  const blob = new Blob([JSON.stringify(obj, null, 1)], { type: "application/geo+json" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
-  a.download = `fronts_${F.model}_${F.pressure}_${F.validTime.replace(/[-:]/g, "").slice(0, 11)}.geojson`;
+  a.download = name;
   a.click();
   URL.revokeObjectURL(a.href);
 }
 
 // ---------------------------------------------------------------------------
-// Handanalyse: Fronten zeichnen und bearbeiten, als Referenz speichern.
-// Eine Linie ist { type, weak, warm, cps }: Typ, gestrichelt, Seite der
-// warmen Luft in Punktreihenfolge ("left"/"right"), Stützpunkte [lat, lon].
-// Gezeichnet wird ein Spline durch die Stützpunkte ("wie Segel").
-const ED = { lines: [], sel: -1, drawing: null, undo: [], layer: null, handles: null, preview: null, loadTok: 0, meta: {} };
-// Kennzeichen der geladenen Referenz, die beim Speichern erhalten bleiben
-// (sonst ging z. B. "partial" beim erneuten Speichern verloren).
-const keepMeta = (fc) => { const p = fc?.properties || {}; return { ...(p.partial ? { partial: true } : {}), ...(p.note ? { note: p.note } : {}), ...(p.exclude ? { exclude: p.exclude } : {}) }; };
+// Handanalyse (src/fronts/map/editor.js). Die Seite verwaltet die Ablage:
+// Entwurf im Browser (localStorage je Termin), Referenz in reference/.
 
-// Centripetaler Catmull-Rom-Spline (keine Schleifen bei ungleichen
-// Abständen), lokal metrisch. seg[k]: Abschnitt, zu dem Punkt k gehört.
-function spline(cps, per = 12) {
-  if (cps.length < 3) return { ll: cps.map((p) => p.slice()), seg: cps.map((_, i) => Math.max(0, Math.min(i, cps.length - 2))) };
-  const c = Math.cos((cps[0][0] * Math.PI) / 180);
-  const P = cps.map(([la, lo]) => [lo * c, la]);
-  const refl = (a, b) => [2 * a[0] - b[0], 2 * a[1] - b[1]];
-  const tj = (a, b) => Math.max(1e-6, Math.sqrt(Math.hypot(b[0] - a[0], b[1] - a[1])));
-  const ll = [], seg = [];
-  for (let i = 0; i < P.length - 1; i++) {
-    const p1 = P[i], p2 = P[i + 1];
-    const p0 = i > 0 ? P[i - 1] : refl(p1, p2), p3 = i < P.length - 2 ? P[i + 2] : refl(p2, p1);
-    const t0 = 0, t1 = t0 + tj(p0, p1), t2 = t1 + tj(p1, p2), t3 = t2 + tj(p2, p3);
-    for (let k = 0; k < per; k++) {
-      const u = t1 + ((t2 - t1) * k) / per;
-      const L = (a, b, ta, tb) => [0, 1].map((d) => ((tb - u) * a[d] + (u - ta) * b[d]) / (tb - ta));
-      const A1 = L(p0, p1, t0, t1), A2 = L(p1, p2, t1, t2), A3 = L(p2, p3, t2, t3);
-      const v = L(L(A1, A2, t0, t2), L(A2, A3, t1, t3), t1, t2);
-      ll.push([v[1], v[0] / c]); seg.push(i);
-    }
-  }
-  ll.push(cps[cps.length - 1].slice()); seg.push(P.length - 2);
-  return { ll, seg };
-}
-
-// Stützpunkte etwa alle stepKm aus einer dichten Linie (Endpunkte bleiben).
-function decimate(ll, stepKm = 150) {
-  const out = [ll[0]];
-  let acc = 0;
-  for (let i = 1; i < ll.length - 1; i++) {
-    acc += distKm(ll[i - 1], ll[i]);
-    if (acc >= stepKm) { out.push(ll[i]); acc = 0; }
-  }
-  if (out.length > 1 && distKm(out[out.length - 1], ll[ll.length - 1]) < stepKm / 2) out.pop();
-  out.push(ll[ll.length - 1]);
-  return out.map((p) => p.slice());
-}
-
-const flipSide = (s) => (s === "left" ? "right" : "left");
 // Warme Seite aus der θw-Normalen der aktuellen Analyse (wie detect.js).
 function autoWarmSide(ll) {
   if (!FF) return "left";
@@ -729,19 +432,29 @@ function autoWarmSide(ll) {
   }
   return sum >= 0 ? "left" : "right";
 }
-// Symbole zeigen in Zugrichtung: Kaltfront und Okklusion zur warmen Luft,
-// Warmfront zur kalten.
-function lineProps(ln) {
-  const motion = ln.type === "cold" || ln.type === "occluded" ? ln.warm : ln.type === "warm" ? flipSide(ln.warm) : null;
-  return { front_type: ln.type, activity_class: ln.weak ? "weak" : "active", warm_side: ln.warm, motion_side: motion };
-}
 
+const editor = createFrontEditor(L, map, {
+  pane,
+  warmSide: autoWarmSide,
+  newLine: () => ({ type: $("edType").value, weak: $("edWeak").checked }),
+  onChange: () => { saveDraft(); updateCompare(); },
+  onState: ({ selected, canUndo, drawing }) => {
+    if (selected) { $("edType").value = selected.type; $("edWeak").checked = selected.weak; }
+    $("edFlip").disabled = !selected; $("edDel").disabled = !selected;
+    $("edUndo").disabled = !canUndo;
+    $("edNew").textContent = drawing ? "Fertig" : "Neue Front";
+  },
+});
+
+// Kennzeichen der geladenen Referenz, die beim Speichern erhalten bleiben
+// (sonst ging z. B. "partial" beim erneuten Speichern verloren).
+let refMeta = {}, loadTok = 0;
+const keepMeta = (fc) => { const p = fc?.properties || {}; return { ...(p.partial ? { partial: true } : {}), ...(p.note ? { note: p.note } : {}), ...(p.exclude ? { exclude: p.exclude } : {}) }; };
 const refPath = () => `reference/${F.validTime.slice(0, 13)}.geojson`;
 const draftKey = () => `fronts-draft:${F.validTime}`;
 const setStatus = (t) => { $("edStatus").textContent = t; };
 
 function toGeoJSON() {
-  const r3 = ([la, lo]) => [+lo.toFixed(3), +la.toFixed(3)];
   return {
     type: "FeatureCollection",
     // Gezeichnetes Gebiet (Raster der geladenen Felder, bei "ICON Global
@@ -750,36 +463,20 @@ function toGeoJSON() {
       source: "manual", valid_time: F.validTime, fixture: $("fixture").value, model: F.model,
       domain: { latMin: G.lat0, latMax: +(G.lat0 + (G.ny - 1) * G.res).toFixed(4), lonMin: G.lon0, lonMax: +(G.lon0 + (G.nx - 1) * G.res).toFixed(4) },
       created: new Date().toISOString(),
-      ...ED.meta,
+      ...refMeta,
     },
-    features: ED.lines.map((ln) => ({
-      type: "Feature",
-      geometry: { type: "LineString", coordinates: spline(ln.cps).ll.map(r3) },
-      properties: { ...lineProps(ln), control_points: ln.cps.map(r3) },
-    })),
+    features: lineFeatures(editor.lines),
   };
-}
-// Liest eigene Referenzen (mit control_points) und ebenso exportierte
-// Automatik-Analysen (dann werden Stützpunkte ausgedünnt).
-function fromGeoJSON(fc) {
-  return (fc.features || [])
-    .filter((f) => f.geometry?.type === "LineString" && f.properties?.activity_class !== "none")
-    .map((f) => {
-      const pr = f.properties;
-      const cps = pr.control_points ? pr.control_points.map(([lo, la]) => [la, lo]) : decimate(f.geometry.coordinates.map(([lo, la]) => [la, lo]));
-      return { type: pr.front_type || "cold", weak: pr.activity_class === "weak", warm: pr.warm_side || autoWarmSide(cps), cps };
-    });
 }
 
 function saveDraft() {
-  try { localStorage.setItem(draftKey(), JSON.stringify(ED.lines)); } catch { /* ohne Speicher nur in der Sitzung */ }
+  try { localStorage.setItem(draftKey(), JSON.stringify(editor.lines)); } catch { /* ohne Speicher nur in der Sitzung */ }
   setStatus("Entwurf im Browser – „Referenz speichern“ legt die Datei an.");
 }
 
 async function loadManual() {
-  const tok = ++ED.loadTok;
-  if (ED.drawing) finishDrawing(true);
-  ED.lines = []; ED.sel = -1; ED.undo = []; ED.meta = {};
+  const tok = ++loadTok;
+  editor.finishDrawing(true);
   let draft = null, ref = null;
   try { draft = localStorage.getItem(draftKey()); } catch { /* kein Speicher */ }
   // Die Referenzdatei auch bei einem Entwurf lesen: ihre Kennzeichen bleiben.
@@ -787,137 +484,23 @@ async function loadManual() {
     const r = await fetch(refPath(), { cache: "no-store" });
     if (r.ok) ref = await r.json();
   } catch { /* keine Referenz */ }
-  if (tok !== ED.loadTok) return;
-  ED.meta = keepMeta(ref);
+  if (tok !== loadTok) return;
+  refMeta = keepMeta(ref);
+  let lines = [];
   if (draft) {
-    ED.lines = JSON.parse(draft);
+    lines = JSON.parse(draft);
     setStatus("Entwurf aus dem Browser (nicht als Datei gespeichert).");
   } else if (ref) {
-    ED.lines = fromGeoJSON(ref); setStatus(`Referenz ${refPath()}`);
+    lines = linesFromGeoJSON(ref, autoWarmSide); setStatus(`Referenz ${refPath()}`);
   } else setStatus("Keine Referenz für diesen Termin.");
-  if (tok !== ED.loadTok) return;
-  renderManual(); renderHandles(); updateEdButtons(); updateCompare();
-}
-
-function renderManual() {
-  ED.layer?.remove(); ED.layer = L.layerGroup();
-  if ($("edShow").checked) {
-    ED.lines.forEach((ln, i) => {
-      const { ll } = spline(ln.cps);
-      if (i === ED.sel) L.polyline(ll, { pane: "lines", color: "#ffd400", weight: 11, opacity: 0.6, interactive: false }).addTo(ED.layer);
-      addFront(ED.layer, ll, lineProps(ln), { onClick: (e) => lineClick(i, e), bubbling: !!ED.drawing });
-    });
-    for (const p of ED.drawing?.cps || []) {
-      L.circleMarker(p, { pane: "lines", radius: 4, color: "#000", weight: 1, fillColor: "#fff", fillOpacity: 1, interactive: false }).addTo(ED.layer);
-    }
-  }
-  ED.layer.addTo(map);
-}
-
-function renderHandles() {
-  ED.handles?.remove(); ED.handles = L.layerGroup();
-  const ln = ED.lines[ED.sel];
-  if (ln && $("edShow").checked) {
-    ln.cps.forEach((p, k) => {
-      const m = L.marker(p, { draggable: true, icon: L.divIcon({ className: "cp", iconSize: [12, 12] }) });
-      m.on("dragstart", pushUndo);
-      m.on("drag", (e) => { const q = e.target.getLatLng(); ln.cps[k] = [q.lat, q.lng]; renderManual(); });
-      m.on("dragend", () => { saveDraft(); updateCompare(); });
-      m.on("contextmenu", (e) => {
-        L.DomEvent.preventDefault(e.originalEvent);
-        if (ln.cps.length > 2) { pushUndo(); ln.cps.splice(k, 1); changed(); }
-      });
-      m.addTo(ED.handles);
-    });
-  }
-  ED.handles.addTo(map);
-}
-
-function changed() { saveDraft(); renderManual(); renderHandles(); updateEdButtons(); updateCompare(); }
-function pushUndo() { ED.undo.push(JSON.stringify(ED.lines)); if (ED.undo.length > 100) ED.undo.shift(); }
-function undo() {
-  if (!ED.undo.length) return;
-  ED.lines = JSON.parse(ED.undo.pop()); ED.sel = -1; changed();
-}
-function updateEdButtons() {
-  const has = ED.sel >= 0;
-  $("edFlip").disabled = !has; $("edDel").disabled = !has;
-  $("edUndo").disabled = !ED.undo.length;
-}
-
-function select(i) {
-  ED.sel = i;
-  const ln = ED.lines[i];
-  if (ln) { $("edType").value = ln.type; $("edWeak").checked = ln.weak; }
-  renderManual(); renderHandles(); updateEdButtons();
-}
-
-function lineClick(i, e) {
-  if (ED.drawing) return; // der Klick läuft zur Karte weiter und setzt dort einen Punkt
-  if (ED.sel !== i) { select(i); return; }
-  // Ausgewählte Linie angeklickt: Stützpunkt im passenden Abschnitt einfügen.
-  const p = [e.latlng.lat, e.latlng.lng], { ll, seg } = spline(ED.lines[i].cps);
-  let best = 0, bd = Infinity;
-  ll.forEach((q, k) => { const d = distKm(p, q); if (d < bd) { bd = d; best = k; } });
-  pushUndo(); ED.lines[i].cps.splice(seg[best] + 1, 0, p); changed();
-}
-
-function startDrawing() {
-  if (ED.drawing) { finishDrawing(); return; }
-  select(-1);
-  ED.drawing = { cps: [] };
-  ED.preview = L.polyline([], { pane: "lines", color: "#000", weight: 2, dashArray: "4 4", interactive: false }).addTo(map);
-  map.doubleClickZoom.disable();
-  map.getContainer().style.cursor = "crosshair";
-  $("edNew").textContent = "Fertig";
-  renderManual();
-}
-function finishDrawing(cancel = false) {
-  const d = ED.drawing;
-  if (!d) return;
-  ED.drawing = null;
-  ED.preview?.remove(); ED.preview = null;
-  map.doubleClickZoom.enable();
-  map.getContainer().style.cursor = "";
-  $("edNew").textContent = "Neue Front";
-  if (!cancel && d.cps.length >= 2) {
-    pushUndo();
-    const ln = { type: $("edType").value, weak: $("edWeak").checked, cps: d.cps };
-    ln.warm = autoWarmSide(spline(ln.cps).ll);
-    ED.lines.push(ln); ED.sel = ED.lines.length - 1;
-    changed();
-  } else renderManual();
-}
-
-map.on("click", (e) => {
-  if (ED.drawing) {
-    const p = [e.latlng.lat, e.latlng.lng], c = ED.drawing.cps;
-    if (!c.length || distKm(c[c.length - 1], p) > 10) c.push(p); // Doppelklick setzt keinen zweiten Punkt
-    renderManual();
-  } else if (ED.sel >= 0) select(-1);
-});
-map.on("dblclick", (e) => { if (ED.drawing) { L.DomEvent.stop(e); finishDrawing(); } });
-map.on("mousemove", (e) => {
-  if (ED.drawing?.cps.length) ED.preview.setLatLngs(spline([...ED.drawing.cps, [e.latlng.lat, e.latlng.lng]]).ll);
-});
-document.addEventListener("keydown", (e) => {
-  if (e.target.matches("input, select, textarea")) return;
-  if (e.key === "Enter" && ED.drawing) finishDrawing();
-  else if (e.key === "Escape") { if (ED.drawing) finishDrawing(true); else select(-1); }
-  else if ((e.key === "Delete" || e.key === "Backspace") && ED.sel >= 0) { e.preventDefault(); deleteSelected(); }
-  else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") { e.preventDefault(); undo(); }
-});
-
-function deleteSelected() {
-  if (ED.sel < 0) return;
-  pushUndo(); ED.lines.splice(ED.sel, 1); ED.sel = -1; changed();
+  editor.setLines(lines);
+  updateCompare();
 }
 
 // Vergleich Handanalyse ↔ Automatik am aktuellen Termin.
 function updateCompare() {
-  if (!fronts || !ED.lines.length) { $("edCompare").textContent = ""; return; }
-  const ref = ED.lines.map((ln) => ({ type: ln.type, ll: spline(ln.cps).ll }));
-  const r = compareFronts(ref, fcToLines(fronts));
+  if (!fronts || !editor.lines.length) { $("edCompare").textContent = ""; return; }
+  const r = compareFronts(editor.compareLines(), fcToLines(fronts));
   const pct = (x) => (x == null ? "–" : `${Math.round(x * 100)} %`);
   $("edCompare").textContent = [
     "Automatik gegen Handanalyse (±150 km)",
@@ -927,37 +510,19 @@ function updateCompare() {
   ].join("\n");
 }
 
-$("edNew").onclick = startDrawing;
-$("edDel").onclick = deleteSelected;
-$("edUndo").onclick = undo;
-$("edFlip").onclick = () => { const ln = ED.lines[ED.sel]; if (ln) { pushUndo(); ln.warm = flipSide(ln.warm); changed(); } };
-$("edType").onchange = () => { const ln = ED.lines[ED.sel]; if (ln) { pushUndo(); ln.type = $("edType").value; changed(); } };
-$("edWeak").onchange = () => { const ln = ED.lines[ED.sel]; if (ln) { pushUndo(); ln.weak = $("edWeak").checked; changed(); } };
-$("edImport").onclick = () => {
-  if (!fronts) return;
-  pushUndo();
-  // Schon übernommene Linien nicht noch einmal anhängen (mehrfaches Drücken
-  // ergab sonst jede Linie mehrfach in der Referenz).
-  const same = (a, b) => a.length === b.length && a.every((p, i) => distKm(p, b[i]) < 1);
-  for (const f of fronts.features) {
-    const pr = f.properties;
-    if (pr.activity_class === "none") continue;
-    const cps = decimate(f.geometry.coordinates.map(([lo, la]) => [la, lo]));
-    if (ED.lines.some((ln) => same(ln.cps, cps))) continue;
-    ED.lines.push({ type: pr.front_type, weak: pr.activity_class === "weak", warm: pr.warm_side, cps });
-  }
-  ED.sel = -1; changed();
-};
-$("edClear").onclick = () => { if (ED.lines.length && confirm("Alle Linien der Handanalyse löschen?")) { pushUndo(); ED.lines = []; ED.sel = -1; changed(); } };
+$("edNew").onclick = () => editor.startDrawing();
+$("edDel").onclick = () => editor.deleteSelected();
+$("edUndo").onclick = () => editor.undo();
+$("edFlip").onclick = () => editor.flipSelected();
+$("edType").onchange = () => editor.setType($("edType").value);
+$("edWeak").onchange = () => editor.setWeak($("edWeak").checked);
+$("edImport").onclick = () => { if (fronts) editor.importFronts(fronts); };
+$("edClear").onclick = () => { if (editor.lines.length && confirm("Alle Linien der Handanalyse löschen?")) editor.clear(); };
 $("edSave").onclick = () => {
   if (!F) return;
-  const blob = new Blob([JSON.stringify(toGeoJSON(), null, 1)], { type: "application/geo+json" });
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = `${F.validTime.slice(0, 13)}.geojson`;
-  a.click();
-  URL.revokeObjectURL(a.href);
-  setStatus(`Gespeichert als ${a.download} – nach tools/fronts/reference/ legen.`);
+  const name = `${F.validTime.slice(0, 13)}.geojson`;
+  download(toGeoJSON(), name);
+  setStatus(`Gespeichert als ${name} – nach tools/fronts/reference/ legen.`);
 };
 $("edOpen").onclick = () => $("edFile").click();
 $("edFile").onchange = async () => {
@@ -965,7 +530,8 @@ $("edFile").onchange = async () => {
   if (!file) return;
   try {
     const fc = JSON.parse(await file.text());
-    pushUndo(); ED.lines = fromGeoJSON(fc); ED.meta = keepMeta(fc); ED.sel = -1; changed();
+    refMeta = keepMeta(fc);
+    editor.replaceLines(linesFromGeoJSON(fc, autoWarmSide));
     const vt = fc.properties?.valid_time;
     setStatus(`${file.name} geladen${vt && vt !== F.validTime ? ` – Achtung: Termin ${vt}` : ""}.`);
   } catch (err) { setStatus(`${file.name}: ${err.message}`); }
@@ -975,7 +541,7 @@ $("edReset").onclick = () => {
   try { localStorage.removeItem(draftKey()); } catch { /* kein Speicher */ }
   loadManual();
 };
-$("edShow").onchange = () => { renderManual(); renderHandles(); };
+$("edShow").onchange = () => editor.setVisible($("edShow").checked);
 
 map.on("mousemove", (e) => {
   if (!F) return;

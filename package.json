@@ -17,6 +17,7 @@
     "./gramet/render": "./src/gramet/render.js",
     "./airspace": "./src/airspace/index.js",
     "./fronts": "./src/fronts/index.js",
+    "./fronts/map": "./src/fronts/map/index.js",
     "./config": "./src/config.js",
     "./modelpick": "./src/modelpick.js",
     "./apifetch": "./src/apifetch.js",
