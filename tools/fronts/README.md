@@ -463,7 +463,7 @@ der Läufe:
 Kommt ein ICON-EU-Lauf mehr als 30 min später, verschiebt sich die vorläufige
 Analyse um 3 h.
 
-**Speicher.** Gemessen 13.10. auf dem Server: Spitze 176 MB, rund 5 CPU-Minuten
+**Speicher.** Gemessen 13.10. auf dem Server: Spitze 176 MB für einen Termin, 215 MB beim Nachholen von vier Terminen; rund 4 CPU-Minuten und 3 min Laufzeit
 je Termin. Die Grenze `MemoryMax` sorgt dafür, dass bei Speichermangel nur der
 Job beendet wird, nicht andere Dienste.
 
