@@ -2,7 +2,7 @@
 #
 # Spielt synoptix.wetterheidi.de ein (Frontenanalyse, s. tools/fronts/README.md,
 # „Webanwendung synoptix“):
-#   src/, tools/fronts/{debug.html,compare.js,run-analysis.mjs,fixtures,reference}
+#   src/, tools/fronts/{index.html,app.js,favicon.svg,debug.html,compare.js,run-analysis.mjs,fixtures,reference}
 #                               → /apps/synoptix/app      (Web-Root, Job läuft von hier)
 #   synoptix.wetterheidi.de     → /etc/nginx/sites-available/ (+ sites-enabled)
 #   synoptix-analysis.{service,timer} → /etc/systemd/system/
@@ -63,6 +63,7 @@ ssh "$SERVER" "rm -rf $APP.new && if [[ -d $APP ]]; then cp -a $APP $APP.new; fi
 # -t statt -a: Besitzer/Rechte nicht von macOS übernehmen, sondern unten setzen.
 rsync -rtz --delete "$REPO/src" "$REPO/package.json" "$SERVER:$APP.new/"
 rsync -rtz --delete \
+    "$REPO/tools/fronts/index.html" "$REPO/tools/fronts/app.js" "$REPO/tools/fronts/favicon.svg" \
     "$REPO/tools/fronts/debug.html" "$REPO/tools/fronts/compare.js" "$REPO/tools/fronts/run-analysis.mjs" \
     "$REPO/tools/fronts/fixtures" "$REPO/tools/fronts/reference" \
     "$SERVER:$APP.new/tools/fronts/"

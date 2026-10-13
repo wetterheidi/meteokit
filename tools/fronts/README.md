@@ -428,8 +428,8 @@ oder `compare.mjs --fixtures <out>/runs/<id>`.
 ## Webanwendung synoptix (seit 2026-10-13)
 
 https://synoptix.wetterheidi.de, geschützt über den Pförtner (Tool
-`synoptix`). Bis zur eigenen App (Phase 3) ist die Debug-Seite die
-Startseite und zeigt den neuesten Termin. Die Dateien dazu liegen in
+`synoptix`). Die Startseite ist die Oberfläche `tools/fronts/` (s. unten) und
+zeigt den neuesten Termin. Die Dateien dazu liegen in
 `deploy/`:
 
 | Datei | Zweck |
@@ -475,63 +475,84 @@ ssh root@178.104.206.136 journalctl -u synoptix-analysis -n 50 # Protokoll
 ssh root@178.104.206.136 systemctl list-timers synoptix-analysis.timer
 ```
 
-## Debug-Seite
+## Oberfläche: Synoptix und Debug-Seite
 
 ```bash
 python3 -m http.server 8765    # im Repo-Root
-# http://127.0.0.1:8765/tools/fronts/debug.html                 (neuester Termin der laufenden Analyse)
-# http://127.0.0.1:8765/tools/fronts/debug.html?fixture=fixtures/icon_eu_2026-10-09.json.gz
+# http://127.0.0.1:8765/tools/fronts/                (Synoptix, neuester Termin der laufenden Analyse)
+# http://127.0.0.1:8765/tools/fronts/?fixture=fixtures/icon_eu_2026-10-09.json.gz
+# http://127.0.0.1:8765/tools/fronts/debug.html      (Fronten-Debug)
 ```
+
+Seit 2026-10-13 gibt es eine Oberfläche, `index.html` mit `app.js`.
+`debug.html` leitet auf `index.html?debug=1` weiter (alte Links mit
+`?fixture=…&step=…` bleiben gültig). Mit `debug` heißt die Seite
+„Fronten-Debug“ und zeigt zusätzliche Werkzeuge zur Abstimmung der
+Automatik (Elemente `.debug-only`, bisher: Kandidaten ohne Masken, also
+die rohen TFP-Nulllinien vor allen Filtern).
 
 Ohne Angabe lädt die Seite den neuesten Termin der laufenden Analyse aus
 `live/` neben der Seite (`fixture=latest`, ein anderes Verzeichnis mit
 `?live=…`), sonst die Fixture vom 09.10. Archivierte Termine stehen mit
-Status oben in der Fixture-Liste. Die Fronten rechnet die Seite wie immer
+Status oben in der Liste „Daten“. Die Fronten rechnet die Seite wie immer
 selbst, mit den eingestellten Schwellen.
 
 Die Seite bietet eine Auswahl von Termin und Druckfläche. „ICON Global
 außen“ (Vorgabe an) lädt zur ICON-EU-Fixture die ICON-Global-Fixture
 gleichen Namens und setzt die Felder zusammen; die Termine sind dann die,
-die beide haben. Fronten werden mit den üblichen Symbolen gezeichnet (Okklusionen violett), Tiefs als rotes T mit Kerndruck. Als Schattierung
-stehen zur Wahl:
+die beide haben. Fronten werden mit den üblichen Symbolen gezeichnet
+(Okklusionen violett), Tiefs als rotes T mit Kerndruck.
 
-- θe, θw, T, |∇θw|, TFP
-- Frontogenese nach Petterssen (`frontogenesis` in `src/fronts/frontogenesis.js`,
-  aus θw und Wind der Analysefläche mit derselben Glättung, K/(100 km · 3 h);
-  rot Frontogenese, blau Frontolyse). Der Tooltip einer Front zeigt den
-  Mittelwert entlang der Linie. Bisher nur Anzeige, keine Regel
-- Zyklogenetische Hinweise (`src/fronts/cyclogenesis.js`, bisher nur
-  Anzeige): Vorticity-Advektion und Vorticity in 500 hPa aus dem echten
-  Wind (nur mit Höhenwind-Fixture), 3-h-Änderung der Vorticity der
-  gewählten Fläche, Z500 (Z1000 hypsometrisch aus dem Bodendruck plus
-  Schichtdicke; auch als Isolinien)
-- 3-h-Drucktendenz
-- Schichtdicke 500/1000 hPa
-- Niederschlag
-- Gesamtbewölkung und tiefe Wolken
-- w und Spread in 700 hPa
+**Schattierung** als Knopfraster nach Themen; die Tasten `,` und `.`
+schalten zurück bzw. vor (die Wahl steht in der URL als `field=`).
+Wo die Druckfläche unter Grund liegt, ist die Karte grau.
 
-Dazu kommen Isobaren (5, 2 oder 1 hPa; fein aufgelöst zeigen sie die Knicke schwacher Fronten), die Knicklinien der Isobaren (Achsen maximaler zyklonaler Isobarenkrümmung), Isolinien, Windpfeile auf der Fläche und bei
-~10 m, die Warmluftzungen (Rückenachsen der Schichtdicke bzw. θw 700) sowie die Orographiemaske. Darüber liegen die detektierten
-Fronten mit den üblichen Symbolen. Die Schwellen K1, K2, Mindestlänge und
-Windschwelle sind live einstellbar. Optional lassen sich alle Kandidaten
-ohne Masken in Grau einblenden. Das Ergebnis kann als GeoJSON gespeichert
-werden. Glättung σ und Deckkraft lassen
-sich per Schieberegler einstellen, beim Überfahren mit der Maus erscheinen
-die Punktwerte. Als Hintergrund dienen Küsten und Ländergrenzen (Natural
-Earth über `world-atlas`), keine Kachelkarte und damit kein API-Key. Leaflet,
-`topojson-client` und die Grenzdaten kommen aus dem Netz. Das ist nur für
-diese Debug-Seite so, die Bibliothek selbst hat keine Abhängigkeiten.
+- Druckfläche: θe, θw, T, |∇θw|, TFP, Frontogenese nach Petterssen
+  (`frontogenesis` in `src/fronts/frontogenesis.js`, aus θw und Wind der
+  Analysefläche mit derselben Glättung, K/(100 km · 3 h); rot Frontogenese,
+  blau Frontolyse; der Tooltip einer Front zeigt den Mittelwert entlang
+  der Linie; bisher nur Anzeige, keine Regel)
+- Boden: 3-h-Drucktendenz, Niederschlag, Gesamtbewölkung, tiefe Wolken
+- 700 hPa: w und Spread
+- Höhe: Schichtdicke 500/1000 hPa und zyklogenetische Hinweise
+  (`src/fronts/cyclogenesis.js`, bisher nur Anzeige): Z500 (Z1000
+  hypsometrisch aus dem Bodendruck plus Schichtdicke), Vorticity-Advektion
+  und Vorticity in 500 hPa aus dem echten Wind (nur mit Höhenwind-Daten),
+  3-h-Änderung der Vorticity der gewählten Druckfläche
 
-**Aufbau** (seit 2026-10-13, Phase 2 von synoptix): Die Seite enthält nur
-noch die Bedienung (Seitenleiste, Laden, URL, Ablage von Entwürfen und
+**Isolinien**: beliebig viele zugleich, je mit eigenem Abstand und Stil:
+Isobaren (Vorgabe 5 hPa; fein aufgelöst zeigen sie die Knicke schwacher
+Fronten), Isohypsen der gewählten Druckfläche, θe, θw, Schichtdicke und
+Z500. Die Isohypsen rechnet `geopotentialLevel` (`derive.js`)
+hypsometrisch vom Boden aus, weil der Server keine Geopotentialfelder der
+Druckflächen liefert. Stichprobe 09.10. 00 UTC gegen die offiziellen
+ICON-EU-Felder von Open-Meteo: Abweichung unter 1 gpdm in 850 und 700 hPa
+(Berlin, München, Atlantik).
+
+Dazu kommen Windpfeile auf der Druckfläche und bei ~10 m, die
+Warmluftzungen (Rückenachsen der Schichtdicke bzw. θw 700), die
+Knicklinien der Isobaren (Achsen maximaler zyklonaler
+Isobarenkrümmung) und optional die Linien ohne Wetter. „Fronten in
+Bodenlage“ verschiebt Kalt- und quasistationäre Fronten von der Lage in
+der Druckfläche zur warmen Seite (s. oben, Bodenposition). Die Schwellen K1,
+K2, Mindestlänge, Windschwelle und die Glättung σ stehen unter
+„Einstellungen der Analyse“ (eingeklappt). Das Ergebnis kann als GeoJSON
+gespeichert werden. Der Kasten „Werte“ unten links auf der Karte zeigt die
+Punktwerte unter der Maus (einklappbar). Als Hintergrund dienen Küsten und
+Ländergrenzen (Natural Earth über `world-atlas`), keine Kachelkarte und
+damit kein API-Key. Leaflet, `topojson-client` und die Grenzdaten kommen
+aus dem Netz. Das ist nur für diese Oberfläche so, die Bibliothek selbst
+hat keine Abhängigkeiten.
+
+**Aufbau** (seit 2026-10-13, Phase 2 von synoptix): `app.js` enthält nur
+die Bedienung (Seitenleiste, Laden, URL, Ablage von Entwürfen und
 Referenzen). Zeichnen und Rechnen liegen in `src/fronts/map/`
 (`meteokit/fronts/map`), damit die synoptix-App dieselben Bausteine nutzt:
 
 | Modul | Inhalt |
 |---|---|
 | `scales.js` | Farbskalen der Schattierung (`SCALES`, `colorAt`), Legende |
-| `derive.js` | abgeleitete Felder ohne DOM: θe/θw/T/\|∇θw\| (`thermoDerived`), Tendenz, Niederschlag, w700, Spread, Schichtdicke, Z500, PVA (`caseDerived`), Knicklinien, Mittel entlang einer Linie |
+| `derive.js` | abgeleitete Felder ohne DOM: θe/θw/T/\|∇θw\| (`thermoDerived`), Tendenz, Niederschlag, w700, Spread, Schichtdicke, Z500, PVA (`caseDerived`), Isohypsen der Druckfläche (`geopotentialLevel`), Knicklinien, Mittel entlang einer Linie |
 | `layers.js` | Leaflet-Ebenen: Schattierung, Isolinien, Isobaren, Windpfeile, Fronten mit Symbolen und Tooltip, Tiefs |
 | `editor.js` | Handanalyse: `createFrontEditor` (Zeichnen, Punkte ziehen/einfügen/löschen, Undo, Tastatur), Spline, GeoJSON |
 
@@ -542,7 +563,7 @@ Einstellungen pixelgleich mit dem vorherigen Stand (Canvas-Prüfsummen).
 
 ### Handanalyse und Vergleich
 
-Im Abschnitt „Handanalyse“ der Debug-Seite lassen sich Fronten zeichnen
+Im Abschnitt „Handanalyse“ der Oberfläche lassen sich Fronten zeichnen
 und als Referenz für den jeweiligen Termin speichern:
 
 - **Neue Front:** Typ wählen (kalt, warm, Okklusion, quasistationär,

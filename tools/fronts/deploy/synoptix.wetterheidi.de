@@ -17,9 +17,9 @@ server {
     # schon als .json.gz vor und werden von der Seite selbst entpackt).
     gzip_types application/json application/javascript text/css;
 
-    # Bis zur eigenen App (Phase 3) ist die Debug-Seite die Startseite.
+    # Startseite: die Oberfläche tools/fronts/ (index.html).
     location = / {
-        return 302 /tools/fronts/debug.html;
+        return 302 /tools/fronts/;
     }
 
     # Archiv der laufenden Analyse (run-analysis.mjs --out /apps/synoptix/data),
@@ -31,7 +31,8 @@ server {
     }
 
     location / {
-        try_files $uri =404;
+        index index.html;
+        try_files $uri $uri/ =404;
         add_header Cache-Control "no-cache" always;
     }
 

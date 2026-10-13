@@ -40,6 +40,29 @@ export function thermoDerived(F, sigmaKm, TH = thetaFields(F)) {
   };
 }
 
+const RD = 287.05, G0 = 9.80665;
+
+/**
+ * Geopotentielle Höhe [gpdm] der Analysefläche `F.pressure`, näherungsweise
+ * hypsometrisch vom Boden aus: Z1000 aus Bodendruck und 2-m-Werten (wie
+ * geopotential500), darüber mit der Mitteltemperatur zwischen 1000 hPa und
+ * der Fläche. Der Server liefert keine Geopotentialfelder der Druckflächen.
+ * Über Hochgebirge ungenau (Fläche bzw. 1000 hPa unter Grund).
+ */
+export function geopotentialLevel(F) {
+  const msl = F.sfc?.pressure_msl, T2 = F.sfc?.temperature_2m, Td = F.sfc?.dew_point_2m;
+  if (!msl) return null;
+  const p = F.pressure;
+  return Float32Array.from(msl, (pm, k) => {
+    const T = (T2?.[k] ?? 10) + 273.15;
+    const e = Td ? 6.112 * Math.exp((17.67 * Td[k]) / (Td[k] + 243.5)) : 10;
+    const Tv0 = T * (1 + 0.378 * e / pm);
+    const Tvp = F.T[k] * (1 + 0.61 * (F.q[k] || 0));
+    const z1000 = ((RD * Tv0) / G0) * Math.log(pm / 1000);
+    return (z1000 + ((RD * (Tv0 + Tvp) / 2) / G0) * Math.log(1000 / p)) / 10;
+  });
+}
+
 /** Taupunktdifferenz [K] aus T [K], q [kg/kg] und p [hPa] (Magnus wie thermo.js). */
 export function spread(T, q, p) {
   const r = q / (1 - q), e = (p * r) / (0.622 + r), l = Math.log(Math.max(e, 1e-4) / 6.112);

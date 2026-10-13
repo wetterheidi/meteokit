@@ -10,7 +10,7 @@
  */
 
 export { SCALES, colorAt, paintScale, scaleTicks } from "./scales.js";
-export { gridOf, prevField, thermoDerived, caseDerived, spread, kinkLines, meanAlong } from "./derive.js";
+export { gridOf, prevField, thermoDerived, caseDerived, geopotentialLevel, spread, kinkLines, meanAlong } from "./derive.js";
 export {
   fieldOverlay, isolineLayer, isobarLayer, windArrows, addFront, addAutoFronts, addLows,
   frontTooltip, featureLatLngs, RED, BLUE, PURPLE,

@@ -51,13 +51,13 @@ export function fieldOverlay(L, fld, G, scale, { below, showMask = true, pane, o
 }
 
 /** Isolinien eines Felds im Abstand `step` über den ganzen Wertebereich. */
-export function isolineLayer(L, fld, G, step, { pane, color = "#333", weight = 0.8 } = {}) {
+export function isolineLayer(L, fld, G, step, { pane, color = "#333", weight = 0.8, dashArray } = {}) {
   const group = L.layerGroup();
   let lo = Infinity, hi = -Infinity;
   for (const x of fld) if (Number.isFinite(x)) { lo = Math.min(lo, x); hi = Math.max(hi, x); }
   for (let lev = Math.ceil(lo / step) * step; lev <= hi; lev += step) {
     const segs = isolineSegments(fld, G, lev);
-    if (segs.length) L.polyline(segs, { pane, color, weight, interactive: false }).addTo(group);
+    if (segs.length) L.polyline(segs, { pane, color, weight, dashArray, interactive: false }).addTo(group);
   }
   return group;
 }
