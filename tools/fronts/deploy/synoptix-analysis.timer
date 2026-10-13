@@ -1,0 +1,13 @@
+# Alle 3 Stunden um :30 UTC (01:30, 04:30, …, 22:30): in den ruhigen Fenstern
+# zwischen den TLogPViewer-Downloads (tlogp-d2eu, ab :15 alle 3 h, Dauer bis
+# 1 h 45 min) und passend zur Verfügbarkeit der Läufe (ICON-EU ~T+4 h →
+# vorläufig, ICON Global ~T+8 h → endgültig; Tabelle in tools/fronts/README.md).
+[Unit]
+Description=synoptix: laufende Frontenanalyse alle 3 h
+
+[Timer]
+OnCalendar=*-*-* 01/3:30:00 UTC
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target

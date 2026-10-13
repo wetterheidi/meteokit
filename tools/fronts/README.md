@@ -383,10 +383,10 @@ die Felder, rechnet die Fronten und legt beides ab:
 node tools/fronts/run-analysis.mjs --out tools/fronts/live   # lokal; live/ ist in .gitignore
 ```
 
-- **Stündlich aufrufen.** Bearbeitet werden alle Haupttermine der letzten 24 h
-  (`--lookback`), für die ICON-EU den Lauf zum Termin schon hat. Fertige
-  Termine werden übersprungen, und eine Sperre (`<out>/.lock`) verhindert
-  überlappende Läufe.
+- **Regelmäßig aufrufen** (auf dem Server alle 3 h, s. unten). Bearbeitet werden
+  alle Haupttermine der letzten 24 h (`--lookback`), für die ICON-EU den Lauf
+  zum Termin schon hat. Fertige Termine werden übersprungen, und eine Sperre
+  (`<out>/.lock`) verhindert überlappende Läufe.
 - **Vorläufig → endgültig.** ICON-EU liegt rund 4 h nach dem Termin auf dem
   Server, ICON Global erst nach rund 8 h (gemessen 13.10.). Bis dahin kommt der
   Außenbereich aus dem vorigen Global-Lauf (Vorhersage +6 h), und der Termin
@@ -424,6 +424,56 @@ geschrieben (`.tmp`, dann umbenennen), `run.json` zuletzt. Ein Termin
 gilt erst als vorhanden, wenn es `run.json` gibt. Die archivierten Fixtures
 lassen sich direkt als Testfälle nutzen, z. B. in `fixtures/` kopieren
 oder `compare.mjs --fixtures <out>/runs/<id>`.
+
+## Webanwendung synoptix (seit 2026-10-13)
+
+https://synoptix.wetterheidi.de, geschützt über den Pförtner (Tool
+`synoptix`). Bis zur eigenen App (Phase 3) ist die Debug-Seite die
+Startseite und zeigt den neuesten Termin. Die Dateien dazu liegen in
+`deploy/`:
+
+| Datei | Zweck |
+|---|---|
+| `deploy-synoptix.sh` | Einspielen (`… rollback` holt den vorherigen Stand zurück). Verlangt committete `src/` und `tools/fronts/` |
+| `synoptix.wetterheidi.de` | nginx-Vhost; `/tools/fronts/live/` zeigt auf das Archiv `/apps/synoptix/data` |
+| `synoptix-analysis.service` | Job als `www-data`, `MemoryMax=350M`, `Nice=10` |
+| `synoptix-analysis.timer` | alle 3 h um :30 UTC (01:30, 04:30, …, 22:30) |
+
+Auf dem Server liegen die App in `/apps/synoptix/app` (vorheriger Stand in
+`app.prev`) und das Archiv in `/apps/synoptix/data`. Das Deploy-Skript
+fasst das Archiv nicht an. Ausgeliefert werden auch `fixtures/` und
+`reference/`, die Testfälle lassen sich also online ansehen.
+Ersteinrichtung: das Zertifikat mit `certbot certonly --nginx -d
+synoptix.wetterheidi.de` holen, dann deployen.
+
+**Zeitplan.** Der Server (2 Kerne, kein Swap) ist durch die
+TLogPViewer-Downloads (`tlogp-d2eu.timer`, ab :15 alle 3 h, Dauer bis
+1 h 45 min) gut die Hälfte der Zeit voll ausgelastet. Ein Testlauf
+mittendrin brauchte 90 min statt weniger Minuten (13.10.). Der Job läuft
+deshalb in den ruhigen Fenstern um :30, und das passt zur Verfügbarkeit
+der Läufe:
+
+| Termin | ICON-EU da (~T+4 h) | vorläufig um | ICON Global da (~T+8 h) | endgültig um |
+|---|---|---|---|---|
+| 00 UTC | ~04:00 | 04:30 | ~08:00 | 10:30 |
+| 06 UTC | ~10:00 | 10:30 | ~14:00 | 16:30 |
+| 12 UTC | ~16:00 | 16:30 | ~20:00 | 22:30 |
+| 18 UTC | ~22:00 | 22:30 | ~02:00 | 04:30 |
+
+Kommt ein ICON-EU-Lauf mehr als 30 min später, verschiebt sich die vorläufige
+Analyse um 3 h.
+
+**Speicher.** Gemessen 13.10. auf dem Server: Spitze 176 MB, rund 5 CPU-Minuten
+je Termin. Die Grenze `MemoryMax` sorgt dafür, dass bei Speichermangel nur der
+Job beendet wird, nicht andere Dienste.
+
+Betrieb:
+
+```bash
+ssh root@178.104.206.136 systemctl start synoptix-analysis     # Lauf von Hand
+ssh root@178.104.206.136 journalctl -u synoptix-analysis -n 50 # Protokoll
+ssh root@178.104.206.136 systemctl list-timers synoptix-analysis.timer
+```
 
 ## Debug-Seite
 
