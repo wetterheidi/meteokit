@@ -293,6 +293,8 @@ node tools/fronts/fetch-case.mjs --start 2026-10-08T18:00 --end 2026-10-09T15:00
 ```
 
 Das Skript schreibt nach `fixtures/<model>_<name>.json.gz` (gzip, Format v2).
+Der Abruf selbst steckt in `src/fronts/cases.js` (`fetchCase`, Gebiete in
+`CASE_DOMAINS`); die laufende Analyse (s. unten) nutzt denselben Code.
 
 Optionen:
 
@@ -371,12 +373,71 @@ Vorhandene Fälle:
 | `icon_eu_upper_<Name>.json.gz`, `icon_global_upper_<Name>.json.gz` | wie die Fixture gleichen Namens | nur 500 hPa (T, q, u, v, w), abgerufen 12.10. für alle sechs Fälle; Versuch zur Vorticity-Advektion, zusammen rund 12 MB, nur lokal (nicht im Repo) |
 | `icon_eu_850_2026100900_an.json` u. a. | ein Termin | Format v1, nur 850 hPa, aus dem Spike. Die Debug-Seite liest sie weiterhin |
 
+## Laufende Analyse (`run-analysis.mjs`, seit 2026-10-13)
+
+Grundlage der Webanwendung (synoptix.wetterheidi.de, Phase 1: Pipeline und
+Archiv). Der Job holt zu den synoptischen Hauptterminen 00/06/12/18 UTC
+die Felder, rechnet die Fronten und legt beides ab:
+
+```bash
+node tools/fronts/run-analysis.mjs --out tools/fronts/live   # lokal; live/ ist in .gitignore
+```
+
+- **Stündlich aufrufen.** Bearbeitet werden alle Haupttermine der letzten 24 h
+  (`--lookback`), für die ICON-EU den Lauf zum Termin schon hat. Fertige
+  Termine werden übersprungen, und eine Sperre (`<out>/.lock`) verhindert
+  überlappende Läufe.
+- **Vorläufig → endgültig.** ICON-EU liegt rund 4 h nach dem Termin auf dem
+  Server, ICON Global erst nach rund 8 h (gemessen 13.10.). Bis dahin kommt der
+  Außenbereich aus dem vorigen Global-Lauf (Vorhersage +6 h), und der Termin
+  hat den Status `preliminary`. Ist der Global-Lauf da, holt ein späterer
+  Aufruf ICON Global neu und setzt `final`.
+- **Felder und Fronten getrennt.** Je Termin werden die Fixtures (Format v2,
+  wie unter `fixtures/`; Vortermin −3 h für die Drucktendenz) und die
+  Fronten als GeoJSON abgelegt (`keepInactive`, mit `properties.algo_version`).
+  `algo_version` ist eine Prüfsumme über `src/fronts/*.js`. Ändert sich der
+  Code, rechnet der Job die Termine im Fenster neu; `--redetect` rechnet das
+  ganze Archiv ohne neuen Abruf.
+- **Vorhersagen vorbereitet.** `--horizon 48` holt zusätzlich die Termine bis
+  +48 h (3-stündlich) und rechnet für jeden die Fronten. Default ist 0, also nur
+  die Analyse.
+- **Aufbewahrung.** `--keep-days` (Default 60) löscht ältere Termine. Ein Termin
+  braucht rund 3 MB (ICON-EU 0,7, ICON Global 1,7, Höhenflächen 0,7,
+  Fronten 0,07), also rund 0,75 GB für 60 Tage. `--no-upper` lässt die
+  Höhenflächen (500 hPa) weg.
+- **Dauer.** Gemessen 13.10.: rund 2 min je Termin (ICON-EU 20 s, ICON Global
+  55 s, Höhenflächen 15 + 35 s). Die Abrufe laufen nacheinander.
+- `--time 2026-10-13T06:00` holt genau diesen Termin neu.
+
+Ablage:
+
+```
+<out>/latest.json                    neuester Termin: id, status, path, Fronten
+<out>/index.json                     alle Termine, neuester zuerst
+<out>/runs/<id>/run.json             Status, Läufe beim Abruf, Version, Dauer
+<out>/runs/<id>/icon_eu_<id>.json.gz (+ icon_global_, icon_eu_upper_, icon_global_upper_)
+<out>/runs/<id>/fronts_<YYYY-MM-DDTHH>.geojson
+```
+
+mit `<id>` = Analysetermin `YYYY-MM-DDTHH`. Alle Dateien werden atomar
+geschrieben (`.tmp`, dann umbenennen), `run.json` zuletzt. Ein Termin
+gilt erst als vorhanden, wenn es `run.json` gibt. Die archivierten Fixtures
+lassen sich direkt als Testfälle nutzen, z. B. in `fixtures/` kopieren
+oder `compare.mjs --fixtures <out>/runs/<id>`.
+
 ## Debug-Seite
 
 ```bash
 python3 -m http.server 8765    # im Repo-Root
+# http://127.0.0.1:8765/tools/fronts/debug.html                 (neuester Termin der laufenden Analyse)
 # http://127.0.0.1:8765/tools/fronts/debug.html?fixture=fixtures/icon_eu_2026-10-09.json.gz
 ```
+
+Ohne Angabe lädt die Seite den neuesten Termin der laufenden Analyse aus
+`live/` neben der Seite (`fixture=latest`, ein anderes Verzeichnis mit
+`?live=…`), sonst die Fixture vom 09.10. Archivierte Termine stehen mit
+Status oben in der Fixture-Liste. Die Fronten rechnet die Seite wie immer
+selbst, mit den eingestellten Schwellen.
 
 Die Seite bietet eine Auswahl von Termin und Druckfläche. „ICON Global
 außen“ (Vorgabe an) lädt zur ICON-EU-Fixture die ICON-Global-Fixture

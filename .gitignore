@@ -10,3 +10,6 @@ docs/Testfronten/
 
 # Höhenwind-Fixtures (500 hPa, Versuch Vorticity-Advektion): vorerst nur lokal
 tools/fronts/fixtures/*_upper_*.json.gz
+
+# Archiv der laufenden Analyse beim lokalen Test (run-analysis.mjs --out tools/fronts/live)
+tools/fronts/live/

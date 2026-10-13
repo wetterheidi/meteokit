@@ -38,9 +38,10 @@
 <body>
 <div id="panel">
   <h1>Fronten-Debug</h1>
-  <label for="fixture">Fixture</label>
+  <label for="fixture" title="„latest“ = neueste laufende Analyse (run-analysis.mjs, Ablage live/ neben dieser Seite, mit ?live=… änderbar); archivierte Termine stehen in der Liste.">Fixture</label>
   <div class="row"><input id="fixture" type="text" list="fixtures"><button id="load">Laden</button></div>
   <datalist id="fixtures">
+    <option value="latest">Aktuelle Analyse (laufende Analyse, neuester Termin)</option>
     <option value="fixtures/icon_eu_2026-10-12.json.gz">12.10. Hoch Mitteleuropa, Tiefs Grönland und Baltikum (Blindtest)</option>
     <option value="fixtures/icon_eu_2026-10-10.json.gz">10.10. Finnland-Tief, Ostseewelle, Front über Frankreich</option>
     <option value="fixtures/icon_eu_2026-10-09.json.gz">08./09.10. Island-, Ostsee-, Ligurientief</option>
@@ -161,11 +162,15 @@ import { detectFronts, frontFields, DETECT_DEFAULTS } from "../../src/fronts/det
 import { ridgeLines } from "../../src/fronts/occlusion.js";
 import { frontogenesis } from "../../src/fronts/frontogenesis.js";
 import { vorticityAdvection, vorticityTendency, geopotential500 } from "../../src/fronts/cyclogenesis.js";
-import { fieldAt, mergeFields } from "../../src/fronts/field.js";
+import { fieldAt } from "../../src/fronts/field.js";
+import { typedCase, mergeCases, attachUpper } from "../../src/fronts/cases.js";
 
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
-$("fixture").value = params.get("fixture") || "fixtures/icon_eu_2026-10-09.json.gz";
+$("fixture").value = params.get("fixture") || "latest";
+// Ablage der laufenden Analyse (run-analysis.mjs --out …), relativ zur Seite.
+const LIVE = (params.get("live") || "live/").replace(/\/?$/, "/");
+const FALLBACK_FIXTURE = "fixtures/icon_eu_2026-10-09.json.gz";
 $("sigma").value = DETECT_DEFAULTS.sigmaKm; // Glättung wie die Bibliothek (90 km)
 $("k1").value = DETECT_DEFAULTS.k1; $("k2").value = DETECT_DEFAULTS.k2;
 $("minLen").value = DETECT_DEFAULTS.minLengthKm; $("windMin").value = DETECT_DEFAULTS.windMin;
@@ -239,46 +244,61 @@ function asCase(fx) {
   };
 }
 
-// null -> NaN und Float32Array, einmal beim Laden (rekursiv über alle Felder).
-function toTyped(obj) {
-  for (const [k, v] of Object.entries(obj)) {
-    if (Array.isArray(v) && v.length > 1000) obj[k] = k === "below" ? Uint8Array.from(v) : Float32Array.from(v, (x) => (x == null ? NaN : x));
-    else if (v && typeof v === "object" && !Array.isArray(v)) toTyped(v);
-  }
-}
-
 async function fetchCase(url) {
   const resp = await fetch(url);
   if (!resp.ok) return null;
   const body = url.endsWith(".gz") ? new Response(resp.body.pipeThrough(new DecompressionStream("gzip"))) : resp;
-  const C = asCase(await body.json());
-  for (const st of C.steps) toTyped(st);
-  return C;
+  return typedCase(asCase(await body.json()));
 }
 
-// ICON-EU innen, ICON Global außen (mergeFields), je Termin, für den es
-// beide gibt; Termine nur in ICON-EU bleiben auf dem ICON-EU-Raster nicht
-// erhalten (die Schrittliste soll ein Raster haben).
-function mergeCase(eu, gl) {
-  const steps = [];
-  eu.steps.forEach((st, n) => {
-    const m = gl.steps.findIndex((s) => s.validTime === st.validTime);
-    if (m < 0) return;
-    const f = mergeFields(fieldAt(eu, n, eu.pressures[0]), fieldAt(gl, m, gl.pressures[0]));
-    steps.push({ validTime: st.validTime, leadH: st.leadH, levels: f.levels, psfc: f.psfc, u10: f.u10, v10: f.v10, sfc: f.sfc, thickness: f.thickness });
-  });
-  return { ...gl, model: `${eu.model}+${gl.model}`, steps, times: steps.map((s) => s.validTime), lastRunAtFetch: eu.lastRunAtFetch };
+// Archivierte Termine der laufenden Analyse in die Auswahlliste (neueste zuerst).
+const STATUS = { final: "endgültig", preliminary: "vorläufig, ICON Global aus Vorlauf" };
+const runLabel = (r) => `Analyse ${r.analysis_time.slice(8, 10)}.${r.analysis_time.slice(5, 7)}. ${r.analysis_time.slice(11, 13)} UTC (${STATUS[r.status] ?? r.status})`;
+async function listRuns() {
+  try {
+    const r = await fetch(`${LIVE}index.json`, { cache: "no-store" });
+    if (!r.ok) return;
+    const html = (await r.json()).runs.map((run) =>
+      `<option value="${LIVE}runs/${run.id}/icon_eu_${run.id}.json.gz">${runLabel(run)}</option>`).join("");
+    $("fixtures").querySelector('option[value="latest"]').insertAdjacentHTML("afterend", html);
+  } catch { /* ohne laufende Analyse nur die Fixtures */ }
 }
 
+// "latest" -> ICON-EU-Datei des neuesten Termins; null, wenn es keinen gibt.
+async function resolveLatest() {
+  try {
+    const r = await fetch(`${LIVE}latest.json`, { cache: "no-store" });
+    if (!r.ok) return null;
+    const latest = await r.json();
+    return `${LIVE}${latest.path}icon_eu_${latest.id}.json.gz`;
+  } catch { return null; }
+}
+
+// Metadaten eines Termins der laufenden Analyse (run.json im selben Ordner).
+async function runMeta(url) {
+  if (!/\/runs\/[^/]+\/icon_eu_[^/]+$/.test(url)) return null;
+  try {
+    const r = await fetch(url.replace(/[^/]+$/, "run.json"), { cache: "no-store" });
+    return r.ok ? await r.json() : null;
+  } catch { return null; }
+}
+
+let RUN = null;
 async function load() {
-  const url = $("fixture").value;
+  const choice = $("fixture").value;
+  let url = choice;
+  if (choice === "latest") {
+    url = await resolveLatest();
+    if (!url) { $("meta").textContent = `Keine laufende Analyse unter ${LIVE}, lade ${FALLBACK_FIXTURE}`; url = FALLBACK_FIXTURE; }
+  }
   $("meta").textContent = `lade ${url} …`;
   CASE = await fetchCase(url);
   if (!CASE) { $("meta").textContent = `Fehler beim Laden: ${url}`; return; }
+  RUN = await runMeta(url);
   const glUrl = url.replace("icon_eu_", "icon_global_");
   if ($("mergeGlobal").checked && glUrl !== url) {
     const gl = await fetchCase(glUrl);
-    if (gl) CASE = mergeCase(CASE, gl);
+    if (gl) CASE = mergeCases(CASE, gl);
   }
   // Höhenwind (500 hPa) aus der Zusatz-Fixture gleichen Namens, falls vorhanden,
   // als levels[500] an die Termine hängen (nicht als wählbare Analysefläche).
@@ -287,23 +307,20 @@ async function load() {
     let up = await fetchCase(upUrl);
     if (up && $("mergeGlobal").checked && glUrl !== url) {
       const upGl = await fetchCase(upUrl.replace("icon_eu_upper_", "icon_global_upper_"));
-      up = upGl ? mergeCase(up, upGl) : null;
+      up = upGl ? mergeCases(up, upGl) : null;
     }
-    if (up && up.nx === CASE.nx && up.ny === CASE.ny) {
-      for (const st of CASE.steps) {
-        const u = up.steps.find((s) => s.validTime === st.validTime);
-        if (u) Object.assign(st.levels, u.levels);
-      }
-    }
+    attachUpper(CASE, up);
   }
   $("stepSel").innerHTML = CASE.steps.map((st, n) =>
     `<option value="${n}">${st.validTime.replace("T", " ")} UTC${st.leadH ? ` (+${st.leadH} h)` : st.leadH === 0 ? " (Analyse)" : ""}</option>`).join("");
   $("presSel").innerHTML = CASE.pressures.map((p) => `<option value="${p}">${p} hPa</option>`).join("");
-  const want = params.get("step");
+  // Laufende Analyse: auf den Analysetermin springen (der erste Termin ist
+  // nur der Vortermin für die Drucktendenz), außer ?step= sagt etwas anderes.
+  const want = (params.get("fixture") === choice && params.get("step")) || RUN?.analysis_time;
   const idx = CASE.steps.findIndex((st) => st.validTime === want);
   $("stepSel").value = String(idx >= 0 ? idx : CASE.steps.findIndex((st) => st.validTime.endsWith("T00:00")) >= 0
     ? CASE.steps.findIndex((st) => st.validTime.endsWith("T00:00")) : 0);
-  params.set("fixture", url); history.replaceState(null, "", `?${params}`);
+  params.set("fixture", choice); history.replaceState(null, "", `?${params}`);
   selectStep();
 }
 
@@ -317,6 +334,7 @@ function selectStep() {
     `gültig    ${F.validTime} UTC`,
     `Lauf (bei Abruf) ${CASE.lastRunAtFetch?.slice(0, 16).replace("T", " ") ?? "?"}`,
     `Raster    ${F.res}°  ${F.nx}×${F.ny}`,
+    ...(RUN ? [`Analyse   ${STATUS[RUN.status] ?? RUN.status}`] : []),
   ].join("\n");
   params.set("step", F.validTime); history.replaceState(null, "", `?${params}`);
   recompute();
@@ -984,6 +1002,7 @@ map.on("mousemove", (e) => {
 });
 
 $("load").onclick = load;
+listRuns();
 $("mergeGlobal").onchange = load;
 $("stepSel").onchange = selectStep;
 $("presSel").onchange = selectStep;

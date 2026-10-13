@@ -5,7 +5,8 @@
  * als gzip-komprimierte JSON-Fixture (Format v2, s. README). Mehrere
  * Termine braucht es für Drucktendenz und Frontverlagerung. Der Server hält
  * Modellleveldaten nur begrenzt vor (Stand 12.10.: zurück bis 29.09.), also
- * Fälle zeitnah sichern.
+ * Fälle zeitnah sichern -- oder aus dem Archiv der laufenden Analyse
+ * (run-analysis.mjs) nehmen.
  *
  *   node tools/fronts/fetch-case.mjs --start 2026-10-08T18:00 --end 2026-10-09T12:00 \
  *     [--step 3] [--model icon_eu] [--res 0.5] [--pressures 850,700] \
@@ -15,13 +16,14 @@
  * oberen Modellleveln, ohne Oberfläche und Schichtdicke, nach
  * fixtures/<model>_upper_<name>.json.gz -- Ergänzung zur Fixture gleichen
  * Namens (gleiches Raster), z. B. für die Vorticity-Advektion (PVA).
+ *
+ * Der Abruf selbst steckt in src/fronts/cases.js.
  */
 
 import { writeFile, mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
 import { gzipSync } from "node:zlib";
-import { fetchPlaneField, DEFAULT_SURFACE } from "../../src/fronts/field.js";
-import { fetchModelRunInit } from "../../src/weather.js";
+import { fetchCase, caseTimes, CASE_DOMAINS } from "../../src/fronts/cases.js";
 
 const args = Object.fromEntries(process.argv.slice(2).reduce((acc, a, i, all) => {
   if (a.startsWith("--")) acc.push([a.slice(2), all[i + 1]]);
@@ -31,76 +33,25 @@ const args = Object.fromEntries(process.argv.slice(2).reduce((acc, a, i, all) =>
 const model = args.model || "icon_eu";
 const start = args.start, end = args.end || args.start;
 if (!start) { console.error("--start YYYY-MM-DDTHH:00 fehlt"); process.exit(1); }
-const stepH = Number(args.step || 3);
-const res = Number(args.res || 0.5);
 const upper = "upper" in args;
-const pressures = (args.pressures || (upper ? "500" : "850,700")).split(",").map(Number);
-// Levelbereich für 500 hPa (Stichproben in field.js: ICON-EU Level 48 ≈ 530,
-// 38 ≈ 350 hPa; ICON Global 96 ≈ 550–585, 88 ≈ 390–430 hPa), mit Reserve für
-// tiefe Kerne, in denen die Fläche tiefer liegt.
-const UPPER_LEVELS = { icon_eu: [36, 54], icon_global: [84, 100] };
-// Default: ICON-EU-Gebiet in Europa (West- und Südrand = Modellrand), Raster
-// auf das 0,0625°-Gitter ausgerichtet, damit "nearest" exakt trifft.
-const [latMin, latMax, lonMin, lonMax] = (args.bbox || "30,70,-23.5,44.5").split(",").map(Number);
+const bbox = args.bbox
+  ? Object.fromEntries(["latMin", "latMax", "lonMin", "lonMax"].map((k, i) => [k, Number(args.bbox.split(",")[i])]))
+  : CASE_DOMAINS[model];
 const name = args.name || start.slice(0, 10);
 const out = args.out || `tools/fronts/fixtures/${model}${upper ? "_upper" : ""}_${name}.json.gz`;
 
-const times = [];
-for (let t = Date.parse(`${start}Z`); t <= Date.parse(`${end}Z`); t += stepH * 3600e3) {
-  times.push(new Date(t).toISOString().slice(0, 16));
-}
-
-const runInit = await fetchModelRunInit(model);
-const round = (arr, digits) => Array.from(arr, (x) => (Number.isFinite(x) ? +x.toFixed(digits) : null));
-// Rundung je Feld: genug für Gradienten/Tendenzen, klein genug für das Repo.
-const DIGITS = { T: 2, q: 6, u: 2, v: 2, w: 3, psfc: 1, u10: 2, v10: 2 };
-const SFC_DIGITS = { pressure_msl: 1, temperature_2m: 1, dew_point_2m: 1 }; // sonst 1 bzw. ganzzahlig
-const steps = [];
 const t0 = Date.now();
-let heights = null; // Levelhöhen: zeitlich konstant, nur beim ersten Termin holen
-for (const time of times) {
-  const f = await fetchPlaneField({
-    model, bbox: { latMin, latMax, lonMin, lonMax }, res, time, pressures,
-    ...(upper ? { surface: [], thickness: false, levels: UPPER_LEVELS[model] } : { surface: DEFAULT_SURFACE, thickness: true, heights }),
-    onProgress: (d, n) => process.stderr.write(`\r${time}: ${d}/${n} Blöcke   `),
-  });
-  heights = f.heights;
-  const levels = {};
-  for (const p of pressures) {
-    const L = f.levels[p];
-    levels[p] = { below: Array.from(L.below) };
-    for (const key of ["T", "q", "u", "v", "w"]) levels[p][key] = round(L[key], DIGITS[key]);
-  }
-  const sfc = {};
-  for (const [k, arr] of Object.entries(f.sfc)) sfc[k] = round(arr, SFC_DIGITS[k] ?? (k.startsWith("cloud") || k === "cape" ? 0 : 2));
-  // Vorlauf relativ zum letzten Lauf beim Abruf: <= 0 heißt, die Stunde
-  // stammt aus einem Lauf zu oder kurz vor diesem Termin (ICON-EU 3-stündlich).
-  const leadH = runInit ? Math.round((Date.parse(`${time}Z`) / 1000 - runInit) / 3600) : null;
-  steps.push(upper
-    ? { validTime: time, leadH: leadH != null && leadH > 0 ? leadH : 0, levels }
-    : {
-      validTime: time, leadH: leadH != null && leadH > 0 ? leadH : 0,
-      levels, psfc: round(f.psfc, DIGITS.psfc), u10: round(f.u10, 2), v10: round(f.v10, 2), sfc,
-      thickness: round(f.thickness, 0),
-    });
-}
+const fixture = await fetchCase({
+  model, bbox, upper, times: caseTimes(start, end, Number(args.step || 3)),
+  res: Number(args.res || 0.5),
+  ...(args.pressures ? { pressures: args.pressures.split(",").map(Number) } : {}),
+  onProgress: (time, d, n) => process.stderr.write(`\r${time}: ${d}/${n} Blöcke   `),
+});
 process.stderr.write(`\n${((Date.now() - t0) / 1000).toFixed(1)} s\n`);
 
-const fixture = {
-  version: 2, model, ...(upper ? { upper: true } : {}), res, lat0: latMin, lon0: lonMin,
-  nx: Math.round((lonMax - lonMin) / res) + 1, ny: Math.round((latMax - latMin) / res) + 1,
-  pressures, stepH, times,
-  lastRunAtFetch: runInit ? new Date(runInit * 1000).toISOString() : null,
-  fetchedAt: new Date().toISOString(),
-  units: {
-    T: "K", q: "kg/kg", u: "m/s", v: "m/s", w: "m/s", psfc: "hPa", u10: "m/s", v10: "m/s",
-    pressure_msl: "hPa", precipitation: "mm/h", rain: "mm/h", showers: "mm/h",
-    cloud_cover: "%", temperature_2m: "°C", dew_point_2m: "°C", cape: "J/kg", thickness: "gpm (500/1000 hPa)",
-  },
-  steps,
-};
 await mkdir(dirname(out), { recursive: true });
 const gz = gzipSync(JSON.stringify(fixture), { level: 9 });
 await writeFile(out, gz);
+const { times } = fixture;
 console.log(`${out}: ${times.length} Termine ${times[0]} … ${times.at(-1)}, ${fixture.nx}×${fixture.ny}, `
-  + `${(gz.length / 1e6).toFixed(1)} MB, Lauf ${fixture.lastRunAtFetch}, Vorlauf ${steps.map((s) => s.leadH).join("/")} h`);
+  + `${(gz.length / 1e6).toFixed(1)} MB, Lauf ${fixture.lastRunAtFetch}, Vorlauf ${fixture.steps.map((s) => s.leadH).join("/")} h`);

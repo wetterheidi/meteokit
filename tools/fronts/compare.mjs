@@ -26,7 +26,7 @@
 import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { gunzipSync } from "node:zlib";
 import { fileURLToPath } from "node:url";
-import { fieldAt, mergeFields, detectFronts } from "../../src/fronts/index.js";
+import { fieldAt, mergeFields, detectFronts, typedCase } from "../../src/fronts/index.js";
 import { compareFronts, fcToLines } from "./compare.js";
 
 const dir = fileURLToPath(new URL(".", import.meta.url));
@@ -71,16 +71,8 @@ const refDir = arg("--refs") ? `${arg("--refs").replace(/\/$/, "")}/` : `${dir}r
 const refs = existsSync(refDir) ? readdirSync(refDir).filter((f) => f.endsWith(".geojson")).sort() : [];
 if (!refs.length) { console.log(`Keine Referenzen in ${refDir}`); process.exit(0); }
 
-// null -> NaN und typisierte Arrays (wie in debug.html).
-function toTyped(obj) {
-  for (const [k, v] of Object.entries(obj)) {
-    if (Array.isArray(v) && v.length > 1000) obj[k] = k === "below" ? Uint8Array.from(v) : Float32Array.from(v, (x) => (x == null ? NaN : x));
-    else if (v && typeof v === "object" && !Array.isArray(v)) toTyped(v);
-  }
-}
 const all = readdirSync(fixDir).filter((f) => f.endsWith(".json.gz")).map((name) => {
-  const C = JSON.parse(gunzipSync(readFileSync(`${fixDir}${name}`)));
-  for (const st of C.steps) toTyped(st);
+  const C = typedCase(JSON.parse(gunzipSync(readFileSync(`${fixDir}${name}`))));
   return { name, C };
 });
 const isMerge = (fx) => mergeModel && fx.name.startsWith(`${mergeModel}_`);
