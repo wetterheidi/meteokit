@@ -497,6 +497,19 @@ Handanalysen abgestimmt. Synoptix zeigt immer die Bodenfronten
 (Entscheidung 13.10.: maßgeblich sind die Bodenfronten, die Neigung muss
 nicht eigens gezeichnet werden).
 
+**Gemerkte Einstellungen** (seit 2026-10-14): Die Seite speichert die
+Anzeige im Browser (`localStorage`, Schlüssel `synoptix-settings` bzw.
+`synoptix-settings:debug`, also getrennt für Synoptix und Debug-Seite):
+Schattierung, Deckkraft, Druckfläche, Isolinien (Häkchen und Abstand), die
+Häkchen für Wind, Fronten und Handanalyse, „ICON Global außen“, ob die
+Analyse-Einstellungen aufgeklappt und der Werte-Kasten eingeklappt ist.
+Nicht gespeichert werden die Analyseparameter (σ, K1, K2, Länge, Wind):
+ein alter Wert würde sonst geänderte Vorgaben der Automatik still
+überstimmen. Datenquelle und Termin ebenfalls nicht, die Seite startet
+immer mit dem neuesten Termin. `field=` in der URL hat Vorrang vor dem
+gespeicherten Wert. „Anzeige-Einstellungen zurücksetzen“ (unten in der
+Seitenleiste) löscht den Speicher.
+
 Ohne Angabe lädt die Seite den neuesten Termin der laufenden Analyse aus
 `live/` neben der Seite (`fixture=latest`, ein anderes Verzeichnis mit
 `?live=…`), sonst die Fixture vom 09.10. Archivierte Termine stehen mit

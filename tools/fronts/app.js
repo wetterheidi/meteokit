@@ -35,7 +35,31 @@ const FIELD_GROUPS = [
     ["vortTend", "Δζ 3 h", "Vorticity-Änderung 3 h, {p} [10⁻⁵ s⁻¹]"]]],
 ];
 const FIELDS = FIELD_GROUPS.flatMap(([, list]) => list);
-let fieldKey = FIELDS.some(([k]) => k === params.get("field")) ? params.get("field") : "thE";
+
+// Anzeige-Einstellungen im Browser merken (localStorage, getrennt für
+// Synoptix und Debug-Seite). Nicht gespeichert werden die Analyseparameter
+// (σ, K1, K2 …), sonst überstimmte ein alter Wert still geänderte Vorgaben
+// der Automatik, und Datenquelle/Termin (Start immer mit dem neuesten Termin).
+const SETTINGS_KEY = DEBUG ? "synoptix-settings:debug" : "synoptix-settings";
+const CHECKS = ["mergeGlobal", "wind", "wind10", "fronts", "precipFronts", "inactive", "ridges", "kinks", "cand", "edShow"];
+const saved = (() => { try { return JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {}; } catch { return {}; } })();
+const validField = (k) => FIELDS.some(([key]) => key === k);
+let fieldKey = validField(params.get("field")) ? params.get("field") : validField(saved.field) ? saved.field : "thE";
+for (const id of CHECKS) if (typeof saved.checks?.[id] === "boolean") $(id).checked = saved.checks[id];
+if (Number.isFinite(saved.opacity)) $("opacity").value = saved.opacity;
+if (saved.detailsOpen) document.querySelector("details").open = true;
+let settingsReady = false; // erst nach dem ersten Laden speichern
+function saveSettings() {
+  if (!settingsReady) return;
+  const out = {
+    v: 1, field: fieldKey, pres: $("presSel").value || saved.pres, opacity: Number($("opacity").value),
+    checks: Object.fromEntries(CHECKS.map((id) => [id, $(id).checked])),
+    iso: Object.fromEntries(ISO.map((d) => [d.key, { on: $(`iso_${d.key}`).checked, step: Number($(`isoStep_${d.key}`).value) }])),
+    detailsOpen: document.querySelector("details").open,
+    hoverCollapsed: document.querySelector(".hoverbox")?.classList.contains("collapsed") || false,
+  };
+  try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(out)); } catch { /* ohne Speicher nur für diese Sitzung */ }
+}
 
 // Isolinien: beliebig viele zugleich, je mit eigenem Abstand und Stil.
 const ISO = [
@@ -46,6 +70,11 @@ const ISO = [
   { key: "thk", label: "Schichtdicke 500/1000", unit: "gpdm", step: 4, color: "#c62828", weight: 1, dashArray: "6 4" },
   { key: "z500", label: "Z500", unit: "gpdm", step: 4, color: "#283593", weight: 1.2 },
 ];
+for (const d of ISO) {
+  const sv = saved.iso?.[d.key];
+  if (typeof sv?.on === "boolean") d.on = sv.on;
+  if (sv?.step > 0) d.step = sv.step;
+}
 const plev = () => `${$("presSel").value || 850} hPa`;
 const withP = (s) => s.replace("{p}", plev());
 // Ablage der laufenden Analyse (run-analysis.mjs --out …), relativ zur Seite.
@@ -90,6 +119,7 @@ function setField(key) {
   for (const b of $("fieldGrid").querySelectorAll(".fbtn")) b.classList.toggle("on", b.dataset.key === key);
   $("fieldName").textContent = withP(FIELDS.find(([k]) => k === key)[2]);
   params.set("field", key); history.replaceState(null, "", `?${params}`);
+  saveSettings();
   if (derived) drawField();
 }
 $("fieldGrid").addEventListener("click", (e) => { const b = e.target.closest(".fbtn"); if (b) setField(b.dataset.key); });
@@ -126,10 +156,10 @@ const HoverBox = L.Control.extend({
     const div = L.DomUtil.create("div", "hoverbox");
     div.innerHTML = `<div class="hb-head">Werte ▾</div><pre id="hover">Maus über die Karte …</pre>`;
     L.DomEvent.disableClickPropagation(div);
-    div.querySelector(".hb-head").onclick = () => {
-      div.classList.toggle("collapsed");
-      div.querySelector(".hb-head").textContent = div.classList.contains("collapsed") ? "Werte ▸" : "Werte ▾";
-    };
+    const head = div.querySelector(".hb-head");
+    const show = (collapsed) => { div.classList.toggle("collapsed", collapsed); head.textContent = collapsed ? "Werte ▸" : "Werte ▾"; };
+    show(!!saved.hoverCollapsed);
+    head.onclick = () => { show(!div.classList.contains("collapsed")); saveSettings(); };
     return div;
   },
 });
@@ -217,7 +247,9 @@ async function load() {
   }
   $("stepSel").innerHTML = CASE.steps.map((st, n) =>
     `<option value="${n}">${st.validTime.replace("T", " ")} UTC${st.leadH ? ` (+${st.leadH} h)` : st.leadH === 0 ? " (Analyse)" : ""}</option>`).join("");
+  const keepPres = $("presSel").value || String(saved.pres || "");
   $("presSel").innerHTML = CASE.pressures.map((p) => `<option value="${p}">${p} hPa</option>`).join("");
+  if (CASE.pressures.map(String).includes(keepPres)) $("presSel").value = keepPres;
   // Laufende Analyse: auf den Analysetermin springen (der erste Termin ist
   // nur der Vortermin für die Drucktendenz), außer ?step= sagt etwas anderes.
   const want = (params.get("fixture") === choice && params.get("step")) || RUN?.analysis_time;
@@ -520,4 +552,14 @@ $("export").onclick = exportGeoJSON;
 $("sigma").oninput = recompute;
 $("wind").onchange = drawWind;
 $("opacity").oninput = () => overlay?.setOpacity(Number($("opacity").value));
-load();
+// Jede Änderung in der Seitenleiste speichert die Anzeige-Einstellungen.
+$("panel").addEventListener("change", saveSettings);
+$("opacity").addEventListener("change", saveSettings);
+document.querySelector("details").addEventListener("toggle", saveSettings);
+$("resetSettings").onclick = () => {
+  try { localStorage.removeItem(SETTINGS_KEY); } catch { /* kein Speicher */ }
+  params.delete("field");
+  location.search = params.toString();
+};
+if (!$("edShow").checked) editor.setVisible(false);
+load().then(() => { settingsReady = true; saveSettings(); });
