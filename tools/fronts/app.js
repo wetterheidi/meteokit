@@ -295,7 +295,8 @@ function detectOpts() {
   return {
     sigmaKm: Number($("sigma").value), k1: Number($("k1").value), k2: Number($("k2").value),
     minLengthKm: Number($("minLen").value), windMin: Number($("windMin").value),
-    position: $("surface").checked ? "surface" : "analysis",
+    // Synoptix zeigt immer die Bodenfronten; die Lage in der Druckfläche nur im Debug-Modus.
+    position: DEBUG && !$("surface").checked ? "analysis" : "surface",
     precipFronts: $("precipFronts").checked,
   };
 }

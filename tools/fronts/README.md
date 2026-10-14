@@ -488,8 +488,14 @@ Seit 2026-10-13 gibt es eine Oberfläche, `index.html` mit `app.js`.
 `debug.html` leitet auf `index.html?debug=1` weiter (alte Links mit
 `?fixture=…&step=…` bleiben gültig). Mit `debug` heißt die Seite
 „Fronten-Debug“ und zeigt zusätzliche Werkzeuge zur Abstimmung der
-Automatik (Elemente `.debug-only`, bisher: Kandidaten ohne Masken, also
-die rohen TFP-Nulllinien vor allen Filtern).
+Automatik (Elemente `.debug-only`): Kandidaten ohne Masken, also die rohen
+TFP-Nulllinien vor allen Filtern, und der Schalter „Fronten in Bodenlage“.
+Ohne Häkchen läuft dort die ganze Analyse auf der Lage in der Druckfläche;
+weil Lückenschluss, Okklusionen und Anschluss an Tiefs danach kommen, ergibt
+das andere Okklusionspunkte und Fronttypen und ist nicht an den
+Handanalysen abgestimmt. Synoptix zeigt immer die Bodenfronten
+(Entscheidung 13.10.: maßgeblich sind die Bodenfronten, die Neigung muss
+nicht eigens gezeichnet werden).
 
 Ohne Angabe lädt die Seite den neuesten Termin der laufenden Analyse aus
 `live/` neben der Seite (`fixture=latest`, ein anderes Verzeichnis mit
@@ -532,9 +538,9 @@ ICON-EU-Felder von Open-Meteo: Abweichung unter 1 gpdm in 850 und 700 hPa
 Dazu kommen Windpfeile auf der Druckfläche und bei ~10 m, die
 Warmluftzungen (Rückenachsen der Schichtdicke bzw. θw 700), die
 Knicklinien der Isobaren (Achsen maximaler zyklonaler
-Isobarenkrümmung) und optional die Linien ohne Wetter. „Fronten in
-Bodenlage“ verschiebt Kalt- und quasistationäre Fronten von der Lage in
-der Druckfläche zur warmen Seite (s. oben, Bodenposition). Die Schwellen K1,
+Isobarenkrümmung) und optional die Linien ohne Wetter. Die Fronten stehen
+in Bodenlage: Kalt- und quasistationäre Fronten sind von der Lage in der
+Druckfläche zur warmen Seite verschoben (s. oben, Bodenposition). Die Schwellen K1,
 K2, Mindestlänge, Windschwelle und die Glättung σ stehen unter
 „Einstellungen der Analyse“ (eingeklappt). Das Ergebnis kann als GeoJSON
 gespeichert werden. Der Kasten „Werte“ unten links auf der Karte zeigt die
