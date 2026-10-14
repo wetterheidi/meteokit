@@ -1,15 +1,3 @@
 node_modules/
 .DS_Store
 *.log
-
-# DWD-Kompendien (nur für den schulinternen Gebrauch) – lokale Arbeitsunterlage
-docs/Kompendien/
-
-# Rohfassungen der Handanalysen (lokale Ablage); geprüfte Fassungen in tools/fronts/reference/
-docs/Testfronten/
-
-# Höhenwind-Fixtures (500 hPa, Versuch Vorticity-Advektion): vorerst nur lokal
-tools/fronts/fixtures/*_upper_*.json.gz
-
-# Archiv der laufenden Analyse beim lokalen Test (run-analysis.mjs --out tools/fronts/live)
-tools/fronts/live/

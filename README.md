@@ -1,8 +1,9 @@
 # meteokit
 
 Wiederverwendbare Wetter-Webkomponenten und -Kernmodule für meine Anwendungen
-(droneforecast, trajectories, …). Reines ES-Modul-Vanilla-JS: **kein Build-Schritt,
-keine externen Abhängigkeiten.** Die einbettenden Apps bündeln mit Vite.
+(droneforecast, trajectories, synoptix, …). Reines ES-Modul-Vanilla-JS: **kein Build-Schritt,
+keine externen Abhängigkeiten.** Die einbettenden Apps bündeln mit Vite (synoptix
+kommt ohne Bündeln aus und bindet die Module per Import-Map ein).
 
 Herkunft: herausgelöst aus `droneforecast` (Commit `14e1cf9`, August 2026), wo GRAMET
 ursprünglich entstanden ist.
@@ -17,6 +18,7 @@ eingebunden. Beide Repos müssen dafür nebeneinander liegen:
   meteokit/
   droneforecast/
   trajectories/
+  synoptix/
 ```
 
 In der App:
@@ -70,8 +72,11 @@ intern und darf sich jederzeit ändern — auch wenn die Datei im Repo sichtbar 
 | `meteokit/windbarb` | `windBarbMarkup`, `placeWindBarb` |
 | `meteokit/wwsymbols` | WMO-Wettersymbole als SVG-Markup: `wxSymbolMarkup`, `placeWxSymbol`, `wxHazardGlyph`, `wmoWeatherCodeToWx`, `wmoWeatherCategory` |
 | `meteokit/airspace` | `createAirspaceOverlay(L, options)` — Leaflet-Overlay für openAIP-Lufträume über den eigenen Cache-Server (s. `tools/airspace-cache/`) |
-| `meteokit/fronts` | **Im Aufbau, API noch nicht stabil.** `detectFronts` (TFP-Fronten als GeoJSON mit Wetter-/Dynamikbewertung `activity`, `DETECT_DEFAULTS`), `assessPoints`/`ACTIVITY_DEFAULTS`, `findLows`/`markCentralLows`/`markOcclusions` (Tiefzentren, Zentraltiefs, Okklusionen), `closeGaps`/`smoothFeatures`/`requireLowLink`/`dropDuplicates` (Nachbearbeitung, Anschluss an Tiefkerne mit Brücken), `frontFields`, `frontogenesis` (Petterssen, bisher nur Anzeige), `vorticityAdvection`/`vorticityTendency`/`geopotential500` (zyklogenetische Hinweise, bisher nur Anzeige), `fetchPlaneField` (Druckflächen- und Oberflächenfelder aus Modellleveln, inkl. Orographiemaske; ICON-EU und ICON Global), `fetchCase`/`caseTimes`/`CASE_DOMAINS` (ganzer Fall mehrerer Termine als Fixture), `typedCase`/`mergeCases`/`attachUpper` (Fixture analysefertig machen, ICON-EU und ICON Global je Termin zusammensetzen, 500 hPa anhängen), `fieldAt` (Termin aus einer Fixture), `mergeFields` (ICON-EU innen, ICON Global außen), `thetaE`/`thetaFields`, `gaussianSmooth`, `gradient`, `isolineSegments`. Werkzeuge und Testfälle: [`tools/fronts/`](tools/fronts/README.md) |
-| `meteokit/fronts/map` | **Im Aufbau.** Kartenanzeige der Frontenanalyse für Leaflet (als Parameter `L`): `SCALES`/`colorAt`/`paintScale`/`scaleTicks` (Farbskalen), `thermoDerived`/`caseDerived`/`geopotentialLevel`/`prevField`/`kinkLines`/`meanAlong` (abgeleitete Felder, ohne DOM), `fieldOverlay`/`isolineLayer`/`isobarLayer`/`windArrows`/`addFront`/`addAutoFronts`/`addLows`/`frontTooltip` (Ebenen), `createFrontEditor`/`spline`/`lineFeatures`/`linesFromGeoJSON` (Handanalyse). Genutzt von der Oberfläche `tools/fronts/` (Synoptix und Debug-Seite) |
+
+Die Frontenanalyse (bis 2026-10-14 `meteokit/fronts` und `tools/fronts/`) liegt
+jetzt im eigenen Repo `synoptix` (Nachbarordner `../synoptix`). Sie nutzt von hier
+`meteokit/weather`, `meteokit/config` und `meteokit/apifetch`; Änderungen an deren
+API betreffen also auch synoptix.
 
 ## Datenquellen konfigurieren
 
