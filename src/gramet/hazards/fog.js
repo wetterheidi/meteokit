@@ -90,11 +90,16 @@ export { FG_VIS_MAX_M, HAZE_VIS_MAX_M, BR_HZ_RH_SPLIT };
 const KELVIN = 273.15;
 const clamp = (x, lo, hi) => Math.max(lo, Math.min(hi, x));
 
-// Vertikale Ausdehnung der Sichtbehinderung (`hazeLayer`) aus dem RH-Profil:
-//  - HAZE_END_RH: darunter keine feuchtebedingte Sichtbehinderung mehr --
-//    dieselbe Grenze, die am Boden BR von HZ trennt (BR_HZ_RH_SPLIT, Handbuch
-//    Flugwetterdienste). Die bodenverbundene Schicht endet am ersten
-//    Unterschreiten.
+// Vertikale Ausdehnung der Sichtbehinderung (`hazeLayer`) aus dem T/RH-Profil:
+//  - Ende der Schicht: erstes Level, an dem die Feuchte-Sichtschätzung
+//    (`estimateVisibilityFromHumidity()`, Doran et al. 1999 -- dieselbe wie
+//    der BR-Fallback ohne Sichtfeld, s. Priorität 4b) über HAZE_VIS_MAX_M
+//    steigt, also keine BR-taugliche Sichtbehinderung mehr ergibt. Eine reine
+//    RH-Grenze (zuerst 80 % = BR_HZ_RH_SPLIT) griff in durchgehend feuchter
+//    Luftmasse nicht: ICON-EU 22.10.26 06 UTC, Nebel bis ~90 m, darüber bis
+//    >400 m konstant 81-89 % RH (Sichtschätzung ~6 km) -> Schleier bis 400 m.
+//  - HAZE_END_RH: Mindest-RH am Boden, sonst keine Schicht (HZ = trockener
+//    Dunst, aus der Feuchte nicht ableitbar).
 //  - FOG_FULL_RH: bis zum ersten Unterschreiten von unten deckt der Schleier
 //    voll, darüber läuft er bis HAZE_END_RH aus. PLATZHALTER, nicht kalibriert
 //    (gewählt nach Augenschein an ICON-Fällen 18.10./20.10.26).
@@ -146,7 +151,8 @@ function isCloudAt(grid, cloudFrac, ix) {
  * Bodenverbundene Schicht mit feuchtebedingter Sichtbehinderung einer Stunde:
  * `{ full, top }` (m AGL) -- Volldeckung bis `full`, auslaufend bis `top`.
  * Die Schicht endet von unten gesucht am ersten von:
- *  - RH < HAZE_END_RH (linear interpoliert),
+ *  - Feuchte-Sichtschätzung > HAZE_VIS_MAX_M (bzw. > Bodenwert, falls der
+ *    schon darüber liegt; linear interpoliert),
  *  - Basis einer ABGEHOBENEN Wolke (Wolke über wolkenfreiem Level, s.
  *    `isCloudAt`) -- sonst liefe die Schicht bei Nebel/Dunst unter tiefem
  *    Stratus durch die gesättigte Wolke bis zu deren Oberkante (ICON-D2
@@ -163,13 +169,21 @@ export function hazeLayer(grid, cloudFrac, i) {
   const ix0 = i * nk;
   const rh0 = grid.rh[ix0];
   if (!Number.isFinite(rh0) || rh0 < HAZE_END_RH) return null;
+  const visAt = (ix) => estimateVisibilityFromHumidity(grid.T[ix] - KELVIN, grid.rh[ix]);
+  // Am Boden kann die Modell-Sicht BR/FG zeigen, obwohl die Feuchteschätzung
+  // dort schon über HAZE_VIS_MAX_M liegt (Aerosol/Kondensat, das die Formel
+  // nicht kennt) -- dann reicht die Schicht so weit, wie es höchstens so
+  // "sichtig" bleibt wie am Boden.
+  const vis0 = visAt(ix0);
+  if (!Number.isFinite(vis0)) return null;
+  const visLimit = Math.max(HAZE_VIS_MAX_M, vis0);
   let top = null;
   for (let k = 1; k < nk && top == null; k++) {
     const ix = i * nk + k;
     const z0 = grid.z[ix - 1], z1 = grid.z[ix];
-    const rh = grid.rh[ix];
+    const vis = visAt(ix);
     if (z1 >= HAZE_LAYER_MAX_M) { top = HAZE_LAYER_MAX_M; break; }
-    if (!Number.isFinite(rh)) { top = z0; break; }
+    if (!Number.isFinite(vis)) { top = z0; break; }
     if (isCloudAt(grid, cloudFrac, ix) && !isCloudAt(grid, cloudFrac, ix - 1)) {
       // Wolkenbasis linear zur auslösenden Schwelle zwischen k-1 und k.
       const isCond = condensateAt(grid, ix) > FOG_QW_MIN;
@@ -177,9 +191,9 @@ export function hazeLayer(grid, cloudFrac, i) {
       const thr = isCond ? FOG_QW_MIN : CF_BKN;
       const v0 = get(ix - 1), v1 = get(ix);
       top = v1 !== v0 ? z0 + clamp((thr - v0) / (v1 - v0), 0, 1) * (z1 - z0) : z0;
-    } else if (rh < HAZE_END_RH) {
-      const rhPrev = grid.rh[ix - 1];
-      top = rhPrev !== rh ? z0 + clamp((HAZE_END_RH - rhPrev) / (rh - rhPrev), 0, 1) * (z1 - z0) : z0;
+    } else if (vis > visLimit) {
+      const visPrev = visAt(ix - 1);
+      top = visPrev !== vis ? z0 + clamp((visLimit - visPrev) / (vis - visPrev), 0, 1) * (z1 - z0) : z0;
     }
   }
   if (top == null) top = HAZE_LAYER_MAX_M;
