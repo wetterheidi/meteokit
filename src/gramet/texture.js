@@ -144,17 +144,15 @@ const cacheByGrid = new WeakMap();
 
 /**
  * Zeichnet die Wolken in den Haupt-Canvas-Kontext (aus dem Cache geblittet,
- * bei Bedarf vorher offscreen aufgebaut). `variant` unterscheidet
- * verschiedene `cloudFrac`-Fassungen zum selben Grid (z. B. Nebel-Maskierung
- * an/aus, s. `maskFog` in render.js) -- ohne sie im Cache-Schlüssel träfe der
- * Cache nach dem Umschalten fälschlich und zeigte die alte Fassung.
+ * bei Bedarf vorher offscreen aufgebaut). Der Cache hängt am Grid, nicht an
+ * `cloudFrac` -- je Grid darf es nur EINE `cloudFrac`-Fassung geben.
  */
-export function drawClouds(ctx, grid, cloudFrac, x, y, variant = "") {
+export function drawClouds(ctx, grid, cloudFrac, x, y) {
   const w = Math.max(1, Math.round(x.right - x.left));
   const h = Math.max(1, Math.round(y.bot - y.top));
   // Der Mittenwert unterscheidet log- von lin-Achse (gleiche Ränder, andere
   // Kennlinie) -- ohne ihn träfe der Cache beim Umschalten fälschlich zu.
-  const key = [variant, w, h, grid.times.length,
+  const key = [w, h, grid.times.length,
     y.inv(y.top).toFixed(2), y.inv((y.top + y.bot) / 2).toFixed(2), y.inv(y.bot).toFixed(2),
   ].join("|");
 

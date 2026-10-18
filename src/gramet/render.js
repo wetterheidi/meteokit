@@ -3,8 +3,7 @@
  * Wolkenschraffur mit vielen Einzelstrichen ist auf Canvas günstiger).
  * Einstieg: `renderGramet(host, grid, view, state)`, `state = { zMin, zMax,
  * axis: "log"|"lin", activeRows, layerToggles, pathStop, terrain, maxHeightM,
- * profile, xAxis, fogStyle }`. `fogStyle` wählt eine der Nebel-
- * Darstellungsvarianten (s. `FOG_STYLES`, vorübergehend zum Vergleich). `xAxis: "dist"` (nur Path-Modus) legt die X-Achse linear
+ * profile, xAxis }`. `xAxis: "dist"` (nur Path-Modus) legt die X-Achse linear
  * in die zurückgelegte Strecke statt in die Zeit (s. `distMap`).
  * Höhenumschalter (axis/zMin/zMax) folgt demselben State/Mechanismus wie
  * `crosssection.js` (`settings.xsZoom`) — dieselbe Umschaltfläche bedient
@@ -313,7 +312,7 @@ export function renderGramet(host, grid, view, state = {}) {
     if (isPath && state.profile?.speed?.length === state.profile.pos?.length) rows.unshift(groundSpeedRow(state.profile));
     // Path-Modus: AMSL-Projektion NUR fürs Rendering (`grid.z`/`view` bleiben
     // AGL, s. Kommentar an `amslGrid`) -- alle Zeichenfunktionen unten arbeiten
-    // auf `rgrid`/`rview`, die Physik/Heuristik-Seite (maskFog, Hover-Sampling)
+    // auf `rgrid`/`rview`, die Physik/Heuristik-Seite (Hover-Sampling)
     // weiter auf dem originalen `grid`.
     const rgrid = isPath ? amslGrid(grid) : grid;
     const rview = isPath ? amslViewOf(view, grid) : view;
@@ -404,19 +403,13 @@ export function renderGramet(host, grid, view, state = {}) {
     drawBackground(ctx, rgrid, rview, x, y, mainTop, mainBot);
     // FG/BR/HZ gemeinsam als ein Schleier (s. `drawFogHaze`/`hazeColorAlpha`)
     // vor Wolken/Hazards/Niederschlag, damit die auf dem Schleier noch klar
-    // lesbar bleiben statt darin zu verschwimmen -- auch VOR den Wolken, damit
-    // `drawClouds()` (s. u., mit maskierter cloudFrac) innerhalb der FG-Schicht
-    // nichts mehr zu zeichnen hat.
-    drawFogHaze(ctx, rgrid, rview, x, y, mainTop, mainBot, groundAt, state.fogStyle);
+    // lesbar bleiben statt darin zu verschwimmen.
+    drawFogHaze(ctx, rgrid, rview, x, y, mainTop, mainBot, groundAt);
     // Zellzerlegung einmal ziehen: Schaft, Amboss und Symbol müssen auf demselben
     // Turm sitzen (s. `cbCells`).
     const cells = toggles.cb !== false ? cbCells(rgrid, rview.cb, x, y) : [];
     if (toggles.cb !== false) drawCbShafts(ctx, cells, x, y);
-    // FG-Zellen aus der Ellipsentextur ausblenden (s. `maskFog`) -- sonst säße
-    // die "Reiskorn"-Wolkentextur unter dem Nebelschleier. Die Maske rechnet
-    // auf dem AGL-Grid (`grid.z` vs. AGL-Nebel-Tops), gezeichnet wird auf der
-    // (im Path-Modus AMSL-) Projektion `rgrid`.
-    if (toggles.clouds !== false) drawClouds(ctx, rgrid, maskFog(grid, view.cloudFrac, view.fog, state.fogStyle), x, y, state.fogStyle ?? "");
+    if (toggles.clouds !== false) drawClouds(ctx, rgrid, view.cloudFrac, x, y);
     if (toggles.cb !== false) {
       drawCbAnvils(ctx, cells, x, y);
       drawCbGlyphs(ctx, cells);
@@ -696,12 +689,10 @@ function depthAt(z) {
   return clamp((z - DEPTH_REF_MIN) / (DEPTH_REF_MAX - DEPTH_REF_MIN), 0, 1);
 }
 
-// --- Nebel/Dunst (BR/HZ) -------------------------------------------------------
+// --- Nebel/Dunst (FG/BR/HZ) ----------------------------------------------------
 //
-// FG braucht hier nichts -- läuft komplett über `drawClouds()` (`cloudFrac`
-// ist am Boden bereits hoch) plus das Label in der Wetter-Zeile. BR/HZ haben
-// per Definition (s. `hazards/fog.js`) KEIN cloudFrac-Signal -- Luft ist
-// nicht gesättigt -- und brauchen daher einen eigenen Schleier.
+// Ein gemeinsamer Schleier für FG/BR/HZ, gezeichnet VOR der Wolkentextur;
+// diese läuft bei FG unverändert mit (keine Maskierung, s. `hazeRange`).
 //
 // Zwei UNABHÄNGIGE Verläufe (waagerecht: welche Stunde/welcher Typ+welche
 // Stärke, senkrecht: wie nah am Boden) lassen sich nicht in einem einzigen
@@ -709,11 +700,11 @@ function depthAt(z) {
 // wie die Zenit-Tiefe oben, nur mit vertauschten Rollen): zuerst waagerecht
 // Farbe+Stärke je Stunde aufmalen (wie der Tag/Nacht-Grundverlauf in
 // `drawBackground`, nur mit BR-/HZ-Farbe statt Nacht/Tag), danach per
-// `destination-in` mit der senkrechten Form maskieren (Boden voll, ab
-// `HAZE_REF_MAX` nichts mehr) -- an der tatsächlichen HÖHE festgemacht wie
+// `destination-in` mit der senkrechten Form maskieren (Boden voll, oben
+// auslaufend, s. `hazeRange`) -- an der tatsächlichen HÖHE festgemacht wie
 // `DEPTH_REF_MAX` oben, nicht an Panel-Pixeln, sonst hätte dieselbe Höhe bei
 // "Gesamthöhe" und "bis Flughöhe" unterschiedlich viel Schleier.
-const HAZE_REF_MIN = 10, HAZE_REF_MAX = 400; // m AGL -- gemeinsame Reichweite des Schleiers für FG/BR/HZ
+const HAZE_REF_MIN = 10, HAZE_REF_MAX = 400; // m AGL -- Reichweite des Schleiers (FG mit RH-Obergrenze: s. `hazeRange`)
 // Kräftiger als im ersten Entwurf (0.5/gedämpfte Baseline) -- BR/HZ waren
 // dort kaum vom normalen Himmel zu unterscheiden (s. Feedback).
 const HAZE_MAX_ALPHA = 0.7;
@@ -754,43 +745,27 @@ function hazeColorAlpha(entry, visM) {
   return null;
 }
 
-// --- Nebel-Darstellungsvarianten (Vergleich, s. Feedback) -------------------
+// --- Schleier-Reichweite je Stunde -------------------------------------------
 //
-// Ausgangsproblem: `fog.js` liefert für FG aus Kondensat/BKN am Boden als
-// Obergrenze die Oberkante der GESAMTEN zusammenhängenden Schicht ab Boden
-// (bei Hochnebel/tiefem Stratus leicht 1000 m), der Schleier reichte aber fix
-// nur bis HAZE_REF_MAX (400 m) -- mit der Texturmaske bis `top` entstand
-// darüber ein wolkenfreies Loch. Vier Varianten zum Vergleich, umschaltbar in
-// der Panel-Kopfzeile (`state.fogStyle`); die beste wird übernommen, der Rest
-// danach wieder entfernt:
-//   "mask"     -- bisheriges Verhalten: Schleier fix 10..400 m, Wolkentextur
-//                 bis zur FG-Obergrenze (Fallback FG_MASK_FALLBACK_M) maskiert.
-//   "parallel" -- Schleier fix 10..400 m, Wolkentextur unverändert darüber.
-//   "top"      -- FG-Schleier an der echten Obergrenze ausgerichtet (voll bis
-//                 FG_TOP_FULL·top, weg bei FG_TOP_ZERO·top), Textur unverändert.
-//   "topmask"  -- wie "top", Textur aber bis zur Obergrenze maskiert: geschlossene
-//                 Nebelschicht bis `top`, darüber die normale Wolkentextur.
-// BR/HZ bleiben in allen Varianten beim fixen 10..400-m-Verlauf (sie haben
-// keine Obergrenze, Sicht ist ein Bodenwert).
-export const FOG_STYLES = ["mask", "parallel", "top", "topmask"];
-const FOG_STYLE_DEFAULT = "mask";
-const FG_TOP_FULL = 0.6, FG_TOP_ZERO = 1.15;
-const FG_TOP_MIN_M = 30; // sehr flache interpolierte Tops sonst unsichtbar -- optisch gewählt
-
-function fogStyleUsesTop(style) { return style === "top" || style === "topmask"; }
-function fogStyleMasks(style) { return style === "mask" || style === "topmask"; }
-
-/** FG-Obergrenze für Schleier/Maske (m AGL), mit Fallback und Mindestwert. */
-function fgTopM(entry) {
-  return Math.max(entry.top ?? FG_MASK_FALLBACK_M, FG_TOP_MIN_M);
-}
+// Grundform für FG/BR/HZ: voll bis HAZE_REF_MIN, linear auslaufend bis
+// HAZE_REF_MAX. Ausnahme FG OHNE Wolkensignal am Boden (`topFrom: "rh"`, s.
+// `hazards/fog.js`): dort tritt die Obergrenze der feuchten Grundschicht an
+// die Stelle von HAZE_REF_MAX -- ohne Wolkentextur wäre der Schleier sonst die
+// einzige Höhenaussage und läge mit fixen 400 m blind daneben. FG MIT Wolke
+// am Boden (Kondensat/BKN) behält die Grundform: die Wolkentextur wird dort
+// parallel gezeichnet (nicht maskiert, s. Feedback zum Variantenvergleich:
+// so wird der Übergang Nebel -> Bewölkung sichtbar) und zeigt die Mächtigkeit
+// selbst; deren Oberkante ist die der ganzen bodenberührenden Wolke, für den
+// Schleier also keine sinnvolle Höhe. Fehlt RH am Boden, bleibt es bei der
+// Grundform.
 
 /** Schleier-Reichweite [voll bis, weg ab] (m AGL) einer Stunde, `null` ohne Befund. */
-function hazeRange(entry, style) {
+function hazeRange(entry) {
   if (!entry) return null;
-  if (entry.type === "FG" && fogStyleUsesTop(style)) {
-    const t = fgTopM(entry);
-    return [FG_TOP_FULL * t, FG_TOP_ZERO * t];
+  if (entry.type === "FG" && entry.topFrom === "rh" && Number.isFinite(entry.top)) {
+    // `+ 1` nur gegen Division durch null in der Maske, falls die feuchte
+    // Schicht schon am untersten Level endet -- bewusst keine Mindesthöhe.
+    return [HAZE_REF_MIN, Math.max(entry.top, HAZE_REF_MIN + 1)];
   }
   return [HAZE_REF_MIN, HAZE_REF_MAX];
 }
@@ -799,9 +774,9 @@ function hazeRange(entry, style) {
  *  interpoliert; Stunden ohne Befund übernehmen die nächste mit Befund (dort
  *  ist der Schleier ohnehin transparent, s. `hazeColorAlpha`, es geht nur um
  *  den weichen Übergang am Rand einer Nebelphase). */
-function hazeRangeAt(fogCols, pos, style) {
+function hazeRangeAt(fogCols, pos) {
   const n = pos.length;
-  const r = Array.from({ length: n }, (_, i) => hazeRange(fogCols?.[i], style));
+  const r = Array.from({ length: n }, (_, i) => hazeRange(fogCols?.[i]));
   for (let i = 1; i < n; i++) if (!r[i]) r[i] = r[i - 1];
   for (let i = n - 2; i >= 0; i--) if (!r[i]) r[i] = r[i + 1];
   const fallback = [HAZE_REF_MIN, HAZE_REF_MAX];
@@ -816,8 +791,8 @@ function hazeRangeAt(fogCols, pos, style) {
 
 // `groundAt` (nur Path-Modus, sonst null): Modell-Geländehöhe in Achsen-
 // Einheiten (AMSL) als Funktion der Pfadposition -- der Schleier ist an der
-// Höhe ÜBER GRUND festgemacht (HAZE_REF_*) und muss dem Gelände folgen.
-function drawFogHaze(ctx, grid, view, x, y, top, bot, groundAt = null, style = FOG_STYLE_DEFAULT) {
+// Höhe ÜBER GRUND festgemacht (`hazeRange`) und muss dem Gelände folgen.
+function drawFogHaze(ctx, grid, view, x, y, top, bot, groundAt = null) {
   const { pos } = grid;
   const span = x.right - x.left, h = bot - top;
   if (span <= 0 || h <= 0 || !view.fog) return;
@@ -848,7 +823,7 @@ function drawFogHaze(ctx, grid, view, x, y, top, bot, groundAt = null, style = F
 
   // Senkrecht: Form als Maske, an der tatsächlichen Höhe ÜBER GRUND
   // festgemacht (s. o.). Die Reichweite kann je Stunde verschieden sein
-  // (Varianten mit echter FG-Obergrenze, s. `hazeRange`), im Path-Modus folgt
+  // (FG mit Obergrenze aus der feuchten Grundschicht, s. `hazeRange`), im Path-Modus folgt
   // sie zusätzlich dem Gelände -- beides kann ein einzelner Vertikalverlauf
   // nicht. Darum schmale Streifen mit je eigenem Verlauf in ein ZWEITES
   // Offscreen (source-over) malen und das einmal als Ganzes per destination-in
@@ -856,7 +831,7 @@ function drawFogHaze(ctx, grid, view, x, y, top, bot, groundAt = null, style = F
   // AUSSERHALB des Streifens löschen (Compositing wirkt canvasweit).
   const HAZE_SHAPE_STEPS = 24;
   const STRIP_PX = 8;
-  const rangeAt = hazeRangeAt(view.fog, pos, style);
+  const rangeAt = hazeRangeAt(view.fog, pos);
   const maskCanvas = document.createElement("canvas");
   maskCanvas.width = offCanvas.width;
   maskCanvas.height = offCanvas.height;
@@ -887,53 +862,6 @@ function drawFogHaze(ctx, grid, view, x, y, top, bot, groundAt = null, style = F
   ctx.globalCompositeOperation = "screen";
   ctx.drawImage(offCanvas, x.left, top, span, h);
   ctx.restore();
-}
-
-// --- Nebel (FG): Ellipsentextur ausblenden ---------------------------------------
-//
-// FG wird seit der Sichtweiten-Umstellung über denselben Schleier wie BR/HZ
-// gezeichnet (s. `drawFogHaze`/`hazeColorAlpha` oben) -- kein eigener Block
-// mehr. Die normale Ellipsentextur von `drawClouds()` soll innerhalb der
-// FG-Schicht trotzdem nicht mitlaufen (s. Feedback: wirkt für Nebel zu
-// "gefleckt"/wolkig, echter Bodennebel ist optisch eintönig) -- dafür bleibt
-// eine schmale Maskierung nötig, unabhängig von der (weicheren, weiter
-// reichenden) Schleier-Optik.
-//
-// Ersatz-Obergrenze, wenn die Klassifikation keine liefert (Sichtweiten-/
-// WW-Code-Fallback ohne RH/Kondensat-Top, s. hazards/fog.js): eine typische
-// flache Nebelschicht, rein optisch gewählt, nicht kalibriert.
-const FG_MASK_FALLBACK_M = 100;
-
-/** 0/1-Feld (nt*nk): 1, wo eine Zelle innerhalb der (für die Maskierung
- *  angenommenen) FG-Schicht der jeweiligen Stunde liegt. */
-function fgField(grid, fogCols) {
-  const { nk, times } = grid;
-  const field = new Float32Array(times.length * nk);
-  let any = false;
-  for (let i = 0; i < times.length; i++) {
-    const entry = fogCols?.[i];
-    if (!entry || entry.type !== "FG") continue;
-    const topZ = fgTopM(entry);
-    for (let k = 0; k < nk; k++) {
-      const ix = i * nk + k;
-      if (grid.z[ix] <= topZ) { field[ix] = 1; any = true; }
-    }
-  }
-  return any ? field : null;
-}
-
-/** `cloudFrac`, mit auf 0 gesetzten FG-Zellen -- für `drawClouds()`, damit
- *  dort keine Ellipsentextur unter dem Nebelschleier entsteht. `view.cloudFrac`
- *  selbst bleibt unverändert (Vereisung/Wolkenbasis/Hover-Tooltip sollen Nebel
- *  weiterhin als echte Wolke sehen -- physikalisch ist er das ja auch, nur die
- *  TEXTUR soll ihn nicht mehr zeichnen). */
-function maskFog(grid, cloudFrac, fogCols, style = FOG_STYLE_DEFAULT) {
-  if (!fogStyleMasks(style)) return cloudFrac;
-  const field = fgField(grid, fogCols);
-  if (!field) return cloudFrac;
-  const out = Float32Array.from(cloudFrac);
-  for (let ix = 0; ix < out.length; ix++) if (field[ix]) out[ix] = 0;
-  return out;
 }
 
 // --- Boden ---------------------------------------------------------------------
@@ -1623,7 +1551,7 @@ function strokeSymbol(ctx, path, size, inkColor = CB_SYMBOL_INK) {
 // Wetterzeile, Tooltip und Briefing zeigen so immer dasselbe.
 // `weather_code` ist ein Bodenfeld, das Symbol sitzt deshalb knapp über dem
 // Modellgrund: FZRA/FZDZ im unteren Teil des Vorhangs (mit dessen Zeitversatz, s.
-// `PRECIP_TIME_SHIFT`), FZFG in der Mitte des Nebelschleiers (`HAZE_REF_*`).
+// `PRECIP_TIME_SHIFT`), FZFG in der Mitte des Nebelschleiers (`hazeRange`).
 // FZFG aus unsicherer Nebeldiagnose (`certain === false` in ALLEN Stunden des
 // Laufs) wird wie in der Wetterzeile gedämpft gezeichnet.
 const FZ_GLYPH_SIZE = 26;
@@ -1669,7 +1597,8 @@ function drawFreezingGlyphs(ctx, grid, view, pos, x, y, groundAt, { precip = tru
     }
     // Bodenhöhe in Achsen-Einheiten (Path-Modus AMSL, Punkt-Modus AGL = 0).
     const g = groundAt ? groundAt(tMid) : 0;
-    const z = r.kind === "FZFG" ? g + (HAZE_REF_MIN + HAZE_REF_MAX) / 2 : g;
+    const [hzFull, hzZero] = hazeRange(view.fog?.[Math.round((r.start + r.end) / 2)]) ?? [HAZE_REF_MIN, HAZE_REF_MAX];
+    const z = r.kind === "FZFG" ? g + (hzFull + hzZero) / 2 : g;
     // Im Zoom ohne sichtbaren Boden an die Unterkante rücken statt wegfallen:
     // die Gefahr gilt am Boden, das Symbol soll trotzdem zu sehen sein.
     // Punkt-Modus: Boden = Panelunterkante (wie beim Vorhang; y(0) ist auf
