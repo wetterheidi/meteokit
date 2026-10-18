@@ -416,7 +416,7 @@ export function renderGramet(host, grid, view, state = {}) {
     // die "Reiskorn"-Wolkentextur unter dem Nebelschleier. Die Maske rechnet
     // auf dem AGL-Grid (`grid.z` vs. AGL-Nebel-Tops), gezeichnet wird auf der
     // (im Path-Modus AMSL-) Projektion `rgrid`.
-    if (toggles.clouds !== false) drawClouds(ctx, rgrid, maskFog(grid, view.cloudFrac, view.fog, state.fogStyle), x, y);
+    if (toggles.clouds !== false) drawClouds(ctx, rgrid, maskFog(grid, view.cloudFrac, view.fog, state.fogStyle), x, y, state.fogStyle ?? "");
     if (toggles.cb !== false) {
       drawCbAnvils(ctx, cells, x, y);
       drawCbGlyphs(ctx, cells);
