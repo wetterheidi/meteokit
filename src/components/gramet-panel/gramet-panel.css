@@ -52,6 +52,7 @@
   white-space: nowrap;
 }
 .layers input[type="checkbox"] { margin: 0; cursor: pointer; }
+.layers select { font: inherit; font-size: 11px; }
 /* Gelände-Overlay gibt es nur im Path-Modus (`path`-Attribut setzt die
    Komponente selbst anhand von `grid.meta.mode`, s. gramet-panel.js). */
 .layers label.terrain { display: none; }

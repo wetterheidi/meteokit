@@ -3,7 +3,8 @@
  * Wolkenschraffur mit vielen Einzelstrichen ist auf Canvas günstiger).
  * Einstieg: `renderGramet(host, grid, view, state)`, `state = { zMin, zMax,
  * axis: "log"|"lin", activeRows, layerToggles, pathStop, terrain, maxHeightM,
- * profile, xAxis }`. `xAxis: "dist"` (nur Path-Modus) legt die X-Achse linear
+ * profile, xAxis, fogStyle }`. `fogStyle` wählt eine der Nebel-
+ * Darstellungsvarianten (s. `FOG_STYLES`, vorübergehend zum Vergleich). `xAxis: "dist"` (nur Path-Modus) legt die X-Achse linear
  * in die zurückgelegte Strecke statt in die Zeit (s. `distMap`).
  * Höhenumschalter (axis/zMin/zMax) folgt demselben State/Mechanismus wie
  * `crosssection.js` (`settings.xsZoom`) — dieselbe Umschaltfläche bedient
@@ -406,7 +407,7 @@ export function renderGramet(host, grid, view, state = {}) {
     // lesbar bleiben statt darin zu verschwimmen -- auch VOR den Wolken, damit
     // `drawClouds()` (s. u., mit maskierter cloudFrac) innerhalb der FG-Schicht
     // nichts mehr zu zeichnen hat.
-    drawFogHaze(ctx, rgrid, rview, x, y, mainTop, mainBot, groundAt);
+    drawFogHaze(ctx, rgrid, rview, x, y, mainTop, mainBot, groundAt, state.fogStyle);
     // Zellzerlegung einmal ziehen: Schaft, Amboss und Symbol müssen auf demselben
     // Turm sitzen (s. `cbCells`).
     const cells = toggles.cb !== false ? cbCells(rgrid, rview.cb, x, y) : [];
@@ -415,7 +416,7 @@ export function renderGramet(host, grid, view, state = {}) {
     // die "Reiskorn"-Wolkentextur unter dem Nebelschleier. Die Maske rechnet
     // auf dem AGL-Grid (`grid.z` vs. AGL-Nebel-Tops), gezeichnet wird auf der
     // (im Path-Modus AMSL-) Projektion `rgrid`.
-    if (toggles.clouds !== false) drawClouds(ctx, rgrid, maskFog(grid, view.cloudFrac, view.fog), x, y);
+    if (toggles.clouds !== false) drawClouds(ctx, rgrid, maskFog(grid, view.cloudFrac, view.fog, state.fogStyle), x, y);
     if (toggles.cb !== false) {
       drawCbAnvils(ctx, cells, x, y);
       drawCbGlyphs(ctx, cells);
@@ -753,10 +754,70 @@ function hazeColorAlpha(entry, visM) {
   return null;
 }
 
+// --- Nebel-Darstellungsvarianten (Vergleich, s. Feedback) -------------------
+//
+// Ausgangsproblem: `fog.js` liefert für FG aus Kondensat/BKN am Boden als
+// Obergrenze die Oberkante der GESAMTEN zusammenhängenden Schicht ab Boden
+// (bei Hochnebel/tiefem Stratus leicht 1000 m), der Schleier reichte aber fix
+// nur bis HAZE_REF_MAX (400 m) -- mit der Texturmaske bis `top` entstand
+// darüber ein wolkenfreies Loch. Vier Varianten zum Vergleich, umschaltbar in
+// der Panel-Kopfzeile (`state.fogStyle`); die beste wird übernommen, der Rest
+// danach wieder entfernt:
+//   "mask"     -- bisheriges Verhalten: Schleier fix 10..400 m, Wolkentextur
+//                 bis zur FG-Obergrenze (Fallback FG_MASK_FALLBACK_M) maskiert.
+//   "parallel" -- Schleier fix 10..400 m, Wolkentextur unverändert darüber.
+//   "top"      -- FG-Schleier an der echten Obergrenze ausgerichtet (voll bis
+//                 FG_TOP_FULL·top, weg bei FG_TOP_ZERO·top), Textur unverändert.
+//   "topmask"  -- wie "top", Textur aber bis zur Obergrenze maskiert: geschlossene
+//                 Nebelschicht bis `top`, darüber die normale Wolkentextur.
+// BR/HZ bleiben in allen Varianten beim fixen 10..400-m-Verlauf (sie haben
+// keine Obergrenze, Sicht ist ein Bodenwert).
+export const FOG_STYLES = ["mask", "parallel", "top", "topmask"];
+const FOG_STYLE_DEFAULT = "mask";
+const FG_TOP_FULL = 0.6, FG_TOP_ZERO = 1.15;
+const FG_TOP_MIN_M = 30; // sehr flache interpolierte Tops sonst unsichtbar -- optisch gewählt
+
+function fogStyleUsesTop(style) { return style === "top" || style === "topmask"; }
+function fogStyleMasks(style) { return style === "mask" || style === "topmask"; }
+
+/** FG-Obergrenze für Schleier/Maske (m AGL), mit Fallback und Mindestwert. */
+function fgTopM(entry) {
+  return Math.max(entry.top ?? FG_MASK_FALLBACK_M, FG_TOP_MIN_M);
+}
+
+/** Schleier-Reichweite [voll bis, weg ab] (m AGL) einer Stunde, `null` ohne Befund. */
+function hazeRange(entry, style) {
+  if (!entry) return null;
+  if (entry.type === "FG" && fogStyleUsesTop(style)) {
+    const t = fgTopM(entry);
+    return [FG_TOP_FULL * t, FG_TOP_ZERO * t];
+  }
+  return [HAZE_REF_MIN, HAZE_REF_MAX];
+}
+
+/** Reichweite als Funktion der Position `p`: linear zwischen den Stunden
+ *  interpoliert; Stunden ohne Befund übernehmen die nächste mit Befund (dort
+ *  ist der Schleier ohnehin transparent, s. `hazeColorAlpha`, es geht nur um
+ *  den weichen Übergang am Rand einer Nebelphase). */
+function hazeRangeAt(fogCols, pos, style) {
+  const n = pos.length;
+  const r = Array.from({ length: n }, (_, i) => hazeRange(fogCols?.[i], style));
+  for (let i = 1; i < n; i++) if (!r[i]) r[i] = r[i - 1];
+  for (let i = n - 2; i >= 0; i--) if (!r[i]) r[i] = r[i + 1];
+  const fallback = [HAZE_REF_MIN, HAZE_REF_MAX];
+  return (p) => {
+    let j = 0;
+    while (j < n - 2 && pos[j + 1] < p) j++;
+    const a = r[j] ?? fallback, b = r[j + 1] ?? a;
+    const f = clamp((p - pos[j]) / ((pos[j + 1] - pos[j]) || 1), 0, 1);
+    return [a[0] + f * (b[0] - a[0]), a[1] + f * (b[1] - a[1])];
+  };
+}
+
 // `groundAt` (nur Path-Modus, sonst null): Modell-Geländehöhe in Achsen-
 // Einheiten (AMSL) als Funktion der Pfadposition -- der Schleier ist an der
 // Höhe ÜBER GRUND festgemacht (HAZE_REF_*) und muss dem Gelände folgen.
-function drawFogHaze(ctx, grid, view, x, y, top, bot, groundAt = null) {
+function drawFogHaze(ctx, grid, view, x, y, top, bot, groundAt = null, style = FOG_STYLE_DEFAULT) {
   const { pos } = grid;
   const span = x.right - x.left, h = bot - top;
   if (span <= 0 || h <= 0 || !view.fog) return;
@@ -785,54 +846,42 @@ function drawFogHaze(ctx, grid, view, x, y, top, bot, groundAt = null) {
   octx.fillStyle = colorGrad;
   octx.fillRect(x.left, top, span, h);
 
-  // Senkrecht: Form als Maske, an der tatsächlichen Höhe festgemacht (s. o.).
+  // Senkrecht: Form als Maske, an der tatsächlichen Höhe ÜBER GRUND
+  // festgemacht (s. o.). Die Reichweite kann je Stunde verschieden sein
+  // (Varianten mit echter FG-Obergrenze, s. `hazeRange`), im Path-Modus folgt
+  // sie zusätzlich dem Gelände -- beides kann ein einzelner Vertikalverlauf
+  // nicht. Darum schmale Streifen mit je eigenem Verlauf in ein ZWEITES
+  // Offscreen (source-over) malen und das einmal als Ganzes per destination-in
+  // anwenden -- destination-in direkt je Streifen würde bei jedem Fill alles
+  // AUSSERHALB des Streifens löschen (Compositing wirkt canvasweit).
   const HAZE_SHAPE_STEPS = 24;
-  if (!groundAt) {
-    // Punkt-Modus (AGL-Achse): ein Verlauf über die volle Breite reicht, der
-    // Boden liegt überall auf derselben Achsenhöhe.
-    const shape = octx.createLinearGradient(0, top, 0, bot);
+  const STRIP_PX = 8;
+  const rangeAt = hazeRangeAt(view.fog, pos, style);
+  const maskCanvas = document.createElement("canvas");
+  maskCanvas.width = offCanvas.width;
+  maskCanvas.height = offCanvas.height;
+  const mctx = maskCanvas.getContext("2d");
+  mctx.scale(dpr, dpr);
+  mctx.translate(-x.left, -top);
+  for (let sx = x.left; sx < x.right; sx += STRIP_PX) {
+    const w = Math.min(STRIP_PX, x.right - sx);
+    const p = x.inv(sx + w / 2);
+    const g = groundAt ? groundAt(p) : 0; // Punkt-Modus: Achse ist schon AGL
+    const [full, zero] = rangeAt(p);
+    const shape = mctx.createLinearGradient(0, top, 0, bot);
     for (let s = 0; s <= HAZE_SHAPE_STEPS; s++) {
       const py = top + h * s / HAZE_SHAPE_STEPS;
-      const z = y.inv(py);
-      const a = clamp(1 - (z - HAZE_REF_MIN) / (HAZE_REF_MAX - HAZE_REF_MIN), 0, 1);
+      const a = clamp(1 - (y.inv(py) - g - full) / (zero - full), 0, 1);
       shape.addColorStop(s / HAZE_SHAPE_STEPS, `rgba(0,0,0,${a})`);
     }
-    octx.globalCompositeOperation = "destination-in";
-    octx.fillStyle = shape;
-    octx.fillRect(x.left, top, span, h);
-  } else {
-    // Path-Modus (AMSL-Achse): die Maske muss dem Gelände folgen -- ein
-    // einzelner Vertikalverlauf kann das nicht. Stattdessen schmale Streifen
-    // mit je eigenem Verlauf in ein ZWEITES Offscreen (source-over) malen und
-    // das einmal als Ganzes per destination-in anwenden -- destination-in
-    // direkt je Streifen würde bei jedem Fill alles AUSSERHALB des Streifens
-    // löschen (Compositing wirkt canvasweit).
-    const STRIP_PX = 8;
-    const maskCanvas = document.createElement("canvas");
-    maskCanvas.width = offCanvas.width;
-    maskCanvas.height = offCanvas.height;
-    const mctx = maskCanvas.getContext("2d");
-    mctx.scale(dpr, dpr);
-    mctx.translate(-x.left, -top);
-    for (let sx = x.left; sx < x.right; sx += STRIP_PX) {
-      const w = Math.min(STRIP_PX, x.right - sx);
-      const p = x.inv(sx + w / 2);
-      const g = groundAt(p);
-      const shape = mctx.createLinearGradient(0, top, 0, bot);
-      for (let s = 0; s <= HAZE_SHAPE_STEPS; s++) {
-        const py = top + h * s / HAZE_SHAPE_STEPS;
-        const a = clamp(1 - (y.inv(py) - g - HAZE_REF_MIN) / (HAZE_REF_MAX - HAZE_REF_MIN), 0, 1);
-        shape.addColorStop(s / HAZE_SHAPE_STEPS, `rgba(0,0,0,${a})`);
-      }
-      mctx.fillStyle = shape;
-      mctx.fillRect(sx, top, w, h);
-    }
-    octx.globalCompositeOperation = "destination-in";
-    octx.save();
-    octx.setTransform(1, 0, 0, 1, 0, 0);
-    octx.drawImage(maskCanvas, 0, 0);
-    octx.restore();
+    mctx.fillStyle = shape;
+    mctx.fillRect(sx, top, w, h);
   }
+  octx.globalCompositeOperation = "destination-in";
+  octx.save();
+  octx.setTransform(1, 0, 0, 1, 0, 0);
+  octx.drawImage(maskCanvas, 0, 0);
+  octx.restore();
 
   ctx.save();
   ctx.globalCompositeOperation = "screen";
@@ -864,7 +913,7 @@ function fgField(grid, fogCols) {
   for (let i = 0; i < times.length; i++) {
     const entry = fogCols?.[i];
     if (!entry || entry.type !== "FG") continue;
-    const topZ = entry.top ?? FG_MASK_FALLBACK_M;
+    const topZ = fgTopM(entry);
     for (let k = 0; k < nk; k++) {
       const ix = i * nk + k;
       if (grid.z[ix] <= topZ) { field[ix] = 1; any = true; }
@@ -878,7 +927,8 @@ function fgField(grid, fogCols) {
  *  selbst bleibt unverändert (Vereisung/Wolkenbasis/Hover-Tooltip sollen Nebel
  *  weiterhin als echte Wolke sehen -- physikalisch ist er das ja auch, nur die
  *  TEXTUR soll ihn nicht mehr zeichnen). */
-function maskFog(grid, cloudFrac, fogCols) {
+function maskFog(grid, cloudFrac, fogCols, style = FOG_STYLE_DEFAULT) {
+  if (!fogStyleMasks(style)) return cloudFrac;
   const field = fgField(grid, fogCols);
   if (!field) return cloudFrac;
   const out = Float32Array.from(cloudFrac);

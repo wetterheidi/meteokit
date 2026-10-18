@@ -57,7 +57,9 @@
 
 import css from "./gramet-panel.css?inline";
 import { deriveView } from "../../gramet/derive.js";
-import { renderGramet, exportPng as exportGrametPng } from "../../gramet/render.js";
+import { renderGramet, exportPng as exportGrametPng, FOG_STYLES } from "../../gramet/render.js";
+
+const FOG_STYLE_KEY = "meteokit.gramet.fogStyle";
 
 // Höhenbereich "bis Flughöhe": etwas Luft über der eingestellten Flughöhe,
 // damit die Ceiling-Linie nicht exakt am oberen Rand klebt (wie zuvor
@@ -106,6 +108,14 @@ export class GrametPanelElement extends HTMLElement {
           <label><input type="checkbox" data-layer="hazards" checked> Hazards</label>
           <label><input type="checkbox" data-layer="windbarbs"> Windfiedern</label>
           <label class="terrain"><input type="checkbox" data-layer="terrain" checked> Gelände</label>
+          <label title="Nebel-Darstellung (vorübergehend, zum Vergleich der Varianten)">Nebel
+            <select class="fog-style">
+              <option value="mask">A: bisher (Textur bis Top aus)</option>
+              <option value="parallel">B: Schleier + Wolken parallel</option>
+              <option value="top">C: Schleier bis Top + Wolken</option>
+              <option value="topmask">D: Nebelschicht bis Top, Wolken darüber</option>
+            </select>
+          </label>
         </div>
         <div class="range-toggle">
           <button type="button" data-range="full">Gesamthöhe</button>
@@ -135,6 +145,17 @@ export class GrametPanelElement extends HTMLElement {
       if (!e.target.closest("input[data-layer]")) return;
       this._render();
       this._emitChange();
+    });
+    // Nebel-Variante: vorübergehender Vergleichsschalter, nur lokal gemerkt
+    // (kein Teil von `settingschange`, fliegt nach der Entscheidung wieder raus).
+    const fogSel = root.querySelector(".fog-style");
+    try {
+      const saved = localStorage.getItem(FOG_STYLE_KEY);
+      if (FOG_STYLES.includes(saved)) fogSel.value = saved;
+    } catch { /* Storage gesperrt -- Default bleibt */ }
+    fogSel.addEventListener("change", () => {
+      try { localStorage.setItem(FOG_STYLE_KEY, fogSel.value); } catch { /* egal */ }
+      this._render();
     });
     root.querySelector(".range-toggle").addEventListener("click", (e) => {
       const btn = e.target.closest("button[data-range]");
@@ -407,6 +428,7 @@ export class GrametPanelElement extends HTMLElement {
       profile: isPath ? this.#profile ?? undefined : undefined,
       xAxis: isPath ? this.#xAxis : undefined,
       layerToggles: this.layers,
+      fogStyle: this.shadowRoot.querySelector(".fog-style")?.value,
       minMainH: this.#minMainHeight ?? undefined,
       onRedraw: (canvas) => { this.#canvas = canvas; },
     });
