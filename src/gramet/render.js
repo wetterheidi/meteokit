@@ -704,7 +704,7 @@ function depthAt(z) {
 // auslaufend, s. `hazeRange`) -- an der tatsächlichen HÖHE festgemacht wie
 // `DEPTH_REF_MAX` oben, nicht an Panel-Pixeln, sonst hätte dieselbe Höhe bei
 // "Gesamthöhe" und "bis Flughöhe" unterschiedlich viel Schleier.
-const HAZE_REF_MIN = 10, HAZE_REF_MAX = 400; // m AGL -- Reichweite des Schleiers (FG mit RH-Obergrenze: s. `hazeRange`)
+const HAZE_REF_MIN = 10, HAZE_REF_MAX = 400; // m AGL -- feste Schleierform ohne RH-Profil (s. `hazeRange`)
 // Kräftiger als im ersten Entwurf (0.5/gedämpfte Baseline) -- BR/HZ waren
 // dort kaum vom normalen Himmel zu unterscheiden (s. Feedback).
 const HAZE_MAX_ALPHA = 0.7;
@@ -747,26 +747,20 @@ function hazeColorAlpha(entry, visM) {
 
 // --- Schleier-Reichweite je Stunde -------------------------------------------
 //
-// Grundform für FG/BR/HZ: voll bis HAZE_REF_MIN, linear auslaufend bis
-// HAZE_REF_MAX. Ausnahme FG OHNE Wolkensignal am Boden (`topFrom: "rh"`, s.
-// `hazards/fog.js`): dort tritt die Obergrenze der feuchten Grundschicht an
-// die Stelle von HAZE_REF_MAX -- ohne Wolkentextur wäre der Schleier sonst die
-// einzige Höhenaussage und läge mit fixen 400 m blind daneben. FG MIT Wolke
-// am Boden (Kondensat/BKN) behält die Grundform: die Wolkentextur wird dort
-// parallel gezeichnet (nicht maskiert, s. Feedback zum Variantenvergleich:
-// so wird der Übergang Nebel -> Bewölkung sichtbar) und zeigt die Mächtigkeit
-// selbst; deren Oberkante ist die der ganzen bodenberührenden Wolke, für den
-// Schleier also keine sinnvolle Höhe. Fehlt RH am Boden, bleibt es bei der
-// Grundform.
+// Die vertikale Ausdehnung kommt aus dem RH-Profil (`entry.haze`, s.
+// `hazards/fog.js` `hazeLayer`): Volldeckung bis `full`, linear auslaufend
+// bis `top`. Nur ohne `haze` (HZ, fehlende RH am Boden) gilt die feste Form
+// HAZE_REF_MIN..HAZE_REF_MAX. Die Wolkentextur läuft bei FG unverändert mit
+// (keine Maskierung, s. Feedback zum Variantenvergleich: so wird der
+// Übergang Nebel -> Bewölkung sichtbar).
 
 /** Schleier-Reichweite [voll bis, weg ab] (m AGL) einer Stunde, `null` ohne Befund. */
 function hazeRange(entry) {
   if (!entry) return null;
-  if (entry.type === "FG" && entry.topFrom === "rh" && Number.isFinite(entry.top)) {
-    // `+ 1` nur gegen Division durch null in der Maske, falls die feuchte
-    // Schicht schon am untersten Level endet -- bewusst keine Mindesthöhe.
-    return [HAZE_REF_MIN, Math.max(entry.top, HAZE_REF_MIN + 1)];
-  }
+  const hz = entry.haze;
+  // `+ 1` nur gegen Division durch null in der Maske, falls die Schicht schon
+  // am untersten Level endet -- bewusst keine Mindesthöhe.
+  if (hz) return [hz.full, Math.max(hz.top, hz.full + 1)];
   return [HAZE_REF_MIN, HAZE_REF_MAX];
 }
 
@@ -823,7 +817,7 @@ function drawFogHaze(ctx, grid, view, x, y, top, bot, groundAt = null) {
 
   // Senkrecht: Form als Maske, an der tatsächlichen Höhe ÜBER GRUND
   // festgemacht (s. o.). Die Reichweite kann je Stunde verschieden sein
-  // (FG mit Obergrenze aus der feuchten Grundschicht, s. `hazeRange`), im Path-Modus folgt
+  // (aus dem RH-Profil, s. `hazeRange`), im Path-Modus folgt
   // sie zusätzlich dem Gelände -- beides kann ein einzelner Vertikalverlauf
   // nicht. Darum schmale Streifen mit je eigenem Verlauf in ein ZWEITES
   // Offscreen (source-over) malen und das einmal als Ganzes per destination-in

@@ -43,19 +43,17 @@
  *     Dunst-Guard ist unter der aktuellen Kalibrierung laut `clouds.js`
  *     FAKTISCH INAKTIV), gilt das als unsicher.
  *  3. Sonst, wenn `visibility[i]` vorhanden ist:
- *     a. < FG_VIS_MAX_M → FG, sicher. Die Sicht selbst ist ein Bodenwert ohne
- *        Höhenprofil -- die Obergrenze kommt stattdessen aus der feuchten
- *        Grundschicht, gekappt an der Basis einer aufliegenden Wolke
- *        (`moistTop`, s. dort), `topFrom: "rh"`.
+ *     a. < FG_VIS_MAX_M → FG, sicher, KEINE Obergrenze (Sicht ist ein
+ *        Flächenwert, kein Höhenprofil — die vertikale Ausdehnung für die
+ *        Darstellung liefert `haze`, s. u.).
  *     b. ≤ HAZE_VIS_MAX_M → BR (RH ≥ BR_HZ_RH_SPLIT) oder HZ (sonst), beide
  *        sicher (Sicht UND RH sind reale Modellfelder, kein Fallback).
  *     c. sonst kein Befund — AUCH wenn RH hoch ist oder `weather_code`
  *        Nebel meldet (s. Priorität 4): die Sicht ist hier die Wahrheit.
  *  4. Sonst (keine Sichtweite verfügbar — Modelle ohne `visibility`, z. B.
  *     ICON Global):
- *     a. `weather_code` 45/48 → FG, unsicher, Obergrenze wie 3a aus der
- *        feuchten Grundschicht (`metarWeather()`-Fallback, ebenso in
- *        `classifyFog()`).
+ *     a. `weather_code` 45/48 → FG, unsicher, keine Obergrenze (`metarWeather()`-
+ *        Fallback, ebenso in `classifyFog()`).
  *     b. Sicht aus T/RH am untersten Level geschätzt (`clouds.js`
  *        `estimateVisibilityFromHumidity()`, Doran et al. 1999) ≤
  *        HAZE_VIS_MAX_M → BR, unsicher, mit `visEst`. Nie HZ (trockener
@@ -65,11 +63,11 @@
  *        zeigte.
  *  5. sonst kein Befund (`null`).
  *
- * `topFrom` sagt, woher `top` stammt: "condensate" (1.), "cloud" (2.) oder
- * "rh" (3a/4a). Die Darstellung (render.js `hazeRange`) nutzt nur "rh": bei
- * 1./2. zeigt die Wolkentextur die Schicht ohnehin, und deren Oberkante ist die
- * der GANZEN bodenberührenden Wolke (Hochnebel/Stratus leicht >1000 m), nicht
- * die eines Nebels im Fliegersinn.
+ * Unabhängig vom Typ trägt jeder Befund `haze` = vertikale Ausdehnung der
+ * Sichtbehinderung für den Schleier im GRAMET (s. `hazeLayer`). `top` ist
+ * dagegen die Oberkante der bodenberührenden WOLKE (1./2.) -- bei Hochnebel/
+ * Stratus leicht >1000 m und damit kein Maß für die Nebelschicht im
+ * Fliegersinn.
  *
  * Alle RH-/Sicht-Schwellen sind wie an anderer Stelle im Wolkenmodul
  * PLATZHALTER bzw. direkt aus dem Handbuch übernommen, nicht gegen echte
@@ -92,15 +90,23 @@ export { FG_VIS_MAX_M, HAZE_VIS_MAX_M, BR_HZ_RH_SPLIT };
 const KELVIN = 273.15;
 const clamp = (x, lo, hi) => Math.max(lo, Math.min(hi, x));
 
-// Feuchte Grundschicht für die FG-Obergrenze ohne Wolkensignal am Boden: die
-// Schicht ab k=0 gilt als Nebelschicht, solange RH >= min(FOG_TOP_RH, RH am
-// untersten Level) bleibt. Das `min` hält die Schicht auch bei FG mit weniger
-// als FOG_TOP_RH am Boden auswertbar (Sicht-FG bei z. B. 91 %, ICON-D2-Fall
-// 18.10.26 12 UTC) -- die Schicht reicht dann so weit, wie es mindestens so
-// feucht bleibt wie am Boden. Typischer Abschluss ist die Inversion, an der
-// RH sprunghaft fällt (im selben Fall 100 % -> 65 % binnen eines Levels).
-// PLATZHALTER, nicht kalibriert -- gewählt nach Augenschein an diesem Fall.
-const FOG_TOP_RH = 95; // %
+// Vertikale Ausdehnung der Sichtbehinderung (`hazeLayer`) aus dem RH-Profil:
+//  - HAZE_END_RH: darunter keine feuchtebedingte Sichtbehinderung mehr --
+//    dieselbe Grenze, die am Boden BR von HZ trennt (BR_HZ_RH_SPLIT, Handbuch
+//    Flugwetterdienste). Die bodenverbundene Schicht endet am ersten
+//    Unterschreiten.
+//  - FOG_FULL_RH: bis zum ersten Unterschreiten von unten deckt der Schleier
+//    voll, darüber läuft er bis HAZE_END_RH aus. PLATZHALTER, nicht kalibriert
+//    (gewählt nach Augenschein an ICON-Fällen 18.10./20.10.26).
+//  - HAZE_LAYER_MAX_M: Obergrenze, falls das Profil vorher nicht abschließt
+//    (bodenberührender Stratus, RH ~100 % bis 1-2 km) -- darüber trägt die
+//    Wolkentextur die Schicht. Entspricht der früheren festen Schleierhöhe.
+//  - FULL_MAX_FRAC: Volldeckung höchstens bis zu diesem Anteil der Schicht,
+//    damit der Schleier auch bei RH ~100 % bis zur Obergrenze weich ausläuft.
+const HAZE_END_RH = BR_HZ_RH_SPLIT; // %
+const FOG_FULL_RH = 95;             // %
+const HAZE_LAYER_MAX_M = 400;       // m AGL
+const FULL_MAX_FRAC = 0.6;
 
 /** Kondensat (qw+qi, kg/kg) an einer Gitterzelle; NaN-Eingänge zählen als 0. */
 function condensateAt(grid, ix) {
@@ -131,40 +137,64 @@ function scanTop(grid, i, threshold, getValue) {
   return top;
 }
 
+/** Wolke an einer Gitterzelle -- dieselben Kriterien wie Priorität 1./2. */
+function isCloudAt(grid, cloudFrac, ix) {
+  return condensateAt(grid, ix) > FOG_QW_MIN || cloudFrac[ix] >= CF_BKN;
+}
+
 /**
- * Obergrenze (m AGL) der feuchten Grundschicht, s. FOG_TOP_RH -- höchstens bis
- * zur Basis einer darüberliegenden Wolke (Kondensat > FOG_QW_MIN bzw.
- * cloudFrac >= CF_BKN, dieselben Kriterien wie 1./2.). Ohne diese Kappung
- * liefe der RH-Scan bei Nebel unter tiefem Stratus durch die gesättigte Wolke
- * bis zu deren Oberkante (ICON-D2-Fall 18.10.26 00 UTC: Stratus ab ~110 m,
- * RH >= 95 % bis ~2200 m); die Wolke selbst zeigt im GRAMET die Wolkentextur.
- * `null` ohne RH am Boden.
+ * Bodenverbundene Schicht mit feuchtebedingter Sichtbehinderung einer Stunde:
+ * `{ full, top }` (m AGL) -- Volldeckung bis `full`, auslaufend bis `top`.
+ * Die Schicht endet von unten gesucht am ersten von:
+ *  - RH < HAZE_END_RH (linear interpoliert),
+ *  - Basis einer ABGEHOBENEN Wolke (Wolke über wolkenfreiem Level, s.
+ *    `isCloudAt`) -- sonst liefe die Schicht bei Nebel/Dunst unter tiefem
+ *    Stratus durch die gesättigte Wolke bis zu deren Oberkante (ICON-D2
+ *    18.10.26 00 UTC: Stratus ab ~50 m, RH >= 95 % bis ~2200 m); die Wolke
+ *    zeigt die Wolkentextur. Eine bodenberührende Wolke (FG aus 1./2.) zählt
+ *    dagegen zur Schicht.
+ *  - HAZE_LAYER_MAX_M.
+ * `null`, wenn RH am Boden fehlt oder unter HAZE_END_RH liegt (HZ: trockener
+ * Dunst, aus der Feuchte nicht ableitbar) -- der Renderer nimmt dann seine
+ * feste Schleierform.
  */
-function moistTop(grid, cloudFrac, i) {
+export function hazeLayer(grid, cloudFrac, i) {
   const { nk } = grid;
-  const rh0 = grid.rh[i * nk];
-  if (!Number.isFinite(rh0)) return null;
-  const top = scanTop(grid, i, Math.min(FOG_TOP_RH, rh0), (ix) => grid.rh[ix]);
-  for (let k = 1; k < nk; k++) {
+  const ix0 = i * nk;
+  const rh0 = grid.rh[ix0];
+  if (!Number.isFinite(rh0) || rh0 < HAZE_END_RH) return null;
+  let top = null;
+  for (let k = 1; k < nk && top == null; k++) {
     const ix = i * nk + k;
-    if (top != null && grid.z[ix - 1] >= top) break; // Feuchteschicht endet vorher
-    const isCond = condensateAt(grid, ix) > FOG_QW_MIN;
-    if (!isCond && !(cloudFrac[ix] >= CF_BKN)) continue;
-    // Wolkenbasis linear zur auslösenden Schwelle zwischen k-1 und k.
-    const get = isCond ? (j) => condensateAt(grid, j) : (j) => cloudFrac[j];
-    const thr = isCond ? FOG_QW_MIN : CF_BKN;
-    const v0 = get(ix - 1), v1 = get(ix), z0 = grid.z[ix - 1], z1 = grid.z[ix];
-    const base = v1 !== v0 ? z0 + clamp((thr - v0) / (v1 - v0), 0, 1) * (z1 - z0) : z0;
-    return top == null ? base : Math.min(top, base);
+    const z0 = grid.z[ix - 1], z1 = grid.z[ix];
+    const rh = grid.rh[ix];
+    if (z1 >= HAZE_LAYER_MAX_M) { top = HAZE_LAYER_MAX_M; break; }
+    if (!Number.isFinite(rh)) { top = z0; break; }
+    if (isCloudAt(grid, cloudFrac, ix) && !isCloudAt(grid, cloudFrac, ix - 1)) {
+      // Wolkenbasis linear zur auslösenden Schwelle zwischen k-1 und k.
+      const isCond = condensateAt(grid, ix) > FOG_QW_MIN;
+      const get = isCond ? (j) => condensateAt(grid, j) : (j) => cloudFrac[j];
+      const thr = isCond ? FOG_QW_MIN : CF_BKN;
+      const v0 = get(ix - 1), v1 = get(ix);
+      top = v1 !== v0 ? z0 + clamp((thr - v0) / (v1 - v0), 0, 1) * (z1 - z0) : z0;
+    } else if (rh < HAZE_END_RH) {
+      const rhPrev = grid.rh[ix - 1];
+      top = rhPrev !== rh ? z0 + clamp((HAZE_END_RH - rhPrev) / (rh - rhPrev), 0, 1) * (z1 - z0) : z0;
+    }
   }
-  return top;
+  if (top == null) top = HAZE_LAYER_MAX_M;
+  const z00 = grid.z[ix0];
+  const full95 = rh0 >= FOG_FULL_RH ? scanTop(grid, i, FOG_FULL_RH, (ix) => grid.rh[ix]) : z00;
+  const full = Math.min(full95 ?? z00, FULL_MAX_FRAC * top);
+  return { full, top };
 }
 
 /**
  * Klassifikation einer einzelnen Stunde. `cloudFrac` kommt von `derive.js`
  * (`d.cloudFrac`, dieselbe Größe wie Wolkenbasis/Cb/Vereisung) statt hier neu
  * berechnet zu werden.
- * @returns {{type: "FG"|"BR"|"HZ", top: number|null, topFrom?: "condensate"|"cloud"|"rh", certain: boolean, freezing: boolean, visEst?: number} | null}
+ * `haze` ergänzt `computeColumns()`.
+ * @returns {{type: "FG"|"BR"|"HZ", top: number|null, certain: boolean, freezing: boolean, visEst?: number} | null}
  */
 export function classifyColumn(grid, cloudFrac, i) {
   const { nk } = grid;
@@ -172,17 +202,17 @@ export function classifyColumn(grid, cloudFrac, i) {
   const freezing = grid.T[ix0] - KELVIN <= 0;
 
   if (condensateAt(grid, ix0) > FOG_QW_MIN) {
-    return { type: "FG", top: scanTop(grid, i, FOG_QW_MIN, (ix) => condensateAt(grid, ix)), topFrom: "condensate", certain: true, freezing };
+    return { type: "FG", top: scanTop(grid, i, FOG_QW_MIN, (ix) => condensateAt(grid, ix)), certain: true, freezing };
   }
   if (cloudFrac[ix0] >= CF_BKN) {
     const certain = Number.isFinite(grid.clc[ix0]);
-    return { type: "FG", top: scanTop(grid, i, CF_BKN, (ix) => cloudFrac[ix]), topFrom: "cloud", certain, freezing };
+    return { type: "FG", top: scanTop(grid, i, CF_BKN, (ix) => cloudFrac[ix]), certain, freezing };
   }
 
   const vis = grid.surface?.visibility?.[i];
   const rh0 = grid.rh[ix0];
   if (Number.isFinite(vis)) {
-    if (vis < FG_VIS_MAX_M) return { type: "FG", top: moistTop(grid, cloudFrac, i), topFrom: "rh", certain: true, freezing };
+    if (vis < FG_VIS_MAX_M) return { type: "FG", top: null, certain: true, freezing };
     if (vis <= HAZE_VIS_MAX_M) {
       const type = Number.isFinite(rh0) && rh0 >= BR_HZ_RH_SPLIT ? "BR" : "HZ";
       return { type, top: null, certain: true, freezing: false };
@@ -192,7 +222,7 @@ export function classifyColumn(grid, cloudFrac, i) {
 
   const wcode = grid.surface?.wcode?.[i];
   if (wcode === 45 || wcode === 48) {
-    return { type: "FG", top: moistTop(grid, cloudFrac, i), topFrom: "rh", certain: false, freezing };
+    return { type: "FG", top: null, certain: false, freezing };
   }
   const visEst = estimateVisibilityFromHumidity(grid.T[ix0] - KELVIN, rh0);
   if (visEst <= HAZE_VIS_MAX_M) {
@@ -201,11 +231,15 @@ export function classifyColumn(grid, cloudFrac, i) {
   return null;
 }
 
-/** Klassifikation über den gesamten Zeitraum, ein Eintrag je Stunde. */
+/** Klassifikation über den gesamten Zeitraum, ein Eintrag je Stunde, mit
+ *  `haze` (s. `hazeLayer`) an jedem Befund. */
 export function computeColumns(grid, cloudFrac) {
   const { times } = grid;
   const out = [];
-  for (let i = 0; i < times.length; i++) out.push(classifyColumn(grid, cloudFrac, i));
+  for (let i = 0; i < times.length; i++) {
+    const entry = classifyColumn(grid, cloudFrac, i);
+    out.push(entry && { ...entry, haze: hazeLayer(grid, cloudFrac, i) });
+  }
   return out;
 }
 
