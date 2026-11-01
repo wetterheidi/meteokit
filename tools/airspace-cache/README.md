@@ -149,7 +149,7 @@ Bereits eingerichtet (Stand 2026-09-13):
    }
    ```
    Danach `nginx -t && systemctl reload nginx`.
-3. Offen: Cronjob vor dem Luftraumlauf (nicht parallel, sonst teilen sich
+3. Erledigt (2026-11-01): Cronjob vor dem Luftraumlauf (nicht parallel, sonst teilen sich
    beide das Rate-Limit):
    ```
    0 1 1 * * cd /apps/airspace-cache && set -a && . ./.env && set +a && /usr/bin/node fetch-airports.mjs --out /apps/airspace-cache/airports >> /var/log/airports-cache.log 2>&1
