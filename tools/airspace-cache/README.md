@@ -43,6 +43,12 @@ abgefragt (mehrtägiger Lauf). Das geht nicht mehr, s. "Vorfall 2026-11-01".
 Abgefragte Felder: `name,icaoClass,type,activity,geometry,upperLimit,
 lowerLimit,country,frequencies` (`frequencies` seit 2026-11).
 
+Koordinaten werden auf 5 Nachkommastellen gerundet (seit 2026-11, max.
+0,56 m Versatz). Die bis zu 15 Stellen der API sind Umrechnungsartefakte:
+Ein Drittel sind exakt ganze Bogensekunden aus der AIP (Auflösung ≈ 31 m),
+der Rest berechnete Kreisbogen-Stützpunkte. Spart gepackt ca. 25 % pro
+Kachel (48_10: 123 → 91 kB). Properties bleiben ungerundet.
+
 Reines Node ≥18 (globales `fetch`, `fs/promises`), keine npm-Abhängigkeiten
 -- kein `npm install` auf dem Server nötig, das Skript einfach dorthin
 kopieren und mit `node` ausführen.
@@ -114,6 +120,15 @@ Bereits eingerichtet (Stand 2026-09-13):
    (wird von mehreren Apps per `fetch()` aus dem Browser angesprochen), mit
    `Access-Control-Allow-Origin: *` auf den ausgelieferten Dateien (offene,
    nicht-sensible Geodaten) und moderatem `Cache-Control` (z. B. eine Woche).
+   Seit 2026-11-01 außerdem `default_type application/geo+json` (nginx kennt
+   `.geojson` nicht und lieferte sonst `application/octet-stream`) und gzip
+   für `application/geo+json`/`application/json` (`gzip_comp_level 5`,
+   `gzip_vary on`): Luftraum-Kacheln schrumpfen damit auf ca. ¼ (48_10:
+   424 → 123 kB), Flugplatz-Kacheln auf ca. ⅙. Bewusst `default_type` statt
+   `types { ... }` -- ein `types`-Block im Server ersetzt die ganze
+   `mime.types`-Liste, dann käme auch `meta.json` als `octet-stream`.
+   Sicherung der Vhost-Datei vor der Änderung:
+   `/root/airspace.wetterheidi.de.bak-gzip-2026-11`.
    Vhost-Anlage sonst analog zu den bestehenden `deploy-hetzner.sh`-Skripten
    in droneforecast/trajectories/DZMaster (idempotent, Let's-Encrypt-Zertifikat
    beim ersten Lauf).

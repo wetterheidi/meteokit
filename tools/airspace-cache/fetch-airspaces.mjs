@@ -57,6 +57,11 @@ const RETRY_BACKOFF_MS = 30_000; // bei 404/408/429: erstmal deutlich länger pa
 // weniger Lufträume vor, als die API selbst als `totalCount` meldet, ist beim
 // Blättern etwas schiefgelaufen -- dann lieber den alten Stand live lassen.
 const MIN_COMPLETENESS = 0.98;
+// Koordinaten auf 5 Nachkommastellen runden (max. 0,56 m Versatz): Die
+// openAIP-Werte tragen bis zu 15 Stellen, die nur Umrechnungsartefakte sind
+// (DMS mit ganzen Bogensekunden ≈ 31 m bzw. berechnete Kreisbogen-Stützpunkte).
+// Spart gepackt ca. 25 % pro Kachel (48_10: 123 → 91 kB, gemessen 2026-11-01).
+const COORD_FACTOR = 1e5;
 
 function parseArgs(argv) {
   const out = {};
@@ -114,7 +119,11 @@ async function fetchAllAirspaces() {
 function toEntry(item) {
   const { geometry, ...properties } = item;
   const keys = geometry?.coordinates ? cellKeysForGeometry(geometry) : [];
-  return { json: JSON.stringify({ type: "Feature", geometry, properties }), keys };
+  // Gerundet wird nur die Geometrie (dort sind alle Zahlen Koordinaten), die
+  // Properties bleiben unverändert.
+  const roundCoord = (_key, value) => (typeof value === "number" ? Math.round(value * COORD_FACTOR) / COORD_FACTOR : value);
+  const json = `{"type":"Feature","geometry":${JSON.stringify(geometry, roundCoord)},"properties":${JSON.stringify(properties)}}`;
+  return { json, keys };
 }
 
 /** Alle [lon, lat]-Paare einer (Multi-)Polygon-Geometrie. */
