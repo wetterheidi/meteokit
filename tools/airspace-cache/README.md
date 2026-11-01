@@ -287,15 +287,9 @@ Flugplätze analog unter `/airports/`:
   `type` und die Einträge in `frequencies` sind openAIPs numerische Codes
   (unverändert durchgereicht).
 
-**Offen: Kompression.** nginx liefert `.geojson` als
-`application/octet-stream` und damit ungepackt aus. Eine Luftraumkachel hat
-so bis ~0,5 MB, gemessen (2026-11-01) kamen nur ~130 kB/s an; SkyEar
-brauchte bei 200 km Umkreis (16 Kacheln) anfangs bis zu 36 s. Abhilfe auf
-`server`-Ebene im Vhost, ungetestet (`default_type` greift nur für Endungen,
-die nginx nicht kennt -- hier also `.geojson`; ein `types { ... }`-Block
-würde dagegen die ganze MIME-Tabelle ersetzen):
-```nginx
-default_type application/geo+json;
-gzip on;
-gzip_types application/geo+json application/json;
-```
+**Kompression (erledigt 2026-11-01):** nginx lieferte `.geojson` als
+`application/octet-stream` und damit ungepackt aus (Luftraumkachel bis
+~0,5 MB; SkyEar brauchte bei 200 km Umkreis anfangs bis zu 36 s). Seitdem
+gzip im Vhost, s. Server-Setup Punkt 6 -- 48_10 kommt jetzt mit 123 kB
+statt 424 kB an (ab dem nächsten Luftraumlauf mit gerundeten Koordinaten
+ca. 91 kB).
