@@ -16,9 +16,12 @@ bei 429 fehlen sogar die CORS-Header, sodass der Browser das nur als
 undurchsichtigen "Failed to fetch" meldet, nicht als lesbaren Status.
 
 Ein monatlicher Bulk-Export (passt zum realen AIRAC-Zyklus von 28 Tagen) ist
-dagegen genau der Anwendungsfall, für den die API gedacht ist. Drei Apps
-(DZMaster, droneforecast, trajectories) teilen sich damit einen Datenstand,
-ohne dass jede einzeln gegen die Live-API rennt.
+dagegen genau der Anwendungsfall, für den die API gedacht ist. Mehrere Apps
+teilen sich damit einen Datenstand, ohne dass jede einzeln gegen die Live-API
+rennt: DZMaster, droneforecast und trajectories (Luftraum-Layer über
+`meteokit/airspace`) sowie SkyEar (Repo `Radio`), dessen Flugfunk-Reiter die
+Funkfrequenzen von Flugplätzen und Lufträumen im Umkreis des Standorts
+auflistet.
 
 ## Funktionsweise
 
@@ -64,6 +67,11 @@ Zweites Skript nach demselben Muster für `/api/airports` mit den Feldern
 `name,icaoCode,type,geometry,frequencies` (Stand 2026-11-01: 46 831
 Flugplätze, 94 Seiten). Flugplätze sind Punkte und landen in genau einer
 Zelle `tiles/{latFloor}_{lonFloor}.geojson`.
+
+Genutzt von SkyEar (Repo `Radio`, `web/app.js`, Abschnitt „Flugfunk:
+Frequenzen in der Nähe“): Es lädt die Flugplatz- und Luftraumkacheln rund um
+den Standort direkt im Browser und zeigt die Frequenzen im Band 118–137 MHz.
+Von den Lufträumen nutzt es dafür das Feld `frequencies`.
 
 **Wichtig: eigenes Ausgabeverzeichnis, nicht unter `data/`.** Der atomare
 Swap von `fetch-airspaces.mjs` ersetzt `data/` komplett -- ein
@@ -263,3 +271,16 @@ Flugplätze analog unter `/airports/`:
   frequencies }`, oder `404` wenn in der Zelle kein Flugplatz liegt.
   `type` und die Einträge in `frequencies` sind openAIPs numerische Codes
   (unverändert durchgereicht).
+
+**Offen: Kompression.** nginx liefert `.geojson` als
+`application/octet-stream` und damit ungepackt aus. Eine Luftraumkachel hat
+so bis ~0,5 MB, gemessen (2026-11-01) kamen nur ~130 kB/s an; SkyEar
+brauchte bei 200 km Umkreis (16 Kacheln) anfangs bis zu 36 s. Abhilfe auf
+`server`-Ebene im Vhost, ungetestet (`default_type` greift nur für Endungen,
+die nginx nicht kennt -- hier also `.geojson`; ein `types { ... }`-Block
+würde dagegen die ganze MIME-Tabelle ersetzen):
+```nginx
+default_type application/geo+json;
+gzip on;
+gzip_types application/geo+json application/json;
+```
