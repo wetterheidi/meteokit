@@ -118,8 +118,9 @@ Bereits eingerichtet (Stand 2026-09-13):
    Standard-Paketquellen, kein externes Repo nötig).
 2. Skript liegt unter `/apps/airspace-cache/fetch-airspaces.mjs` (seit
    2026-11-01 die Version ohne Bbox; die alte liegt daneben als
-   `fetch-airspaces.mjs.bak-2026-10`. Erster Lauf der neuen Version steht
-   noch aus).
+   `fetch-airspaces.mjs.bak-2026-10`. Erster Lauf der neuen Version am
+   2026-11-01 manuell: 70 Seiten in ~30 min, Spitzen-RSS 294 MB, Ergebnis
+   10 501 Zellen / 34 875 Lufträume / 79 156 Features, 920 MB auf der Platte).
 3. API-Key liegt in `/apps/airspace-cache/.env` (chmod 600, nicht im Repo).
 4. Ausgabeverzeichnis `/apps/airspace-cache/data/`, ausgeliefert vom
    `airspace.wetterheidi.de`-Vhost (s. unten).

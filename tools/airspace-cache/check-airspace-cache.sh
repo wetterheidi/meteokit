@@ -15,8 +15,9 @@ APP_DIR="/apps/airspace-cache"
 # Monatlicher Cron: älter als ~40 Tage heißt, ein Lauf fehlt.
 MAX_AGE_DAYS=40
 
-# Lufträume -- Stand 2026-10-08: 8466 Zellen / 62773 Features. Deutlich
-# darunter deutet auf falsch-leere Regionen hin.
+# Lufträume -- Stand 2026-11-01 (erster Lauf ohne bbox): 10501 Zellen /
+# 79156 Features / 34875 Lufträume; davor (bbox-Abfrage) 8466 / 62773.
+# Deutlich darunter deutet auf falsch-leere Regionen hin.
 AIRSPACE_MIN_CELLS=7500
 AIRSPACE_MIN_FEATURES=55000
 # Stichproben aus datendichten Regionen (Key = {latFloor}_{lonFloor}):
