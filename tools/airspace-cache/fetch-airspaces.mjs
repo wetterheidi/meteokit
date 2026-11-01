@@ -28,7 +28,7 @@
  * Minuten.
  */
 
-import { mkdir, writeFile, rm, rename } from "node:fs/promises";
+import { mkdir, writeFile, rm, rename, appendFile, readFile } from "node:fs/promises";
 import path from "node:path";
 
 const API_KEY = process.env.OPENAIP_API_KEY;
@@ -92,28 +92,53 @@ async function fetchPage(page) {
 }
 
 /**
- * Alle Lufträume, vollständig paginiert und nach `_id` dedupliziert (falls
- * sich der Bestand während des Laufs verschiebt und ein Eintrag auf zwei
- * Seiten landet). Gibt zusätzlich das von der API gemeldete `totalCount` zurück.
+ * Alle Lufträume, vollständig paginiert, direkt in Zell-Teildateien
+ * (`tilesDir/{key}.part`, Features kommagetrennt) geschrieben. Der Bestand
+ * umfasst ~560 MB JSON (gemessen 2026-11-01), der Server hat nur ~1 GB RAM
+ * frei -- im Speicher bleiben deshalb nur die aktuelle Seite, die gesehenen
+ * `_id`s und die Feature-Zahl je Zelle.
  *
- * Jeder Luftraum wird sofort zu `{ json, keys }` reduziert (fertig
- * serialisiertes Feature + Zellschlüssel): Der Server hat nur ~1 GB RAM frei,
- * und der Bestand umfasst mehrere hundert MB Geometrie -- als geparste
- * Objekte wäre das ein Vielfaches davon.
+ * Nach `_id` dedupliziert (falls sich der Bestand während des Laufs
+ * verschiebt und ein Eintrag auf zwei Seiten landet; der erste gewinnt).
+ * Gibt `cellCounts` (Zelle → Features), die Zahl der Lufträume, der
+ * übersprungenen ohne Geometrie und das von der API gemeldete `totalCount`
+ * zurück.
  */
-async function fetchAllAirspaces() {
-  const byId = new Map();
+async function fetchAllAirspaces(tilesDir) {
+  const seenIds = new Set();
+  const cellCounts = new Map();
+  let skipped = 0;
   let totalCount = null;
   for (let page = 1; page <= MAX_PAGES; page++) {
     const data = await fetchPage(page);
     const items = data.items || [];
     if (totalCount == null) totalCount = data.totalCount ?? null;
-    for (const item of items) byId.set(item._id, toEntry(item));
-    console.log(`Seite ${page}${data.totalPages ? `/${data.totalPages}` : ""}: ${items.length} Einträge, ${byId.size} gesamt.`);
+
+    const byCell = new Map(); // Zelle → JSON-Strings dieser Seite, eine Schreiboperation je Zelle und Seite
+    for (const item of items) {
+      if (seenIds.has(item._id)) continue;
+      seenIds.add(item._id);
+      const { json, keys } = toEntry(item);
+      if (keys.length === 0) {
+        skipped++;
+        continue;
+      }
+      for (const key of keys) {
+        if (!byCell.has(key)) byCell.set(key, []);
+        byCell.get(key).push(json);
+      }
+    }
+    for (const [key, features] of byCell) {
+      const before = cellCounts.get(key) || 0;
+      await appendFile(path.join(tilesDir, `${key}.part`), (before > 0 ? "," : "") + features.join(","));
+      cellCounts.set(key, before + features.length);
+    }
+
+    console.log(`Seite ${page}${data.totalPages ? `/${data.totalPages}` : ""}: ${items.length} Einträge, ${seenIds.size} gesamt.`);
     await sleep(REQUEST_DELAY_MS);
     if (!data.nextPage || items.length < PAGE_LIMIT) break;
   }
-  return { airspaces: [...byId.values()], totalCount };
+  return { cellCounts, fetched: seenIds.size, skipped, totalCount };
 }
 
 function toEntry(item) {
@@ -172,9 +197,9 @@ async function main() {
   await rm(stagingDir, { recursive: true, force: true });
   await mkdir(tilesDir, { recursive: true });
 
-  let airspaces, totalCount;
+  let cellCounts, fetched, skipped, totalCount;
   try {
-    ({ airspaces, totalCount } = await fetchAllAirspaces());
+    ({ cellCounts, fetched, skipped, totalCount } = await fetchAllAirspaces(tilesDir));
   } catch (err) {
     console.error(`Abgebrochen (${err.message}) -- der bisherige Live-Stand unter ${OUT_DIR} bleibt unverändert (kein Swap).`);
     await rm(stagingDir, { recursive: true, force: true });
@@ -182,44 +207,36 @@ async function main() {
     return;
   }
 
-  if (MAX_PAGES === Infinity && totalCount != null && airspaces.length < totalCount * MIN_COMPLETENESS) {
-    console.error(`Abgebrochen: nur ${airspaces.length} von ${totalCount} gemeldeten Lufträumen geholt -- der bisherige Live-Stand unter ${OUT_DIR} bleibt unverändert (kein Swap).`);
+  if (MAX_PAGES === Infinity && totalCount != null && fetched < totalCount * MIN_COMPLETENESS) {
+    console.error(`Abgebrochen: nur ${fetched} von ${totalCount} gemeldeten Lufträumen geholt -- der bisherige Live-Stand unter ${OUT_DIR} bleibt unverändert (kein Swap).`);
     await rm(stagingDir, { recursive: true, force: true });
     process.exitCode = 1;
     return;
   }
-
-  const cells = new Map();
-  let skipped = 0;
-  for (const { json, keys } of airspaces) {
-    if (keys.length === 0) {
-      skipped++;
-      continue;
-    }
-    for (const key of keys) {
-      if (!cells.has(key)) cells.set(key, []);
-      cells.get(key).push(json);
-    }
-  }
   if (skipped > 0) console.warn(`${skipped} Lufträume ohne verwertbare Geometrie übersprungen.`);
 
-  // totalFeatures zählt wie bisher Features summiert über alle Kacheln (ein
-  // Luftraum über mehreren Zellen zählt mehrfach), airspaceCount die
-  // eindeutigen Lufträume.
+  // Teildateien zu FeatureCollections abschließen, Zelle für Zelle (nie mehr
+  // als eine Zelle im Speicher). totalFeatures zählt wie bisher Features
+  // summiert über alle Kacheln (ein Luftraum über mehreren Zellen zählt
+  // mehrfach), airspaceCount die eindeutigen Lufträume.
   let totalFeatures = 0;
-  for (const [key, features] of cells) {
-    await writeFile(path.join(tilesDir, `${key}.geojson`), `{"type":"FeatureCollection","features":[${features.join(",")}]}`);
-    totalFeatures += features.length;
+  for (const [key, count] of cellCounts) {
+    const partFile = path.join(tilesDir, `${key}.part`);
+    const features = await readFile(partFile, "utf8");
+    await writeFile(path.join(tilesDir, `${key}.geojson`), `{"type":"FeatureCollection","features":[${features}]}`);
+    await rm(partFile);
+    totalFeatures += count;
   }
+  const airspaceCount = fetched - skipped;
 
   await writeFile(
     path.join(stagingDir, "meta.json"),
     JSON.stringify({
       generatedAt: new Date().toISOString(),
       cellSizeDeg: CELL_SIZE_DEG,
-      cellCount: cells.size,
+      cellCount: cellCounts.size,
       totalFeatures,
-      airspaceCount: airspaces.length - skipped,
+      airspaceCount,
     }, null, 2),
   );
 
@@ -235,7 +252,7 @@ async function main() {
   await rename(stagingDir, OUT_DIR);
   await rm(backupDir, { recursive: true, force: true });
 
-  console.log(`Fertig: ${cells.size} Zellen, ${airspaces.length - skipped} Lufträume, ${totalFeatures} Features über alle Kacheln, ausgeliefert unter ${OUT_DIR}.`);
+  console.log(`Fertig: ${cellCounts.size} Zellen, ${airspaceCount} Lufträume, ${totalFeatures} Features über alle Kacheln, ausgeliefert unter ${OUT_DIR}.`);
 }
 
 main().catch((err) => {

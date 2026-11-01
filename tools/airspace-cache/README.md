@@ -57,6 +57,17 @@ Schreibt zuerst in `<out>.staging`, swapped danach atomar (`rename`) in
 `<out>` -- der Cache-Server liefert nie einen halb-geschriebenen Zwischenstand
 aus.
 
+**Speicher und Datenmenge (gemessen 2026-11-01):** Der Bestand umfasst
+32 191 Lufträume mit ~560 MB JSON; die API liefert Brotli-komprimiert (eine
+Seite: 16,6 MB → 4,8 MB), ein Lauf überträgt also grob 150--200 MB, und zwar
+zwischen Server und openAIP -- die eigene Internetleitung ist nur für den
+SSH-Befehl zum Starten beteiligt. Weil der Server nur ~1 GB RAM frei hat,
+hängt das Skript jede Seite sofort an Zell-Teildateien
+(`<out>.staging/tiles/{key}.part`) an und schließt diese erst am Ende zu
+FeatureCollections ab; im Speicher bleiben nur die aktuelle Seite und die
+gesehenen `_id`s. Plattenbedarf während des Swaps: alter plus neuer Stand
+(je ~1 GB).
+
 Absicherungen (beide Skripte):
 - 404/408/429 werden mit Backoff wiederholt (404 ist bei dieser API nie
   "keine Daten", s. Vorfall September). Scheitert eine Seite nach allen
@@ -161,8 +172,9 @@ Bereits eingerichtet (Stand 2026-09-13):
 ./check-airspace-cache.sh            # Default-Host root@178.104.206.136
 ```
 
-Prüft öffentlich `meta.json` (Alter, Mindestumfang Zellen/Features) und
-Stichproben-Kacheln aus datendichten Regionen, per SSH dann: ob der Cron-Lauf
+Prüft für Lufträume und Flugplätze getrennt öffentlich `meta.json` (Alter,
+Mindestumfang Zellen/Features) und Stichproben-Kacheln aus datendichten
+Regionen, per SSH dann jeweils: ob der Cron-Lauf
 dieses Monats überhaupt ins Log geschrieben hat, ob gerade ein Lauf aktiv ist,
 Staging-Reste nach Absturz und das Log-Ende. Exit-Code
 0 = OK, 1 = Warnung, 2 = Fehler. Ein "Fertig" im Log allein reicht nicht -- so
