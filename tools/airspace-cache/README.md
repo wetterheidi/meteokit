@@ -3,6 +3,8 @@
 Node-Skript, das einmal monatlich weltweit alle openAIP-Luftraumdaten
 abholt und als statische GeoJSON-Dateien ablegt -- Grundlage für den
 Cache-Server, den `meteokit/airspace` (s. `../../src/airspace/`) abfragt.
+Daneben holt `fetch-airports.mjs` die Flugplätze samt Funkfrequenzen (s.
+Abschnitt unten).
 
 ## Warum ein eigener Cache statt Live-Abfrage?
 
@@ -20,12 +22,23 @@ ohne dass jede einzeln gegen die Live-API rennt.
 
 ## Funktionsweise
 
-`fetch-airspaces.mjs` rastert die Welt in Grid-Zellen (Default 2°×2°),
-fragt pro Zelle vollständig paginiert ab (mit Verzögerung + Retry-Backoff
-bei 408/429), und schreibt jede nicht-leere Zelle als
-`tiles/{latFloor}_{lonFloor}.geojson` (FeatureCollection). Eine `meta.json`
-beschreibt den Lauf (`generatedAt`, `cellSizeDeg`, `cellCount`,
-`totalFeatures`).
+`fetch-airspaces.mjs` blättert den gesamten `/api/airspaces`-Bestand durch
+(rund 35 000 Lufträume, also ca. 70 Seiten à 500, 20 s Pause zwischen
+Anfragen -- ein Lauf dauert damit etwa eine halbe Stunde) und verteilt jeden
+Luftraum selbst auf alle 2°×2°-Zellen, die seine Bounding-Box schneidet. Jede
+nicht-leere Zelle wird als `tiles/{latFloor}_{lonFloor}.geojson`
+(FeatureCollection) geschrieben. Ein Luftraum über mehreren Zellen steht in
+jeder davon (wie früher, als die API pro Zell-Bbox abgefragt wurde). Polygone
+über die Datumsgrenze werden in zwei Längenbereiche aufgeteilt statt als Band
+um die ganze Welt. Eine `meta.json` beschreibt den Lauf (`generatedAt`,
+`cellSizeDeg`, `cellCount`, `totalFeatures` = Features summiert über alle
+Kacheln, `airspaceCount` = eindeutige Lufträume).
+
+Bis Oktober 2026 hat das Skript stattdessen 16 200 Zell-Bboxen einzeln
+abgefragt (mehrtägiger Lauf). Das geht nicht mehr, s. "Vorfall 2026-11-01".
+
+Abgefragte Felder: `name,icaoClass,type,activity,geometry,upperLimit,
+lowerLimit,country,frequencies` (`frequencies` seit 2026-11).
 
 Reines Node ≥18 (globales `fetch`, `fs/promises`), keine npm-Abhängigkeiten
 -- kein `npm install` auf dem Server nötig, das Skript einfach dorthin
@@ -33,27 +46,44 @@ kopieren und mit `node` ausführen.
 
 Schreibt zuerst in `<out>.staging`, swapped danach atomar (`rename`) in
 `<out>` -- der Cache-Server liefert nie einen halb-geschriebenen Zwischenstand
-aus, auch während eines mehrstündigen Laufs nicht.
+aus.
+
+Absicherungen (beide Skripte):
+- 404/408/429 werden mit Backoff wiederholt (404 ist bei dieser API nie
+  "keine Daten", s. Vorfall September). Scheitert eine Seite nach allen
+  Retries, bricht der Lauf ab, der alte Stand bleibt live -- einfach komplett
+  wiederholen.
+- Liegen am Ende weniger als 98 % des von der API gemeldeten `totalCount`
+  vor, ebenfalls Abbruch ohne Swap.
+- Einträge werden nach `_id` dedupliziert (falls sich der Bestand während
+  des Blätterns verschiebt).
+
+## Flugplätze und Funkfrequenzen (`fetch-airports.mjs`)
+
+Zweites Skript nach demselben Muster für `/api/airports` mit den Feldern
+`name,icaoCode,type,geometry,frequencies` (Stand 2026-11-01: 46 831
+Flugplätze, 94 Seiten). Flugplätze sind Punkte und landen in genau einer
+Zelle `tiles/{latFloor}_{lonFloor}.geojson`.
+
+**Wichtig: eigenes Ausgabeverzeichnis, nicht unter `data/`.** Der atomare
+Swap von `fetch-airspaces.mjs` ersetzt `data/` komplett -- ein
+`data/airports/` würde dabei jeden Monat gelöscht.
 
 ## Lokaler Test
 
 ```bash
-OPENAIP_API_KEY=... node fetch-airspaces.mjs \
-  --out /tmp/airspace-test \
-  --test-bbox 11,47.94,11.4,48.07
+OPENAIP_API_KEY=... node fetch-airspaces.mjs --out /tmp/airspace-test --max-pages 2
+OPENAIP_API_KEY=... node fetch-airports.mjs  --out /tmp/airports-test --max-pages 2
 ```
 
-`--test-bbox minLon,minLat,maxLon,maxLat` beschränkt den Lauf auf eine
-einzelne, kleine Region statt des mehrtägigen Welt-Grids.
+`--max-pages N` holt nur die ersten N Seiten; die Vollständigkeitsprüfung
+entfällt dann. Eine Einschränkung auf eine Region gibt es nicht mehr, weil die
+API `bbox` blockiert.
 
 **Rate-Limit, empirisch ermittelt (2026-09-13):** Die Core-API ist deutlich
 strenger als vermutet. 1,5s zwischen Requests führte fast durchgehend zu 429,
 selbst 15s brachte noch ~40% 429-Treffer. `REQUEST_DELAY_MS = 20000` (20s) ist
-der aktuell eingestellte Kompromiss, plus der bestehende Retry-Backoff bei
-429/408 als Netz. Bei 16200 Zellen (2°-Grid) macht das einen vollständigen
-Weltlauf zu einer **Sache von Tagen, nicht Stunden** -- für einen monatlichen,
-unbeaufsichtigten Cronjob unkritisch, aber beim ersten manuellen Anstoßen
-wichtig zu wissen.
+der aktuell eingestellte Kompromiss, plus Retry-Backoff als Netz.
 
 ## Server-Setup (Hetzner, `root@178.104.206.136`)
 
@@ -61,7 +91,10 @@ Bereits eingerichtet (Stand 2026-09-13):
 
 1. Node 18.19.1 via `apt install nodejs` (Ubuntu 24.04 liefert das in den
    Standard-Paketquellen, kein externes Repo nötig).
-2. Skript liegt unter `/apps/airspace-cache/fetch-airspaces.mjs`.
+2. Skript liegt unter `/apps/airspace-cache/fetch-airspaces.mjs` (seit
+   2026-11-01 die Version ohne Bbox; die alte liegt daneben als
+   `fetch-airspaces.mjs.bak-2026-10`. Erster Lauf der neuen Version steht
+   noch aus).
 3. API-Key liegt in `/apps/airspace-cache/.env` (chmod 600, nicht im Repo).
 4. Ausgabeverzeichnis `/apps/airspace-cache/data/`, ausgeliefert vom
    `airspace.wetterheidi.de`-Vhost (s. unten).
@@ -77,6 +110,28 @@ Bereits eingerichtet (Stand 2026-09-13):
    in droneforecast/trajectories/DZMaster (idempotent, Let's-Encrypt-Zertifikat
    beim ersten Lauf).
 
+**Flugplätze (Stand 2026-11-01):**
+
+1. Erledigt: `fetch-airports.mjs` liegt unter `/apps/airspace-cache/` (nutzt
+   dieselbe `.env`), erster manueller Lauf am 2026-11-01 nach
+   `/apps/airspace-cache/airports/`, Log in `/var/log/airports-cache.log`.
+2. Erledigt (2026-11-01): im bestehenden Vhost
+   (`/etc/nginx/sites-available/airspace.wetterheidi.de`) unter `/airports/`
+   ausgeliefert. Direkt nach dem `location / { ... }`-Block eingefügt; die
+   CORS-/Cache-Header stehen dort auf `server`-Ebene und werden geerbt,
+   solange der neue Block kein eigenes `add_header` hat:
+   ```nginx
+   location /airports/ {
+       alias /apps/airspace-cache/airports/;
+   }
+   ```
+   Danach `nginx -t && systemctl reload nginx`.
+3. Offen: Cronjob vor dem Luftraumlauf (nicht parallel, sonst teilen sich
+   beide das Rate-Limit):
+   ```
+   0 1 1 * * cd /apps/airspace-cache && set -a && . ./.env && set +a && /usr/bin/node fetch-airports.mjs --out /apps/airspace-cache/airports >> /var/log/airports-cache.log 2>&1
+   ```
+
 ## Prüfen, ob ein Lauf geklappt hat
 
 ```bash
@@ -86,7 +141,7 @@ Bereits eingerichtet (Stand 2026-09-13):
 Prüft öffentlich `meta.json` (Alter, Mindestumfang Zellen/Features) und
 Stichproben-Kacheln aus datendichten Regionen, per SSH dann: ob der Cron-Lauf
 dieses Monats überhaupt ins Log geschrieben hat, ob gerade ein Lauf aktiv ist,
-Staging-Reste nach Absturz, `data.failed-cells.txt` und das Log-Ende. Exit-Code
+Staging-Reste nach Absturz und das Log-Ende. Exit-Code
 0 = OK, 1 = Warnung, 2 = Fehler. Ein "Fertig" im Log allein reicht nicht -- so
 endete auch der fehlerhafte Lauf vom September.
 
@@ -96,6 +151,30 @@ ohne Schrägstrich nur im `$PATH`, nicht im aktuellen Verzeichnis -- die
 `&&`-Kette brach vor `node` ab, und da die Log-Umleitung nur am `node`-Befehl
 hängt, blieb das Log unverändert. Richtig ist `. ./.env` (Cronzeile oben
 korrigiert).
+
+## Vorfall 2026-11-01: Cloudflare blockiert `bbox`
+
+Der November-Lauf brach nach 10 Zellen ab: jede Anfrage lieferte HTTP 403 --
+aber nicht die JSON-Fehlerantwort der API, sondern eine Cloudflare-Sperrseite
+(HTML mit `cdn-cgi`-Challenge). Eingegrenzt vom Server aus (mit gültigem Key):
+
+| Anfrage | Ergebnis |
+|---|---|
+| `?limit=1` | 200 |
+| `?limit=1&fields=...` | 200 |
+| `?limit=1&country=DE` | 200 |
+| `?limit=1&bbox=11,48,11.5,48.5` (auch `%2C`-kodiert) | 403 Cloudflare |
+| `?limit=1&pos=48.2,11.2&dist=20000` | 403 Cloudflare |
+
+Geo-Abfragen sind also gesperrt, reines Blättern nicht. Beide Skripte holen
+deshalb seither den gesamten Bestand ohne Geo-Parameter und verteilen ihn
+selbst auf die Zellen. Damit entfielen auch `--test-bbox`, `--cells-file`,
+`<out>.failed-cells.txt` und `CONSECUTIVE_FAILURE_LIMIT` aus dem
+September-Fix (s. unten) -- bei einem halbstündigen Lauf wird nach einem
+Fehler einfach komplett wiederholt.
+
+Nebenbefund: Ein ungültiger Key liefert HTTP 404 `"Failed to load user
+permissions"`. Das könnte auch die 404-Welle vom September erklären.
 
 ## Vorfall 2026-09-13..17: falsch-leere Regionen durch missverstandenes 404
 
@@ -115,7 +194,8 @@ Bboxen ein reguläres 200 mit leerem `items`-Array; 404 ist immer ein
 Fehlersignal. Dadurch wurden über 4800 Zellen fälschlich als leer
 veröffentlicht, ohne dass der Lauf das als Fehler erkannte.
 
-**Fix (in `fetch-airspaces.mjs`):**
+**Fix (in `fetch-airspaces.mjs`, seit 2026-11 größtenteils durch den Umbau
+ohne Bbox ersetzt -- geblieben ist: 404 zählt als Fehler):**
 - 404 zählt jetzt wie 408/429 zum Retry-mit-Backoff.
 - Ein `CONSECUTIVE_FAILURE_LIMIT` (10) bricht den ganzen Lauf ab, sobald zu
   viele Zellen in Folge endgültig scheitern -- statt einen Großteil der Welt
@@ -141,10 +221,9 @@ Die Core-API unterstützt einen `updatedAfter`-Parameter (z. B.
 `?updatedAfter=2026-08-13`), der tatsächlich filtert -- live verifiziert
 (2026-09-13): ohne Parameter `totalCount: 31885`, mit `updatedAfter` für die
 letzten 30 Tage `totalCount: 3588`, mit einem Zukunftsdatum `totalCount: 0`.
-Ein monatlicher Lauf müsste damit potenziell nur noch ca. 3600 statt 31885
-Einträge holen -- und das **ohne bbox-Rasterung**, also nur wenige
-Hundert-Einträge-Seiten statt 16200 Zellen-Anfragen. Das würde den Lauf von
-Tagen auf Minuten verkürzen.
+Ein monatlicher Lauf müsste damit nur noch ca. 3600 statt ~35 000 Einträge
+holen. Seit dem Umbau ohne Bbox (2026-11) dauert der Vollabgleich aber nur
+noch ca. eine halbe Stunde -- der Gewinn wäre also klein.
 
 **Zwei offene Punkte, die das nicht trivial machen:**
 
@@ -159,22 +238,28 @@ Tagen auf Minuten verkürzen.
    Lufträume nie aus dem Cache räumen -- weiterhin nötig: in größeren
    Abständen (z. B. quartalsweise) ein kompletter Vollabgleich, um Verwaiste
    zu entfernen.
-2. **Das Grid-Zellen-Modell passt nicht 1:1.** Aktuell schreibt das Skript
-   pro Zelle eine komplette Datei (einfacher atomarer Swap). Ein Delta-Update
-   müsste stattdessen aus der Geometrie jedes geänderten Features die
-   betroffene(n) Zelle(n) berechnen und die bestehende Zell-Datei gezielt
-   aktualisieren (per `_id` ersetzen/hinzufügen) -- spürbar mehr Komplexität
-   als der jetzige Ansatz.
+2. **Inkrementelles Schreiben.** Das Skript schreibt jede Zelle komplett neu
+   (einfacher atomarer Swap). Ein Delta-Update müsste die bestehenden
+   Zell-Dateien gezielt aktualisieren (per `_id` ersetzen/hinzufügen) --
+   spürbar mehr Komplexität als der jetzige Ansatz.
 
-Da der aktuelle Vollabgleich unbeaufsichtigt läuft und niemanden stört, ist
-das vorerst zurückgestellt -- als Kandidat, falls der monatliche Cronjob mal
-störend auffällt.
+Deshalb zurückgestellt.
 
 ## Client-seitiger Vertrag
 
-- `GET /meta.json` → `{ generatedAt, cellSizeDeg, cellCount, totalFeatures }`
+- `GET /meta.json` → `{ generatedAt, cellSizeDeg, cellCount, totalFeatures,
+  airspaceCount }` (`airspaceCount` seit 2026-11)
 - `GET /tiles/{latFloor}_{lonFloor}.geojson` → `FeatureCollection` für diese
   Zelle, oder `404` wenn dort keine Luftraumdaten liegen.
 
 `meteokit/airspace` berechnet die passenden Zellschlüssel selbst aus dem
 aktuellen Kartenausschnitt (`Math.floor(lat/cellSizeDeg)*cellSizeDeg`).
+
+Flugplätze analog unter `/airports/`:
+
+- `GET /airports/meta.json` → `{ generatedAt, cellSizeDeg, cellCount, totalFeatures }`
+- `GET /airports/tiles/{latFloor}_{lonFloor}.geojson` → `FeatureCollection`
+  aus Punkt-Features mit `properties` `{ _id, name, icaoCode, type,
+  frequencies }`, oder `404` wenn in der Zelle kein Flugplatz liegt.
+  `type` und die Einträge in `frequencies` sind openAIPs numerische Codes
+  (unverändert durchgereicht).

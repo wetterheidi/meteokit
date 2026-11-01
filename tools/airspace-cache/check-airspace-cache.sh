@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Prüft, ob der monatliche Luftraum-Cache-Lauf (fetch-airspaces.mjs) auf dem
 # Server sauber durchgelaufen ist -- von außen (öffentliche meta.json und
-# Stichproben-Kacheln) und per SSH (Prozess, Log, failed-cells, Staging).
-# Hintergrund und Schwellen: s. README.md, Abschnitt "Vorfall 2026-09-13..17".
+# Stichproben-Kacheln) und per SSH (Prozess, Log, Staging).
+# Hintergrund und Schwellen: s. README.md, Abschnitte "Vorfall ...".
 #
 # Aufruf: ./check-airspace-cache.sh [user@host]
 # Exit-Code: 0 = OK, 1 = Warnung (Lauf aktiv/Lücken), 2 = Fehler.
@@ -17,7 +17,7 @@ LOG="/var/log/airspace-cache.log"
 # Deutlich darunter deutet auf falsch-leere Regionen hin.
 MIN_CELLS=7500
 MIN_FEATURES=55000
-# Monatlicher Cron + mehrtägiger Lauf: älter als ~40 Tage heißt, ein Lauf fehlt.
+# Monatlicher Cron: älter als ~40 Tage heißt, ein Lauf fehlt.
 MAX_AGE_DAYS=40
 # Stichproben aus datendichten Regionen (Key = {latFloor}_{lonFloor}):
 # Süddeutschland, Nordosten USA, Südostengland.
@@ -65,13 +65,12 @@ echo "== Server: $HOST =="
 remote="$(ssh -o ConnectTimeout=10 -o BatchMode=yes "$HOST" bash -s <<EOF
 echo "PROC=\$(pgrep -f fetch-airspaces.mjs | grep -v \$\$ | head -1)"
 echo "STAGING=\$([ -d $APP_DIR/data.staging ] && echo 1 || echo 0)"
-echo "FAILED=\$([ -f $APP_DIR/data.failed-cells.txt ] && wc -l < $APP_DIR/data.failed-cells.txt || echo 0)"
 # Letzter planmäßiger Cron-Start (1. des Monats, 03:00) vs. letzte Log-Änderung
 echo "CRONSTART=\$(date -d "\$(date +%Y-%m-01) 03:00" +%s)"
 echo "CRONLABEL=\$(date -d "\$(date +%Y-%m-01) 03:00" '+%d.%m. %H:%M %Z')"
 echo "NOW=\$(date +%s)"
 echo "LOGMTIME=\$(stat -c %Y $LOG 2>/dev/null || echo 0)"
-echo "PROGRESS=\$(grep -o '^\[[0-9]*/[0-9]*\]' $LOG 2>/dev/null | tail -1)"
+echo "PROGRESS=\$(grep -o '^Seite [0-9]*/[0-9]*' $LOG 2>/dev/null | tail -1)"
 echo "LOGEND<<"
 tail -n 3 $LOG 2>/dev/null
 EOF
@@ -81,7 +80,6 @@ if [ $? -ne 0 ] || [ -z "$remote" ]; then
 else
   proc="$(sed -n 's/^PROC=//p' <<<"$remote")"
   staging="$(sed -n 's/^STAGING=//p' <<<"$remote")"
-  failed="$(sed -n 's/^FAILED=//p' <<<"$remote" | tr -d ' ')"
   progress="$(sed -n 's/^PROGRESS=//p' <<<"$remote")"
   cronstart="$(sed -n 's/^CRONSTART=//p' <<<"$remote")"
   cronlabel="$(sed -n 's/^CRONLABEL=//p' <<<"$remote")"
@@ -104,17 +102,11 @@ else
     ok "Kein Lauf aktiv, kein Staging-Rest"
   fi
 
-  if [ "${failed:-0}" -gt 0 ]; then
-    warn "$failed Zelle(n) in data.failed-cells.txt -- nachholen mit:"
-    echo "      cd $APP_DIR && set -a && . ./.env && set +a && node fetch-airspaces.mjs --cells-file $APP_DIR/data.failed-cells.txt --out $APP_DIR/data"
-  else
-    ok "Keine fehlgeschlagenen Zellen"
-  fi
-
   if [ -z "$proc" ]; then
     if grep -q "^Abgebrochen" <<<"$logend"; then
-      fail "Letzter Lauf abgebrochen -- alter Stand weiter live"
-    elif grep -qE "^(Fertig|Merge fertig):" <<<"$logend"; then
+      fail "Letzter Lauf abgebrochen -- alter Stand weiter live. Neu starten mit:"
+      echo "      cd $APP_DIR && set -a && . ./.env && set +a && node fetch-airspaces.mjs --out $APP_DIR/data >> $LOG 2>&1"
+    elif grep -q "^Fertig:" <<<"$logend"; then
       ok "Letzter protokollierter Lauf mit 'Fertig' beendet"
     else
       warn "Log-Ende ohne erkennbare Abschlusszeile"
