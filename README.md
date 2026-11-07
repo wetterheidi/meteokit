@@ -57,6 +57,7 @@ intern und darf sich jederzeit ändern — auch wenn die Datei im Repo sichtbar 
 | `meteokit/components/gramet-panel` | Web Component `<gramet-panel>` (Seiteneffekt: registriert sich selbst) |
 | `meteokit/gramet` | `fetchGridForPath`, `retimeGridForPath`, `posOfPath`, `gridFromColumn`, `gridFromWaypoints`, `sampleAt`, `derive`, `idx`, `fetchGrid` |
 | `meteokit/gramet/hazards` | `ipiAt`/`tfiAt` + Kategorisierung (Icing, Turbulenz) |
+| `meteokit/gramet/hazards/fog` | Boden-Nebel/Dunst je Spalte: `classifyColumn`, `hazeLayer`, `computeColumns`, Schwellen `FG_VIS_MAX_M` usw. Erwartet das flache `grid`-Format (Index `i·nk + k`, k = 0 unten); 3DWx setzt dafür Gitterpunkte als „Zeiten“ ein. |
 | `meteokit/gramet/render` | `renderGramet`, `exportPng` — Low-Level-Zeichnen auf ein eigenes Canvas. Nur für Sonderfälle (z. B. Debug-Seiten); der empfohlene Weg ist `<gramet-panel>`. |
 | `meteokit/config` | `configure`, `getModel`, `MODELS`, `API_BASE`, `SURFACE_*` |
 | `meteokit/modelpick` | `pickModel`, `candidateModels` — bestes Modell am Punkt (feinstes zuerst, Bbox + echte Datenabdeckung geprüft) |
