@@ -429,10 +429,16 @@ dem 30.11. entfallen lassen bzw. den Branch aufgeben.
   0 h), keine andere Variante passt besser. Der DWD liefert `vis` für den
   06-UTC-Lauf pünktlich mit `t_2m`. Auch T/RH auf der untersten Fläche weichen
   seitdem stärker von den 2-m-Werten ab (90 %-Wert |RH10m − RH2m| 2 → 5
-  Prozentpunkte). Vermutung: Auf dem Server stammen Modellflächen und
-  Oberflächenfelder für D2 seit diesem Lauf nicht mehr aus demselben Lauf
-  (Ingestion). Beim Server-Betreiber klären. **Bis dahin D2-Archivdaten ab
-  08.11. 06 UTC nicht zur Kalibrierung verwenden.**
+  Prozentpunkte). Stärkster Hinweis: Die aus den Modellflächen gerechnete
+  Sicht war am 08.11. vormittags und nachmittags für dieselben Termine
+  identisch (EDDM 08.11. 16 UTC 20386 m, 09.11. 00 UTC 116 m), obwohl
+  inzwischen der 09-UTC-Lauf eingespielt war und sich die ICON-VIS geändert
+  hatte (20200 → 18120 m, 120 → 60 m). Die D2-Modellflächen auf dem Server
+  werden also offenbar seit dem frühen 08.11. nicht mehr aktualisiert,
+  während die Oberflächenfelder weiterlaufen. Das betrifft alle
+  Modellflächen-Produkte (GRAMET, Wolken-Layer, Wind auf Höhe, Sicht). Beim
+  Server-Betreiber klären. **Bis dahin D2-Archivdaten ab 08.11. 06 UTC nicht
+  zur Kalibrierung verwenden.**
 
 - ~~Operationelle Einstellung von `itune_vis_diag`~~: Variante 3 für D2 und
   EU (1.4).
