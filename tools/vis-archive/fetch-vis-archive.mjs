@@ -28,6 +28,9 @@ import { fileURLToPath } from "node:url";
 const HERE = dirname(fileURLToPath(import.meta.url));
 
 const API_BASE = "https://open-meteo.wetterheidi.de";
+// Referenz-Sicht: Der eigene Server verliert `visibility` mit der Umstellung auf
+// natives ICON (Nov. 2026), die öffentliche Instanz hat sie bis Ende November.
+const VIS_REF_BASE = "https://api.open-meteo.com";
 const METAR_API = "https://aviationweather.gov/api/data/metar";
 const REQUEST_DELAY_MS = 1500;
 const METAR_HOURS = 36;
@@ -48,8 +51,8 @@ const MODELS = {
   icon_eu: { nLevels: 74 },
 };
 
+// `visibility` wird getrennt geholt (fetchVisibilityFrom), s. fetchModelStation.
 const SURFACE_VARS = [
-  "visibility",
   "temperature_2m", "relative_humidity_2m", "dew_point_2m",
   "precipitation", "rain", "showers", "snowfall",
   "weather_code",
@@ -127,6 +130,31 @@ function levelColumns() {
   return cols;
 }
 
+/**
+ * `visibility` einer Station von einer Instanz. Fehler ergeben null statt eines
+ * Abbruchs: Die Sicht darf auf einer Instanz fehlen, sobald die andere sie hat.
+ * @returns {Promise<{ byTime: Map<string, number>, gridLat, gridLon } | null>}
+ */
+async function fetchVisibilityFrom(base, model, st, pastDays) {
+  const params = new URLSearchParams({
+    latitude: String(st.lat), longitude: String(st.lon), elevation: "nan",
+    hourly: "visibility", models: model,
+    past_days: String(pastDays), forecast_days: "1", timezone: "UTC",
+  });
+  try {
+    const d = await fetchJson(`${base}/v1/forecast?${params}`, 2);
+    const byTime = new Map();
+    d.hourly.time.forEach((t, i) => {
+      const v = d.hourly.visibility?.[i];
+      if (Number.isFinite(v)) byTime.set(t, v);
+    });
+    return byTime.size ? { byTime, gridLat: d.latitude, gridLon: d.longitude } : null;
+  } catch (e) {
+    log(`Sicht ${model} ${st.id} von ${new URL(base).host}: ${e.message}`);
+    return null;
+  }
+}
+
 /** Holt eine Station × Modell, liefert { meta, units, rows: [{time, ...}] }. */
 async function fetchModelStation(model, st, pastDays) {
   const { nLevels } = MODELS[model];
@@ -151,29 +179,62 @@ async function fetchModelStation(model, st, pastDays) {
     forecast_days: "1",
     timezone: "UTC",
   });
-  const d = await fetchJson(`${API_BASE}/v1/forecast?${params}`);
+  const [d, visOwn, visPublic] = await Promise.all([
+    fetchJson(`${API_BASE}/v1/forecast?${params}`),
+    fetchVisibilityFrom(API_BASE, model, st, pastDays),
+    fetchVisibilityFrom(VIS_REF_BASE, model, st, pastDays),
+  ]);
   const h = d.hourly;
   const rows = h.time.map((time, i) => {
     const r = { time };
     for (const v of SURFACE_VARS) r[v] = h[v]?.[i];
     for (const api of levelApi) r[levelMap[api]] = h[api]?.[i];
+    // `visibility` = Referenz für die Auswertung: bevorzugt vom eigenen Server
+    // (dasselbe Gitter wie die Modellflächen), sonst von der öffentlichen Instanz.
+    const own = visOwn?.byTime.get(time);
+    const pub = visPublic?.byTime.get(time);
+    r.visibility = own ?? pub;
+    r.vis_source = own != null ? "own" : pub != null ? "public" : undefined;
+    r.visibility_public = pub;
     return r;
   });
   const units = {};
   for (const [k, u] of Object.entries(d.hourly_units ?? {})) units[levelMap[k] ?? k] = u;
   return {
-    meta: { gridLat: d.latitude, gridLon: d.longitude, gridElev: d.elevation },
+    meta: {
+      gridLat: d.latitude, gridLon: d.longitude, gridElev: d.elevation,
+      visPublicGridLat: visPublic?.gridLat, visPublicGridLon: visPublic?.gridLon,
+    },
     units,
     rows,
   };
 }
 
-/** Anzahl nicht-leerer visibility-Werte einer bestehenden Tagesdatei. */
-async function countVisInFile(path) {
-  if (!existsSync(path)) return -1;
-  const lines = (await readFile(path, "utf8")).trim().split("\n");
-  const idx = lines[0].split(",").indexOf("visibility");
-  return lines.slice(1).filter((l) => l.split(",")[idx] !== "").length;
+/** Zeilen mit Referenz-Sicht UND Modellflächen (sonst für den Vergleich wertlos). */
+function countUsable(cols, lines) {
+  const iVis = cols.indexOf("visibility");
+  const iT = cols.indexOf("temperature_k0");
+  return lines.filter((l) => {
+    const c = l.split(",");
+    return c[iVis] !== "" && c[iT] !== "";
+  }).length;
+}
+
+/** Zeilen, deren Referenz-Sicht vom eigenen Server stammt (Dateien von vor
+ * Einführung der Spalte `vis_source`: alle). */
+function countOwn(cols, lines) {
+  const iSrc = cols.indexOf("vis_source");
+  const iVis = cols.indexOf("visibility");
+  if (iSrc < 0) return lines.filter((l) => l.split(",")[iVis] !== "").length;
+  return lines.filter((l) => l.split(",")[iSrc] === "own").length;
+}
+
+/** Stand einer bestehenden Tagesdatei; null, wenn es sie nicht gibt. */
+async function fileCounts(path) {
+  if (!existsSync(path)) return null;
+  const [head, ...lines] = (await readFile(path, "utf8")).trim().split("\n");
+  const cols = head.split(",");
+  return { usable: countUsable(cols, lines), own: countOwn(cols, lines) };
 }
 
 async function archiveModels(out, stations, pastDays) {
@@ -183,7 +244,9 @@ async function archiveModels(out, stations, pastDays) {
   const gridMeta = {};
   for (const model of Object.keys(MODELS)) {
     const byDay = new Map(); // day -> array of CSV-Zeilen
-    const cols = ["station", "time", "grid_lat", "grid_lon", "grid_elev", ...SURFACE_VARS, ...levelColumns()];
+    const cols = ["station", "time", "grid_lat", "grid_lon", "grid_elev",
+      "visibility", "vis_source", "visibility_public", "vis_public_grid_lat", "vis_public_grid_lon",
+      ...SURFACE_VARS, ...levelColumns()];
     gridMeta[model] = {};
     for (const st of stations) {
       let res;
@@ -200,6 +263,7 @@ async function archiveModels(out, stations, pastDays) {
         const day = r.time.slice(0, 10);
         if (day >= today) continue; // nur vollständige, vergangene UTC-Tage
         const line = [st.id, r.time, res.meta.gridLat, res.meta.gridLon, res.meta.gridElev,
+          r.visibility, r.vis_source, r.visibility_public, res.meta.visPublicGridLat, res.meta.visPublicGridLon,
           ...SURFACE_VARS.map((v) => r[v]), ...levelColumns().map((c) => r[c])].map(csvCell).join(",");
         if (!byDay.has(day)) byDay.set(day, []);
         byDay.get(day).push(line);
@@ -209,18 +273,25 @@ async function archiveModels(out, stations, pastDays) {
     }
     for (const [day, lines] of [...byDay].sort()) {
       const path = join(out, model, `${day}.csv`);
-      const idx = cols.indexOf("visibility");
-      const nNew = lines.filter((l) => l.split(",")[idx] !== "").length;
+      const nNew = countUsable(cols, lines);
       if (nNew === 0) continue; // Server hat diesen Tag nicht (mehr)
-      const nOld = await countVisInFile(path);
+      const old = await fileCounts(path);
+      const nOld = old?.usable ?? -1;
+      if (old && countOwn(cols, lines) < old.own) {
+        // Sicht vom eigenen Server liegt auf dem Gitter der Flächen, die
+        // öffentliche bei D2 nicht -- nicht durch die schlechtere Paarung ersetzen.
+        log(`${model} ${day}: behalte bestehende Datei (mehr Sicht vom eigenen Server)`);
+        continue;
+      }
       if (nNew < nOld) {
         // Nie einen vollständigeren Stand durch einen lückenhafteren ersetzen
-        // (Historie am Server rollt raus, einzelne Stationsabrufe scheitern).
+        // (Historie am Server rollt raus, einzelne Stationsabrufe scheitern, nach
+        // der Umstellung auf natives ICON evtl. Sicht ohne Flächen).
         log(`${model} ${day}: behalte bestehende Datei (${nOld} > ${nNew} Werte)`);
         continue;
       }
       await writeAtomic(path, [cols.join(","), ...lines].join("\n") + "\n");
-      log(`${model} ${day}: ${lines.length} Zeilen, ${nNew} mit Sicht geschrieben`);
+      log(`${model} ${day}: ${lines.length} Zeilen, ${nNew} mit Sicht und Flächen geschrieben`);
     }
   }
   return { unitsAll, gridMeta };

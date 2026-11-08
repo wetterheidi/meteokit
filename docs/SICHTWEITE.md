@@ -429,6 +429,20 @@ dem 30.11. entfallen lassen bzw. den Branch aufgeben.
 
 ## 4. Offene Punkte
 
+- **Referenz nach der Umstellung des eigenen Servers auf natives ICON**
+  (angekündigt Nov. 2026): Die Sicht fällt dort weg, das Archiv nimmt sie dann
+  von der öffentlichen Instanz (`tools/vis-archive/README.md`). Für ICON-EU sind
+  beide wertgleich. Für ICON-D2 lag die öffentliche Instanz am 08.11. auf einem
+  anderen Gitter als der eigene Server (Abweichung der Sicht zwischen beiden oft
+  > 5 %). Erst nach der Umstellung prüfen, ob die Gitter dann zusammenpassen,
+  bevor D2-Zeilen mit `vis_source = public` in die Kalibrierung gehen.
+- **`qr`, `qs`, `qg` auf Modellflächen** (Angebot Michael, 08.11.): Nur für D2 auf
+  DWD-Open-Data vorhanden (alle 65 Flächen, geprüft 08.11.), gebraucht werden
+  die untersten drei. ICON-EU hat sie nicht. Ersetzt den Niederschlagsansatz aus
+  1.6 einschließlich Schnee-Platzhalter. Das Subgrid-Wolkenwasser (1.5) bleibt
+  ein Ersatz, `qc_dia`/`qi_dia` auf Flächen gibt es in den Open-Data nicht; ein
+  exakter Nachbau ist daher auch damit nicht möglich.
+
 - ~~ICON-D2 ab 08.11.2026 06 UTC schlechter~~ (geklärt 08.11.): Kein
   Datenfehler, sondern unterschiedliche Verfügbarkeit auf Open-Meteo. Die
   Oberflächenfelder (samt `visibility`, `rain`, `snowfall`) eines neuen Laufs

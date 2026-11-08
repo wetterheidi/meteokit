@@ -51,6 +51,17 @@ stündlich, eine CSV pro Modell und UTC-Tag (`data/<modell>/YYYY-MM-DD.csv`):
   540 m liegt, sind es seit dem 08.11. 13. Der Bestand ab 05.10. wurde jeweils
   neu geholt. Regen-, Schnee- und Graupelgehalt auf Modellflächen liefert der
   Server nicht.
+- **Referenz-Sicht** (seit 2026-11-08): `visibility` kommt bevorzugt vom eigenen
+  Server, sonst von `api.open-meteo.com` (Spalte `vis_source` = `own`/`public`).
+  `visibility_public` und `vis_public_grid_lat/lon` werden immer mitgesichert.
+  Hintergrund: Der eigene Server verliert die Sicht mit der Umstellung auf
+  natives ICON, die öffentliche Instanz hat sie bis Ende November. ICON-EU ist
+  auf beiden wertgleich. Bei ICON-D2 lag die öffentliche Instanz am 08.11. auf
+  einem anderen Gitter und wich stark ab (nur 30–45 % der Stunden innerhalb 5 %),
+  daher der Vorrang für `own`. Eine Tagesdatei wird nie durch eine mit weniger
+  `own`-Zeilen oder weniger Zeilen mit Sicht und Flächen ersetzt. Nach der
+  Umstellung prüfen, ob `grid_lat/lon` und `vis_public_grid_lat/lon` bei D2
+  übereinstimmen; `analyze.mjs --vis-source own|public` trennt die Quellen.
 - `grid_lat/lon/elev`: Gitterpunkt, den Open-Meteo gewählt hat. Abgerufen mit
   `elevation=nan`, also **ohne Höhenkorrektur**, damit T/RH zur selben
   Gitterzelle gehören wie die Modellsicht. Bei Bergstationen weicht die

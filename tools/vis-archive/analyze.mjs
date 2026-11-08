@@ -10,6 +10,8 @@
  *                    [--precip] [--precip-timing now|next|mean|min] [--rain-factor F]
  *                    [--fit-precip]
  *
+ * --vis-source    nur Zeilen mit dieser Herkunft der Referenz-Sicht (own|public;
+ *                 Default: alle; Dateien ohne die Spalte zählen als own).
  * --exclude-days  UTC-Tage, die nicht ausgewertet werden (Default: die
  *                 DWD-Störung 10.–12.10.2026, s. DEFAULT_EXCLUDE_DAYS).
  * --subgrid a,b[,c] Ersatz für subskaliges Wolkenwasser (s. iconVisibility).
@@ -51,6 +53,7 @@ function parseArgs(argv) {
     else if (k === "--variants") a.variants = argv[++i].split(",").map(Number);
     else if (k === "--worst") a.worst = Number(argv[++i]);
     else if (k === "--csv") a.csv = argv[++i];
+    else if (k === "--vis-source") a.visSource = argv[++i];
     else if (k === "--exclude-days") a.excludeDays = argv[++i].split(",").filter(Boolean);
     else if (k === "--subgrid") { const [x, y, z] = argv[++i].split(",").map(Number); a.subgrid = { a: x, b: y, ...(Number.isFinite(z) ? { c: z } : {}) }; }
     else if (k === "--fit-subgrid") a.fitSubgrid = true;
@@ -74,7 +77,7 @@ async function readRows(dir) {
       const vals = l.split(",");
       const r = {};
       cols.forEach((c, i) => {
-        r[c] = c === "station" || c === "time" ? vals[i] : vals[i] === "" ? NaN : Number(vals[i]);
+        r[c] = c === "station" || c === "time" || c === "vis_source" ? vals[i] : vals[i] === "" ? NaN : Number(vals[i]);
       });
       rows.push(r);
     }
@@ -210,7 +213,8 @@ async function main() {
   const args = parseArgs(process.argv);
   const rows = (await readRows(join(args.data, args.model)))
     .filter((r) => Number.isFinite(r.visibility) && Number.isFinite(r.temperature_k0))
-    .filter((r) => !args.excludeDays.includes(r.time.slice(0, 10)));
+    .filter((r) => !args.excludeDays.includes(r.time.slice(0, 10)))
+    .filter((r) => !args.visSource || (r.vis_source ?? "own") === args.visSource);
   if (!rows.length) throw new Error("keine Zeilen mit Sicht und Modellflächen");
   const nl = nLevels(rows[0]);
 
