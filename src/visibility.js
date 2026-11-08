@@ -38,6 +38,14 @@ const VISRH_CLIP_KM = 1.0;  // Untergrenze Feuchteterm
 const VIS_MAX_KM = 90.0;
 const KOSCHMIEDER = -Math.log(0.02); // 2 % Kontrastschwelle
 
+// Ersatz für ICONs subskaliges Wolkenwasser (Open-Meteo liefert nur das
+// gitterskalige QC): qc = max(qc, a · qsat · clc^b). Empirisch per
+// Gittersuche gegen die ICON-Sicht kalibriert (tools/vis-archive/analyze.mjs
+// --fit-subgrid, 05.10.–07.11.2026 ohne 10.–12.10., trockene Stunden):
+// D2 optimal a = 0,01, b = 2,0; EU a = 0,01, b = 1,75 (mit b = 2 praktisch
+// gleich gut). Ein Satz für beide Modelle, s. docs/SICHTWEITE.md 1.5.
+export const SUBGRID_FIT = Object.freeze({ a: 0.01, b: 2.0 });
+
 const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
 
 /** Sättigungsdampfdruck über Wasser [Pa], T in K (ICON `esat_water`). */
@@ -80,20 +88,25 @@ function visRhSynopFit(rh) {
  *
  * @param {object} col
  * @param {object[]} col.levels  Modellflächen von unten (k0 = unterste), je
- *   `{ z, p, T, qv, qc, qi, u, v }`: z m über Grund, p Pa, T K, q in kg/kg,
- *   u/v m/s. Für Variante 3 bis über 540 m nötig, sonst mindestens 3.
+ *   `{ z, p, T, qv, qc, qi, u, v, clc }`: z m über Grund, p Pa, T K, q in
+ *   kg/kg, u/v m/s, clc Wolkenbedeckung 0–1 (nur mit `opts.subgrid`). Für
+ *   Variante 3 bis über 540 m nötig, sonst mindestens 3.
  * @param {number} [col.cosZenith]  Kosinus des Sonnenzenitwinkels; ersatzweise
  *   aus `time` (ms), `lat`, `lon` berechnet.
  * @param {object} [col.hydro]  Massenkonzentrationen [g/m³] von Regen, Schnee,
  *   Graupel `{ Cr, Cs, Cg }` (Ersatz für fehlende qr/qs/qg); Default 0.
  * @param {object} [opts]
  * @param {1|2|3} [opts.variant=3]  `itune_vis_diag`
+ * @param {{a: number, b: number}} [opts.subgrid]  Ersatz für ICONs
+ *   subskaliges Wolkenwasser, das Open-Meteo nicht liefert (nur das
+ *   gitterskalige QC): je Fläche qc = max(qc, a · qsat · clc^b). Ohne Angabe
+ *   wird qc unverändert verwendet. Kalibrierung s. docs/SICHTWEITE.md.
  * @returns {{ vis: number, visRh: number, visHydro: number, limitedBy: string,
  *   rhmax: number, invfac: number, shearFac: number,
  *   beta: { c: number, i: number, r: number, s: number, g: number } }}
  *   Sichtweiten in m, β in 1/km.
  */
-export function iconVisibility(col, { variant = 3 } = {}) {
+export function iconVisibility(col, { variant = 3, subgrid = null } = {}) {
   const L = col.levels;
   if (!L || L.length < TOP_LEV) throw new Error("mindestens 3 Modellflächen nötig");
 
@@ -123,7 +136,12 @@ export function iconVisibility(col, { variant = 3 } = {}) {
   let Cc = 0, Ci = 0;
   for (let k = 0; k < TOP_LEV; k++) {
     const rho = density(L[k]);
-    Cc = Math.max(Cc, (L[k].qc ?? 0) * rho * 1000);
+    let qc = L[k].qc ?? 0;
+    if (subgrid && L[k].clc > 0) {
+      const qsat = (RDV * esatWater(L[k].T)) / L[k].p;
+      qc = Math.max(qc, subgrid.a * qsat * L[k].clc ** subgrid.b);
+    }
+    Cc = Math.max(Cc, qc * rho * 1000);
     Ci = Math.max(Ci, (L[k].qi ?? 0) * rho * 1000);
   }
   const { Cr = 0, Cs = 0, Cg = 0 } = col.hydro ?? {};

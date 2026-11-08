@@ -180,6 +180,50 @@ in unserer Rechnung bei ICON-Sicht über 20 km und umgekehrt). Ursache laut
 Heidi: DWD-Störung mit unvollständigen Läufen. Sie sind deshalb aus der
 Auswertung ausgenommen (`DEFAULT_EXCLUDE_DAYS` in `analyze.mjs`).
 
+### 1.5 Ersatz für das subskalige Wolkenwasser
+
+Rückgerechnet aus der ICON-Sicht (Tagwert über die Umkehrung des
+Nachtfaktors, dann β und C über Kunkel) zeigt sich in D2, trocken, wo ICON
+durch Hydrometeore begrenzt ist:
+
+| Wolkenbedeckung k0–k2 (max.) | gitterskaliges qc = 0 |
+|---|---|
+| < 0,2 | immer |
+| 0,2–0,5 | immer |
+| 0,5–0,8 | in der Hälfte der Fälle |
+| ≥ 0,8 | nie |
+
+Das nötige Wasser wächst etwa mit qsat · clc^1,3 (Mediane je Klasse).
+Ansatz, je Fläche k0–k2:
+
+    qc_eff = max(qc, a · qsat(T, p) · clc^b)
+
+a und b per Gittersuche (`analyze.mjs --fit-subgrid`, Ziel: größter Anteil
+trockener Stunden mit ≤ 10 % Abweichung). Ergebnis: D2 a = 0,01, b = 2,0;
+EU a = 0,01, b = 1,75. Mit b = 2 auch für EU praktisch gleich gut (73,1 statt
+73,3 %), daher **ein Satz für beide: a = 0,01, b = 2** (`SUBGRID_FIT` in
+`src/visibility.js`). Das ist eine rein empirische Anpassung an ICONs
+KOE-Wolkenschema, keine physikalische Herleitung.
+
+Wirkung (trocken, Anteil ≤ 10 % / ≤ 30 % Abweichung):
+
+| | ohne | mit Ersatz |
+|---|---|---|
+| D2 gesamt | 86,8 / 91,6 % | 89,9 / 97,9 % |
+| D2 1–5 km | 2,7 / 5,9 % | 35,8 / 83,8 % |
+| D2 < 1 km | 45,6 / 82,1 % | 50,7 / 91,1 % |
+| EU gesamt | 71,4 / 81,9 % | 73,1 / 85,6 % |
+| EU 1–5 km | 3,0 / 9,1 % | 17,1 / 41,0 % |
+
+**Warum EU schlechter bleibt:** Die größten EU-Abweichungen sind Fälle mit
+viel gitterskaligem Wolkenwasser (Nebel in unserer Rechnung), bei denen die
+ICON-Sicht trotzdem 6–25 km beträgt (z. B. LOWI, LSZH). Einen Zeitversatz
+zwischen den Feldern gibt es nicht (Abweichung bei 0 h Versatz klar am
+kleinsten, D2 wie EU). Vermutung, nicht geprüft: ICON-EU kommt vom DWD auf
+ein reguläres Gitter interpoliert, und die Interpolation einer stark
+nichtlinearen Größe wie der Sicht passt nicht zur Sicht aus interpolierten
+Eingangsfeldern, besonders bei kleinräumigem Nebel.
+
 ## 2. Was wir davon nachbauen können
 
 | ICON-Eingang | über Open-Meteo verfügbar? |
@@ -214,8 +258,9 @@ soweit dort die Modellflächen-Felder vorliegen.
 - ~~Operationelle Einstellung von `itune_vis_diag`~~: Variante 3 für D2 und
   EU (1.4).
 - `cloud_water_level{N}` auf dem Server ist gitterskaliges QC (1.4).
-  Subskaliges Wolkenwasser fehlt und muss geschätzt werden, z. B. empirisch
-  aus Wolkenbedeckung (`cloud_cover_level{N}`) und RH, kalibriert am Archiv.
+  Subskaliges Wolkenwasser: empirischer Ersatz aus der Wolkenbedeckung (1.5).
+  Offen: Temperaturabhängigkeit (Eis-Anteil bei T < 0 °C), Prüfung an den
+  Daten bis 30.11.
 - `qr`, `qs`, `qg`: Für ICON-D2 gäbe es sie in den DWD-Open-Data, sie werden
   aber bewusst **nicht** zusätzlich geholt (Entscheidung 2026-11-08): Für
   ICON-EU muss ohnehin aus Bodenraten geschätzt werden, ein Verfahren für

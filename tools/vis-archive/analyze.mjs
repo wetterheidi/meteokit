@@ -6,9 +6,13 @@
  *
  *   node analyze.mjs --data DIR [--model icon_d2|icon_eu] [--variants 1,2,3]
  *                    [--worst N] [--csv OUT.csv] [--exclude-days D,D]
+ *                    [--subgrid a,b] [--fit-subgrid]
  *
  * --exclude-days  UTC-Tage, die nicht ausgewertet werden (Default: die
  *                 DWD-Störung 10.–12.10.2026, s. DEFAULT_EXCLUDE_DAYS).
+ * --subgrid a,b   Ersatz für subskaliges Wolkenwasser (s. iconVisibility).
+ * --fit-subgrid   a, b per Gittersuche bestimmen (Variante 3, trockene
+ *                 Stunden, Ziel: größter Anteil ≤ 10 % Abweichung).
  *
  * DIR ist eine lokale Kopie von /apps/vis-archive/data (s. README).
  *
@@ -30,7 +34,7 @@ const DEFAULT_EXCLUDE_DAYS = ["2026-10-10", "2026-10-11", "2026-10-12"];
 
 function parseArgs(argv) {
   const a = { data: null, model: "icon_d2", variants: [1, 2, 3], worst: 10, csv: null,
-    excludeDays: DEFAULT_EXCLUDE_DAYS };
+    excludeDays: DEFAULT_EXCLUDE_DAYS, subgrid: null, fitSubgrid: false };
   for (let i = 2; i < argv.length; i++) {
     const k = argv[i];
     if (k === "--data") a.data = argv[++i];
@@ -39,6 +43,8 @@ function parseArgs(argv) {
     else if (k === "--worst") a.worst = Number(argv[++i]);
     else if (k === "--csv") a.csv = argv[++i];
     else if (k === "--exclude-days") a.excludeDays = argv[++i].split(",").filter(Boolean);
+    else if (k === "--subgrid") { const [x, y] = argv[++i].split(",").map(Number); a.subgrid = { a: x, b: y }; }
+    else if (k === "--fit-subgrid") a.fitSubgrid = true;
     else throw new Error(`Unbekanntes Argument: ${k}`);
   }
   if (!a.data) throw new Error("--data DIR fehlt");
@@ -81,6 +87,7 @@ function columnFromRow(r, nl) {
       qi: r[`cloud_ice_k${k}`] / 1000,
       u: r[`wind_u_component_k${k}`] / 3.6,
       v: r[`wind_v_component_k${k}`] / 3.6,
+      clc: r[`cloud_cover_k${k}`] / 100,
     });
   }
   return { levels, time: Date.parse(`${r.time}:00Z`), lat: r.grid_lat, lon: r.grid_lon };
@@ -110,6 +117,34 @@ function stats(items) {
     `≤30 %:${within(0.3)} %  Median |ln|=${mlog.toFixed(3)}`;
 }
 
+/** Gittersuche für a, b des Subgrid-Wolkenwassers (Variante 3, trocken). */
+function fitSubgrid(rows, nl, nextOf) {
+  const cols = rows
+    .filter((r) => !isWet(r) && !(nextOf(r) ? isWet(nextOf(r)) : true))
+    .map((r) => ({ col: columnFromRow(r, nl), icon: r.visibility }));
+  const score = (sg) => {
+    let ok = 0, ok15 = 0, n15 = 0;
+    for (const { col, icon } of cols) {
+      const e = Math.abs(iconVisibility(col, { variant: 3, subgrid: sg }).vis / icon - 1);
+      if (e <= 0.1) ok++;
+      if (icon >= 1000 && icon < 5000) { n15++; if (e <= 0.1) ok15++; }
+    }
+    return { all: ok / cols.length, k15: ok15 / n15 };
+  };
+  const base = score(null);
+  console.log(`Ohne Subgrid: ≤10 % ${(100 * base.all).toFixed(1)} %, 1–5 km ${(100 * base.k15).toFixed(1)} % (n=${cols.length})`);
+  let best = null;
+  for (let ia = 0; ia <= 16; ia++) {
+    const a = 1e-3 * 10 ** (ia / 8); // 1e-3 … 1e-1
+    for (let b = 0.5; b <= 3.001; b += 0.25) {
+      const s = score({ a, b });
+      if (!best || s.all > best.s.all) best = { a, b, s };
+    }
+  }
+  console.log(`Bestes Gitter: a=${best.a.toExponential(2)} b=${best.b.toFixed(2)}: ` +
+    `≤10 % ${(100 * best.s.all).toFixed(1)} %, 1–5 km ${(100 * best.s.k15).toFixed(1)} %`);
+}
+
 async function main() {
   const args = parseArgs(process.argv);
   const rows = (await readRows(join(args.data, args.model)))
@@ -125,6 +160,8 @@ async function main() {
     return byKey.get(`${r.station}|${t}`);
   };
 
+  if (args.fitSubgrid) return fitSubgrid(rows, nl, nextOf);
+
   const results = {}; // variant -> [{...}]
   for (const v of args.variants) results[v] = [];
   let skipped = 0;
@@ -135,7 +172,7 @@ async function main() {
     // Alle Varianten oder keine, damit die Ergebnislisten zeilengleich bleiben
     let outs;
     try {
-      outs = args.variants.map((v) => iconVisibility(col, { variant: v }));
+      outs = args.variants.map((v) => iconVisibility(col, { variant: v, subgrid: args.subgrid }));
     } catch {
       skipped++;
       continue;
