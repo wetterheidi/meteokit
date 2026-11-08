@@ -201,8 +201,8 @@ Ansatz, je Fläche k0–k2:
 a und b per Gittersuche (`analyze.mjs --fit-subgrid`, Ziel: größter Anteil
 trockener Stunden mit ≤ 10 % Abweichung). Ergebnis: D2 a = 0,01, b = 2,0;
 EU a = 0,01, b = 1,75. Mit b = 2 auch für EU praktisch gleich gut (73,1 statt
-73,3 %), daher **ein Satz für beide: a = 0,01, b = 2** (`SUBGRID_FIT` in
-`src/visibility.js`). Das ist eine rein empirische Anpassung an ICONs
+73,3 %), daher ein Satz für beide: a = 0,01, b = 2. (Inzwischen ersetzt
+durch die Fassung mit Temperaturabhängigkeit, s. 1.7.) Das ist eine rein empirische Anpassung an ICONs
 KOE-Wolkenschema, keine physikalische Herleitung.
 
 Wirkung (trocken, Anteil ≤ 10 % / ≤ 30 % Abweichung):
@@ -223,6 +223,44 @@ kleinsten, D2 wie EU). Vermutung, nicht geprüft: ICON-EU kommt vom DWD auf
 ein reguläres Gitter interpoliert, und die Interpolation einer stark
 nichtlinearen Größe wie der Sicht passt nicht zur Sicht aus interpolierten
 Eingangsfeldern, besonders bei kleinräumigem Nebel.
+
+### 1.7 Temperaturabhängigkeit des Subgrid-Ersatzes
+
+Aufgeteilt nach der Temperatur auf k0 zeigt sich bei rein subskaligem Wasser
+(clc > 0, gitterskaliges qc = 0; D2, trocken) ein Trend, Median
+ln(calc/ICON):
+
+| T an k0 | Median | ≤ 30 % |
+|---|---|---|
+| −5…0 °C (n = 61) | +0,18 | 61 % |
+| 0…5 °C (n = 662) | +0,06 | 83 % |
+| > 5 °C (n = 1170) | −0,02 | 90 % |
+
+Bei Kälte dämpft ICON stärker, als ein zu qsat proportionaler Ansatz
+liefert. Ob das an Eis im subskaligen Kondensat liegt (Eis-Extinktion
+327,8·C gegenüber 144,7·C^0,88) oder schlicht an der Skalierung mit qsat,
+lässt sich mit den wenigen Frostfällen nicht trennen. Gitterskaliges Eis
+(`cloud_ice`) war in den trockenen Stunden bisher nie vorhanden.
+
+Einfachster Ansatz: Exponent c auf qsat, q* = 5 g/kg · (qsat/5 g/kg)^c.
+Gittersuche über a, b, c (`--subgrid a,b,c`): D2 optimal c = 0,25–0,5,
+EU ohne klare Präferenz. Gewählt für beide: **a = 0,012, b = 2, c = 0,5**
+(`SUBGRID_FIT` in `src/visibility.js`). Anteil ≤ 10 % / ≤ 30 %, mit
+Regenanteil (1.6):
+
+| | a = 0,01, b = 2, c = 1 | a = 0,012, b = 2, c = 0,5 |
+|---|---|---|
+| D2 trocken | 89,9 / 97,9 % | 90,3 / 98,9 % |
+| D2 trocken 1–5 km | 35,8 / 83,8 % | 39,7 / 94,1 % |
+| D2 trocken < 1 km | 50,7 / 91,1 % | 51,9 / 93,0 % |
+| D2 trocken, T < 0 °C (n = 260) | – / 85,4 % | – / 95,4 % |
+| D2 Niederschlag | 73,6 / 89,1 % | 74,3 / 90,1 % |
+| EU trocken | 73,1 / 85,6 % | 73,0 / 85,9 % |
+| EU trocken 1–5 km | 17,1 / 41,0 % | 18,2 / 45,2 % |
+| EU Niederschlag | 61,5 / 81,7 % | 61,7 / 81,8 % |
+
+Die Frostfälle sind bisher wenige (Oktober/Anfang November). Mit den Daten
+bis 30.11. erneut prüfen.
 
 ### 1.6 Ersatz für Regen und Schnee aus Bodenraten
 
@@ -293,9 +331,9 @@ soweit dort die Modellflächen-Felder vorliegen.
 - ~~Operationelle Einstellung von `itune_vis_diag`~~: Variante 3 für D2 und
   EU (1.4).
 - `cloud_water_level{N}` auf dem Server ist gitterskaliges QC (1.4).
-  Subskaliges Wolkenwasser: empirischer Ersatz aus der Wolkenbedeckung (1.5).
-  Offen: Temperaturabhängigkeit (Eis-Anteil bei T < 0 °C), Prüfung an den
-  Daten bis 30.11.
+  Subskaliges Wolkenwasser: empirischer Ersatz aus der Wolkenbedeckung (1.5),
+  mit abgeschwächter qsat-Abhängigkeit für Frost (1.7). Mit den Daten bis
+  30.11. (mehr Frost, ggf. Schnee) erneut prüfen.
 - `qr`, `qs`, `qg`: Für ICON-D2 gäbe es sie in den DWD-Open-Data, sie werden
   aber bewusst **nicht** zusätzlich geholt (Entscheidung 2026-11-08): Für
   ICON-EU muss ohnehin aus Bodenraten geschätzt werden, ein Verfahren für

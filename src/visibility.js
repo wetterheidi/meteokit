@@ -39,12 +39,13 @@ const VIS_MAX_KM = 90.0;
 const KOSCHMIEDER = -Math.log(0.02); // 2 % Kontrastschwelle
 
 // Ersatz für ICONs subskaliges Wolkenwasser (Open-Meteo liefert nur das
-// gitterskalige QC): qc = max(qc, a · qsat · clc^b). Empirisch per
-// Gittersuche gegen die ICON-Sicht kalibriert (tools/vis-archive/analyze.mjs
-// --fit-subgrid, 05.10.–07.11.2026 ohne 10.–12.10., trockene Stunden):
-// D2 optimal a = 0,01, b = 2,0; EU a = 0,01, b = 1,75 (mit b = 2 praktisch
-// gleich gut). Ein Satz für beide Modelle, s. docs/SICHTWEITE.md 1.5.
-export const SUBGRID_FIT = Object.freeze({ a: 0.01, b: 2.0 });
+// gitterskalige QC): qc = max(qc, a · q* · clc^b) mit
+// q* = 5 g/kg · (qsat / 5 g/kg)^c. Empirisch per Gittersuche gegen die
+// ICON-Sicht kalibriert (05.10.–07.11.2026 ohne 10.–12.10., trockene
+// Stunden). c = 0,5 statt 1 beseitigt einen Fehler bei Frost (ICON dämpft
+// bei Kälte stärker als qsat-proportional). Ein Satz für D2 und EU, s.
+// docs/SICHTWEITE.md 1.5 und 1.7.
+export const SUBGRID_FIT = Object.freeze({ a: 0.012, b: 2.0, c: 0.5 });
 
 // Niederschlags-Ersatz, s. hydroFromSurfaceRates(). rainFactor 1 = reine
 // Marshall-Palmer-Ableitung, gegen die ICON-Sicht bestätigt (keine
@@ -138,10 +139,11 @@ export function hydroFromSurfaceRates({ rain = 0, snow = 0, graupel = 0 } = {},
  *   Graupel `{ Cr, Cs, Cg }` (Ersatz für fehlende qr/qs/qg); Default 0.
  * @param {object} [opts]
  * @param {1|2|3} [opts.variant=3]  `itune_vis_diag`
- * @param {{a: number, b: number}} [opts.subgrid]  Ersatz für ICONs
- *   subskaliges Wolkenwasser, das Open-Meteo nicht liefert (nur das
- *   gitterskalige QC): je Fläche qc = max(qc, a · qsat · clc^b). Ohne Angabe
- *   wird qc unverändert verwendet. Kalibrierung s. docs/SICHTWEITE.md.
+ * @param {{a: number, b: number, c?: number}} [opts.subgrid]  Ersatz für
+ *   ICONs subskaliges Wolkenwasser, das Open-Meteo nicht liefert (nur das
+ *   gitterskalige QC): je Fläche qc = max(qc, a · q* · clc^b),
+ *   q* = 5 g/kg · (qsat / 5 g/kg)^c (ohne c: q* = qsat). Ohne Angabe wird
+ *   qc unverändert verwendet. Kalibrierter Satz: `SUBGRID_FIT`.
  * @returns {{ vis: number, visRh: number, visHydro: number, limitedBy: string,
  *   rhmax: number, invfac: number, shearFac: number,
  *   beta: { c: number, i: number, r: number, s: number, g: number } }}
@@ -180,7 +182,9 @@ export function iconVisibility(col, { variant = 3, subgrid = null } = {}) {
     let qc = L[k].qc ?? 0;
     if (subgrid && L[k].clc > 0) {
       const qsat = (RDV * esatWater(L[k].T)) / L[k].p;
-      qc = Math.max(qc, subgrid.a * qsat * L[k].clc ** subgrid.b);
+      // optionaler Exponent c auf qsat, bezogen auf 5 g/kg (c = 1: linear)
+      const qs = subgrid.c == null ? qsat : 0.005 * (qsat / 0.005) ** subgrid.c;
+      qc = Math.max(qc, subgrid.a * qs * L[k].clc ** subgrid.b);
     }
     Cc = Math.max(Cc, qc * rho * 1000);
     Ci = Math.max(Ci, (L[k].qi ?? 0) * rho * 1000);

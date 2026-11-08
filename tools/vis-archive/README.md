@@ -124,9 +124,9 @@ begrenzendem Term. Ergebnisse und Deutung: `docs/SICHTWEITE.md`.
 ```bash
 rsync -a root@178.104.206.136:/apps/vis-archive/data/ ./vis-data/
 node analyze.mjs --data ./vis-data --model icon_d2 [--variants 1,2,3] [--worst 15] [--csv out.csv]
-node analyze.mjs --data ./vis-data --model icon_d2 --variants 3 --subgrid 0.01,2   # mit Subgrid-Ersatz
-node analyze.mjs --data ./vis-data --model icon_d2 --fit-subgrid                   # a, b neu bestimmen
-node analyze.mjs --data ./vis-data --model icon_d2 --variants 3 --subgrid 0.01,2 --precip   # plus Regen/Schnee aus Bodenraten
+node analyze.mjs --data ./vis-data --model icon_d2 --variants 3 --subgrid 0.012,2,0.5   # mit Subgrid-Ersatz
+node analyze.mjs --data ./vis-data --model icon_d2 --fit-subgrid                   # a, b neu bestimmen (c = 1)
+node analyze.mjs --data ./vis-data --model icon_d2 --variants 3 --subgrid 0.012,2,0.5 --precip   # plus Regen/Schnee aus Bodenraten
 node analyze.mjs --data ./vis-data --model icon_d2 --fit-precip                    # Regenfaktor/Zeitbezug prüfen
 ```
 

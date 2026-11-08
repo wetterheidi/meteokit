@@ -6,13 +6,13 @@
  *
  *   node analyze.mjs --data DIR [--model icon_d2|icon_eu] [--variants 1,2,3]
  *                    [--worst N] [--csv OUT.csv] [--exclude-days D,D]
- *                    [--subgrid a,b] [--fit-subgrid]
+ *                    [--subgrid a,b[,c]] [--fit-subgrid]
  *                    [--precip] [--precip-timing now|next|mean|min] [--rain-factor F]
  *                    [--fit-precip]
  *
  * --exclude-days  UTC-Tage, die nicht ausgewertet werden (Default: die
  *                 DWD-Störung 10.–12.10.2026, s. DEFAULT_EXCLUDE_DAYS).
- * --subgrid a,b   Ersatz für subskaliges Wolkenwasser (s. iconVisibility).
+ * --subgrid a,b[,c] Ersatz für subskaliges Wolkenwasser (s. iconVisibility).
  * --fit-subgrid   a, b per Gittersuche bestimmen (Variante 3, trockene
  *                 Stunden, Ziel: größter Anteil ≤ 10 % Abweichung).
  * --precip        Regen/Schnee aus Bodenraten (hydroFromSurfaceRates).
@@ -52,7 +52,7 @@ function parseArgs(argv) {
     else if (k === "--worst") a.worst = Number(argv[++i]);
     else if (k === "--csv") a.csv = argv[++i];
     else if (k === "--exclude-days") a.excludeDays = argv[++i].split(",").filter(Boolean);
-    else if (k === "--subgrid") { const [x, y] = argv[++i].split(",").map(Number); a.subgrid = { a: x, b: y }; }
+    else if (k === "--subgrid") { const [x, y, z] = argv[++i].split(",").map(Number); a.subgrid = { a: x, b: y, ...(Number.isFinite(z) ? { c: z } : {}) }; }
     else if (k === "--fit-subgrid") a.fitSubgrid = true;
     else if (k === "--precip") a.precip = true;
     else if (k === "--precip-timing") a.precipTiming = argv[++i];
