@@ -39,16 +39,17 @@ stündlich, eine CSV pro Modell und UTC-Tag (`data/<modell>/YYYY-MM-DD.csv`):
   `weather_code`, `cloud_cover`, `cloud_cover_low`, `wind_speed_10m`,
   `wind_gusts_10m`, `pressure_msl`, `surface_pressure`, `snowfall_height`,
   `freezing_level_height`.
-- Die elf untersten Modellflächen (`_k0` = unterste, ca. 10 m über Grund,
-  bis `_k10` ≈ 600 m in D2 bzw. ≈ 1100 m in EU): `height_agl`, `pressure`,
+- Die 13 untersten Modellflächen (`_k0` = unterste, ca. 10 m über Grund,
+  bis `_k12` ≈ 800 m in D2 bzw. ≈ 1500 m in EU): `height_agl`, `pressure`,
   `temperature`, `relative_humidity`, `specific_humidity`, `cloud_water`,
   `cloud_ice`, `cloud_cover`, `wind_u_component`, `wind_v_component`. Bei
   Open-Meteo ist der *größte* Level-Index die unterste Fläche (D2: 65,
   EU: 74). Umfang und Wind richten sich nach ICONs eigener Sichtdiagnose
   (Scherung zwischen k0 und k2, θv auf der Fläche unter 540 m), s.
   `docs/SICHTWEITE.md`. Die erste Fassung vom 08.11. hatte nur fünf Flächen
-  ohne Wind; der Bestand ab 05.10. wurde am selben Tag mit elf Flächen neu
-  geholt. Regen-, Schnee- und Graupelgehalt auf Modellflächen liefert der
+  ohne Wind, dann elf; weil über Bergen (Brocken, Fichtelberg) k10 noch unter
+  540 m liegt, sind es seit dem 08.11. 13. Der Bestand ab 05.10. wurde jeweils
+  neu geholt. Regen-, Schnee- und Graupelgehalt auf Modellflächen liefert der
   Server nicht.
 - `grid_lat/lon/elev`: Gitterpunkt, den Open-Meteo gewählt hat. Abgerufen mit
   `elevation=nan`, also **ohne Höhenkorrektur**, damit T/RH zur selben
@@ -113,6 +114,18 @@ Lokaler Test:
 node fetch-vis-archive.mjs --out /tmp/vis-test --past-days 2 --stations EDDM,LOWG,BROCKEN
 ```
 
+## Auswertung (`analyze.mjs`)
+
+Rechnet ICONs Sichtdiagnose mit `iconVisibility()` aus `src/visibility.js`
+für jede archivierte Stunde nach und vergleicht mit der Modellsicht, getrennt
+nach trockenen Stunden und Niederschlagsstunden, Sichtklassen und
+begrenzendem Term. Ergebnisse und Deutung: `docs/SICHTWEITE.md`.
+
+```bash
+rsync -a root@178.104.206.136:/apps/vis-archive/data/ ./vis-data/
+node analyze.mjs --data ./vis-data --model icon_d2 [--variants 1,2,3] [--worst 15] [--csv out.csv]
+```
+
 ## Server-Setup (Hetzner, `root@178.104.206.136`)
 
 Eingerichtet am 2026-11-08:
@@ -133,7 +146,7 @@ Eingerichtet am 2026-11-08:
    1440 Meldungen je H24-Platz, bei ETHA/ETSB/ETSN (nicht durchgehend
    besetzt) 780–880.
 
-Datenmenge: ca. 400 kB pro Modell und Tag (elf Flächen; 29 MB für den Backfill 05.10.–07.11.).
+Datenmenge: ca. 450 kB pro Modell und Tag (13 Flächen).
 
 ## Nach dem 30.11.2026
 

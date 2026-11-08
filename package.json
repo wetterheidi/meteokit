@@ -25,6 +25,7 @@
     "./column": "./src/column.js",
     "./weather": "./src/weather.js",
     "./clouds": "./src/clouds.js",
+    "./visibility": "./src/visibility.js",
     "./briefing": "./src/briefing.js",
     "./crosssection": "./src/crosssection.js",
     "./astro": "./src/astro.js",

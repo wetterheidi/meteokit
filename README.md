@@ -67,6 +67,7 @@ intern und darf sich jederzeit ändern — auch wenn die Datei im Repo sichtbar 
 | `meteokit/column` | `fetchColumn`, `buildField`, `sampleColumnAtHeight`, `sliceColumnRange`, … |
 | `meteokit/weather` | `fetchSurface`, `fetchModelRunInit`, `nearestIndex`, … |
 | `meteokit/clouds` | Wolken-/Nebeldiagnostik: `cloudLayers`, `cloudCeiling`, `classifyFog`, … |
+| `meteokit/visibility` | `iconVisibility(col, { variant })` — Nachbau der ICON-Sichtdiagnose (in Arbeit, s. `docs/SICHTWEITE.md`) |
 | `meteokit/briefing` | `buildBriefingHtml`, `metarWeather`, … |
 | `meteokit/crosssection` | `renderCrossSection` |
 | `meteokit/astro` | `sunRiseSet`, `moonPhase`, … |

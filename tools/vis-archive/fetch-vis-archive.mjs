@@ -35,12 +35,14 @@ const METAR_HOURS = 36;
 // Unterste Modellflächen, die mitgesichert werden (k0 = unterste Fläche).
 // Die Fläche mit dem größten Index ist bei Open-Meteo die unterste
 // (level1 ≈ Modelloberrand).
-// 11 Flächen, weil ICONs Sichtdiagnose (compute_field_visibility, Variante
+// 13 Flächen, weil ICONs Sichtdiagnose (compute_field_visibility, Variante
 // itune_vis_diag = 3) theta_v auf k950 braucht, der obersten Fläche unter
 // 540 m über Grund: D2 ≈ k9 (522 m), EU ≈ k6 (438 m), gemessen EDDM
-// 2026-11-08. Wind braucht sie auf k0 und k2 (Scherungsterm).
-// Bis 2026-11-08 (erste Fassung) waren es 5 Flächen ohne Wind.
-const N_LOW_LEVELS = 11;
+// 2026-11-08. Über Bergen liegen die D2-Flächen enger (Brocken, Fichtelberg:
+// k10 ≈ 525 m), daher Reserve bis k12. Wind braucht die Diagnose auf k0 und
+// k2 (Scherungsterm).
+// Verlauf am 2026-11-08: erst 5 Flächen ohne Wind, dann 11, dann 13.
+const N_LOW_LEVELS = 13;
 const MODELS = {
   icon_d2: { nLevels: 65 },
   icon_eu: { nLevels: 74 },

@@ -127,6 +127,59 @@ Station:
   oder 3, entscheidet erst der Feuchteterm (in Stunden ohne Hydrometeore).
 - Open-Meteo speichert VIS mit 20-m-Auflösung (139 → 140 m).
 
+### 1.4 Nachrechnung über das ganze Archiv (Stand 2026-11-08)
+
+`src/visibility.js` (`iconVisibility()`) rechnet die Routine nach,
+`tools/vis-archive/analyze.mjs` vergleicht sie mit der Modellsicht. Daten:
+05.10.–07.11.2026 ohne die Tage der DWD-Störung 10.–12.10. (unvollständige
+Läufe, Modellflächen und Sichtfeld passen dort nicht zusammen), 24
+Stationen, 13 Modellflächen, ohne Regen/Schnee/Graupel (fehlen auf dem
+Server). „Trocken“ = kein Niederschlag in der Stunde und der folgenden.
+
+Median der relativen Abweichung |ln(calc/ICON)|, trockene Stunden:
+
+| Modell | Variante 1 | Variante 2 | Variante 3 |
+|---|---|---|---|
+| ICON-D2 (n = 15 807) | 0,383 | 0,342 | **0,006** |
+| ICON-EU (n = 14 450) | 0,372 | 0,367 | **0,025** |
+
+**Beide Modelle laufen operationell mit `itune_vis_diag = 3`.** In D2
+liegen 74 % der trockenen Stunden auf 2 % genau, bei ICON-Sicht ≥ 30 km
+99,5 %. In Niederschlagsstunden ist der Median trotz fehlender
+Regen/Schnee/Graupel-Anteile nur 1,4 % (D2) bzw. 5,8 % (EU).
+
+Wo es nicht passt (D2, Variante 3, trocken):
+
+| ICON-Sicht | ≤ 10 % Abweichung | typisch |
+|---|---|---|
+| < 1 km | 46 % | Median calc/ICON 0,98, aber breite Streuung |
+| 1–5 km | 3 % | wir rechnen 2,6-mal zu hoch (Median) |
+| 5–10 km | 62 % | |
+| ≥ 10 km | 99–100 % | |
+
+ICON-EU liegt in allen Klassen schlechter (≥ 30 km: 97 %, 10–30 km: 76 %,
+< 1 km: 12 % innerhalb 10 %).
+
+**Ursache für 1–5 km: subskaliges Wolkenwasser.** ICON nimmt `tot_ptr(iqc)`
+(gitterskalig + subskalig aus dem Wolkenbedeckungsschema), der Server liefert
+offenbar nur das gitterskalige QC. Beleg: In den Stunden, die wir deutlich zu
+hoch rechnen, ist in 68 % Wolkenbedeckung auf k0–k2 vorhanden, aber
+`cloud_water` = 0; in den gut getroffenen Stunden nur in 5 %. Bei RH 95–98 %
+erzeugt ICON also subskaliges Wasser, das die Sicht auf 1–4 km drückt,
+während unser reiner Feuchteterm 5–10 km ergibt.
+
+DWD-Open-Data (ICON-D2, geprüft 2026-11-08) hat auf Modellflächen `qc`,
+`qi`, `qr`, `qs`, `qg` und `clc`, aber kein subskaliges bzw. Gesamt-
+Wolkenwasser (nur vertikal integriert: `tqc_dia`, `tqi_dia`). ICON-EU hat
+auf Modellflächen nur `qc`, `qi`, `clc`. Das Wolkenschema selbst (KOE-Schema,
+M. Köhler; turbulente Varianz, Konvektion, Stratocumulus) ist nicht mit
+vertretbarem Aufwand nachzubauen.
+
+Die Tage 10.–12.10. fielen zuerst durch viele grobe Abweichungen auf (Nebel
+in unserer Rechnung bei ICON-Sicht über 20 km und umgekehrt). Ursache laut
+Heidi: DWD-Störung mit unvollständigen Läufen. Sie sind deshalb aus der
+Auswertung ausgenommen (`DEFAULT_EXCLUDE_DAYS` in `analyze.mjs`).
+
 ## 2. Was wir davon nachbauen können
 
 | ICON-Eingang | über Open-Meteo verfügbar? |
@@ -158,12 +211,17 @@ soweit dort die Modellflächen-Felder vorliegen.
 
 ## 3. Offene Punkte
 
-- Operationelle Einstellung von `itune_vis_diag`: nach 1.3 Variante 2 oder 3
-  (D2); 2 gegen 3 und ICON-EU noch offen → empirisch.
-- Bedeutung von `cloud_water_level{N}` / `cloud_ice_level{N}` auf dem Server
-  (DWD-Feld QC/QI oder TOT_QC_DIA/TOT_QI_DIA?). Ohne Niederschlag passt es
-  (1.3); für Niederschlagsstunden und für Eis noch prüfen, ggf. beim
-  Betreiber der Ingestion (Michael) erfragen.
+- ~~Operationelle Einstellung von `itune_vis_diag`~~: Variante 3 für D2 und
+  EU (1.4).
+- `cloud_water_level{N}` auf dem Server ist gitterskaliges QC (1.4).
+  Subskaliges Wolkenwasser fehlt und muss geschätzt werden, z. B. empirisch
+  aus Wolkenbedeckung (`cloud_cover_level{N}`) und RH, kalibriert am Archiv.
+- `qr`, `qs`, `qg`: Für ICON-D2 gäbe es sie in den DWD-Open-Data, sie werden
+  aber bewusst **nicht** zusätzlich geholt (Entscheidung 2026-11-08): Für
+  ICON-EU muss ohnehin aus Bodenraten geschätzt werden, ein Verfahren für
+  beide Modelle ist einfacher zu pflegen und zu dokumentieren, und Regen
+  dämpft die Sicht nur schwach (Schnee stärker). Neu bewerten, falls die
+  Schätzung bei Schnee schlecht abschneidet.
 - Ob die Routine sich zwischen dem beim DWD laufenden Stand und icon-2026.10
   unterscheidet. Die Release Notes von icon-2026.04 nennen eine Überarbeitung
   der Sicht- und Ceiling-Diagnose „to better match SYNOP observations“.
