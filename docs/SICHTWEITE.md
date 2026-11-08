@@ -258,10 +258,32 @@ groß (Quartile etwa Faktor 2 auseinander). Über alle Niederschlagsstunden
 | D2 (n = 1857) | 75,9 / 85,7 % | 61,9 / 84,5 % | **73,6 / 89,1 %** |
 | EU (n = 3166) | 61,1 / 76,7 % | 58,1 / 80,4 % | **61,5 / 81,7 %** |
 
-**Schnee:** C = S / (3,6 · v_s) mit v_s = 1 m/s als Platzhalter. Im Archiv
-gibt es bis 07.11. kaum gitterskaligen Schnee (D2: 1 Stunde, EU: 6).
-Kalibrieren bzw. prüfen, sobald Fälle vorliegen, und v_s mit einer Quelle
-belegen.
+**Schnee:** C = S / (3,6 · v_s) mit **v_s = 0,2 m/s** (`PRECIP_FIT.vSnow`).
+Das ist eine effektive Größe, keine gemessene Fallgeschwindigkeit. Im
+Archiv gibt es bis 07.11. kaum Schnee (D2: 1 Stunde, EU: 6), deshalb
+geschätzt aus dem Historie-Archiv von Open-Meteo: Winter 2024/25 und 2025/26
+(je 01.12.–15.03.), 24 Stationen, nur Bodenfelder, reine Schneestunden
+(S ≥ 0,1 mm/h, kein Regen, T₂ₘ ≤ 0,5 °C; EU n = 3057, D2 n = 1784).
+Skripte: `tools/vis-archive/fetch-snow-history.mjs`, `fit-snow-history.mjs`.
+Aus der ICON-Sicht (Nachtfaktor herausgerechnet, a_s aus T₂ₘ) folgt:
+
+| | scheinbares v_s (Median), je Winter | Regen-Kontrolle: Faktor auf W |
+|---|---|---|
+| ICON-EU | 0,14 / 0,20 m/s (alle: 0,18) | 2,7 |
+| ICON-D2 | 0,09 / 0,11 m/s (alle: 0,10) | 2,1 |
+
+Die Regen-Kontrolle mit derselben Methode ergibt Faktor 2–3 statt der ≈ 1 aus
+1.6: Ohne Modellflächen fällt jede Sichtminderung durch Wolkenwasser auf den
+Niederschlag. Die scheinbaren v_s sind also zu klein, korrigiert grob EU
+0,2–0,4, D2 0,1–0,2 m/s. Gewählt für beide: 0,2. Der alte Platzhalter 1 m/s
+war klar falsch (Sicht im Schnee im Median 4- bis 8-fach zu hoch).
+
+Grenzen: Die Bodenrate erklärt die Sicht je Stunde nur schwach (mit v_s = 0,2:
+EU 45 %, D2 34 % innerhalb Faktor 2; mit 1 m/s: 18 % und 10 %). Kein klarer
+Temperaturtrend. Die öffentliche D2-Sicht weicht vom eigenen Server ab (s. 4).
+**Mit vollständiger Rechnung inklusive Modellflächen ist der Wert nicht
+geprüft**, auch nicht, ob er Wolkenwasser doppelt zählt. Bei Schneefall sind
+Modellsichten daher eher pessimistisch zu lesen.
 
 ### 1.7 Temperaturabhängigkeit des Subgrid-Ersatzes
 
@@ -339,8 +361,8 @@ Güte gegen die ICON-Sicht, alle Stunden 05.10.–07.11.2026 ohne 10.–12.10.
   diese Nachbildung genauso. Sie bildet das Modellverhalten nach, nicht die
   wahre Sicht.
 - ICON-EU trifft schlechter (vermutete Ursache s. 1.5).
-- Schnee ist noch ungeprüft (Platzhalter v_s = 1 m/s), Frostfälle sind
-  wenige (1.6, 1.7).
+- Schnee ist nur grob kalibriert (v_s = 0,2 m/s, Bodenfelder, 1.6),
+  Frostfälle sind wenige (1.7).
 - ICON Global: nicht kalibriert (lieferte nie VIS). Die Routine ist dieselbe,
   ob ICON Global sie auch so rechnet, ist offen.
 

@@ -170,6 +170,12 @@ Eingerichtet am 2026-11-08:
 
 Datenmenge: ca. 450 kB pro Modell und Tag (13 Flächen).
 
+## Schnee aus dem Historie-Archiv
+
+`fetch-snow-history.mjs DIR` holt zwei Winter (Sicht, Niederschlag, T; nur
+Bodenfelder, Historie-API von Open-Meteo), `fit-snow-history.mjs DIR` schätzt
+daraus die effektive Fallgeschwindigkeit. Ergebnis in `docs/SICHTWEITE.md` 1.6.
+
 ## Nach dem 30.11.2026
 
 Danach fehlt `visibility`. Die Eingangsgrößen bleiben trotzdem nützlich, um

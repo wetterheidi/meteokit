@@ -50,10 +50,11 @@ export const SUBGRID_FIT = Object.freeze({ a: 0.012, b: 2.0, c: 0.5 });
 // Niederschlags-Ersatz, s. hydroFromSurfaceRates(). rainFactor 1 = reine
 // Marshall-Palmer-Ableitung, gegen die ICON-Sicht bestätigt (keine
 // Anpassung nötig, wenn als Rate das Minimum der Stundensummen vor und nach
-// t verwendet wird, s. docs/SICHTWEITE.md 1.6). vSnow/vGraupel sind
-// Platzhalter (typische Fallgeschwindigkeiten, Quelle noch zu belegen), bis
-// Schneefälle im Archiv vorliegen.
-export const PRECIP_FIT = Object.freeze({ rainFactor: 1.0, vSnow: 1.0, vGraupel: 2.0 });
+// t verwendet wird, s. docs/SICHTWEITE.md 1.6). vSnow ist eine effektive
+// Größe, keine echte Fallgeschwindigkeit: aus zwei Wintern ICON-Sicht
+// (Historie-Archiv) geschätzt, Kompromiss für D2 und EU, Streuung groß.
+// vGraupel bleibt Platzhalter.
+export const PRECIP_FIT = Object.freeze({ rainFactor: 1.0, vSnow: 0.2, vGraupel: 2.0 });
 
 const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
 
