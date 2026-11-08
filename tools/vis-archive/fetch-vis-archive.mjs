@@ -29,8 +29,10 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 
 const API_BASE = "https://open-meteo.wetterheidi.de";
 // Referenz-Sicht: Der eigene Server verliert `visibility` mit der Umstellung auf
-// natives ICON (Nov. 2026), die öffentliche Instanz hat sie bis Ende November.
+// natives ICON (Nov. 2026), die öffentliche Instanz hat sie bis Ende November
+// unter den lat/lon-Datensätzen; die *_native-Datensätze haben keine Sicht.
 const VIS_REF_BASE = "https://api.open-meteo.com";
+const VIS_REF_MODEL = { icon_d2: "dwd_icon_d2", icon_eu: "dwd_icon_eu" };
 const METAR_API = "https://aviationweather.gov/api/data/metar";
 const REQUEST_DELAY_MS = 1500;
 const METAR_HOURS = 36;
@@ -138,7 +140,7 @@ function levelColumns() {
 async function fetchVisibilityFrom(base, model, st, pastDays) {
   const params = new URLSearchParams({
     latitude: String(st.lat), longitude: String(st.lon), elevation: "nan",
-    hourly: "visibility", models: model,
+    hourly: "visibility", models: base === VIS_REF_BASE ? VIS_REF_MODEL[model] : model,
     past_days: String(pastDays), forecast_days: "1", timezone: "UTC",
   });
   try {
@@ -279,7 +281,7 @@ async function archiveModels(out, stations, pastDays) {
       const nOld = old?.usable ?? -1;
       if (old && countOwn(cols, lines) < old.own) {
         // Sicht vom eigenen Server liegt auf dem Gitter der Flächen, die
-        // öffentliche bei D2 nicht -- nicht durch die schlechtere Paarung ersetzen.
+        // öffentliche passt nicht sicher dazu (README) -- nicht ersetzen.
         log(`${model} ${day}: behalte bestehende Datei (mehr Sicht vom eigenen Server)`);
         continue;
       }

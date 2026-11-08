@@ -430,12 +430,15 @@ dem 30.11. entfallen lassen bzw. den Branch aufgeben.
 ## 4. Offene Punkte
 
 - **Referenz nach der Umstellung des eigenen Servers auf natives ICON**
-  (angekündigt Nov. 2026): Die Sicht fällt dort weg, das Archiv nimmt sie dann
-  von der öffentlichen Instanz (`tools/vis-archive/README.md`). Für ICON-EU sind
-  beide wertgleich. Für ICON-D2 lag die öffentliche Instanz am 08.11. auf einem
-  anderen Gitter als der eigene Server (Abweichung der Sicht zwischen beiden oft
-  > 5 %). Erst nach der Umstellung prüfen, ob die Gitter dann zusammenpassen,
-  bevor D2-Zeilen mit `vis_source = public` in die Kalibrierung gehen.
+  (angekündigt Nov. 2026; der DWD liefert ab 01.12. nur noch nativ und ohne
+  VIS): Sobald der eigene Server umgestellt ist, gibt es keine Sicht mehr auf
+  dem Gitter der Flächen. Die öffentliche Instanz hat VIS bis 30.11. auf
+  lat/lon (`dwd_icon_d2`, `dwd_icon_eu`), das passt dann aber nicht mehr zu den
+  nativen Flächen. Bei D2 stimmt die öffentliche VIS schon heute nicht mit der
+  des eigenen Servers überein, Ursache offen (`tools/vis-archive/README.md`).
+  Die Kalibrierung stützt sich daher auf die Zeit bis zur Umstellung; danach
+  bleibt nur eine grobe Prüfung. Ob die Parameter (`SUBGRID_FIT`) auf dem
+  nativen Gitter gelten, ist ungeprüft.
 - **`qr`, `qs`, `qg` auf Modellflächen** (Angebot Michael, 08.11.): Nur für D2 auf
   DWD-Open-Data vorhanden (alle 65 Flächen, geprüft 08.11.), gebraucht werden
   die untersten drei. ICON-EU hat sie nicht. Ersetzt den Niederschlagsansatz aus

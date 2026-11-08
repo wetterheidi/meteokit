@@ -55,13 +55,17 @@ stündlich, eine CSV pro Modell und UTC-Tag (`data/<modell>/YYYY-MM-DD.csv`):
   Server, sonst von `api.open-meteo.com` (Spalte `vis_source` = `own`/`public`).
   `visibility_public` und `vis_public_grid_lat/lon` werden immer mitgesichert.
   Hintergrund: Der eigene Server verliert die Sicht mit der Umstellung auf
-  natives ICON, die öffentliche Instanz hat sie bis Ende November. ICON-EU ist
-  auf beiden wertgleich. Bei ICON-D2 lag die öffentliche Instanz am 08.11. auf
-  einem anderen Gitter und wich stark ab (nur 30–45 % der Stunden innerhalb 5 %),
-  daher der Vorrang für `own`. Eine Tagesdatei wird nie durch eine mit weniger
-  `own`-Zeilen oder weniger Zeilen mit Sicht und Flächen ersetzt. Nach der
-  Umstellung prüfen, ob `grid_lat/lon` und `vis_public_grid_lat/lon` bei D2
-  übereinstimmen; `analyze.mjs --vis-source own|public` trennt die Quellen.
+  natives ICON. Die öffentliche Instanz hat sie bis 30.11. unter `dwd_icon_d2`
+  und `dwd_icon_eu` (lat/lon); die `*_native`-Datensätze haben keine Sicht.
+  Stand 08.11.: ICON-EU ist auf beiden Instanzen wertgleich. ICON-D2 ist es
+  nicht und lässt sich auch nicht zuordnen: gleicher Lauf, kein Zeitversatz,
+  keine Zelle im Umkreis von ±3 Gitterpunkten trifft (mittleres |ln| ≈ 0,4;
+  z. B. EDDM 06.11. 12 UTC 420 m eigen, 14340 m öffentlich). Ursache offen.
+  Nach der Umstellung des eigenen Servers liegen Flächen (nativ) und Sicht
+  (lat/lon) zudem auf verschiedenen Gittern, auch bei EU. `analyze.mjs` wertet
+  deshalb standardmäßig nur `own` aus (`--vis-source public|all` für den Rest).
+  Eine Tagesdatei wird nie durch eine mit weniger `own`-Zeilen oder weniger
+  Zeilen mit Sicht und Flächen ersetzt.
 - `grid_lat/lon/elev`: Gitterpunkt, den Open-Meteo gewählt hat. Abgerufen mit
   `elevation=nan`, also **ohne Höhenkorrektur**, damit T/RH zur selben
   Gitterzelle gehören wie die Modellsicht. Bei Bergstationen weicht die

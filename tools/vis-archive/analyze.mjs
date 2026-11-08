@@ -10,8 +10,9 @@
  *                    [--precip] [--precip-timing now|next|mean|min] [--rain-factor F]
  *                    [--fit-precip]
  *
- * --vis-source    nur Zeilen mit dieser Herkunft der Referenz-Sicht (own|public;
- *                 Default: alle; Dateien ohne die Spalte zählen als own).
+ * --vis-source    Herkunft der Referenz-Sicht: own (Default), public oder all.
+ *                 Dateien ohne die Spalte zählen als own. `public` passt nach
+ *                 Stand 2026-11-08 nicht sicher zu den Flächen (README).
  * --exclude-days  UTC-Tage, die nicht ausgewertet werden (Default: die
  *                 DWD-Störung 10.–12.10.2026, s. DEFAULT_EXCLUDE_DAYS).
  * --subgrid a,b[,c] Ersatz für subskaliges Wolkenwasser (s. iconVisibility).
@@ -214,7 +215,7 @@ async function main() {
   const rows = (await readRows(join(args.data, args.model)))
     .filter((r) => Number.isFinite(r.visibility) && Number.isFinite(r.temperature_k0))
     .filter((r) => !args.excludeDays.includes(r.time.slice(0, 10)))
-    .filter((r) => !args.visSource || (r.vis_source ?? "own") === args.visSource);
+    .filter((r) => args.visSource === "all" || (r.vis_source || "own") === (args.visSource ?? "own"));
   if (!rows.length) throw new Error("keine Zeilen mit Sicht und Modellflächen");
   const nl = nLevels(rows[0]);
 
