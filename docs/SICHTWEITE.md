@@ -353,8 +353,11 @@ vom eigenen Server, für viele Punkte je Anfrage. Für die Sicht kommt ein
 weiterer Abruf mit `visibilityRequestVars()` dazu (wie der bestehende
 Wolken-Abruf), dann `columnFromHourly()` + `visibilitySeries()` je Punkt.
 IDSSE-METOC hat keinen Bundler und bindet meteokit-Module als Kopien ein
-(wie `clouds.js`, `apifetch.js`); nötig wären Kopien von `visibility.js` und
-`astro.js` (beide ohne weitere Abhängigkeiten). Umsetzbar.
+(wie `clouds.js`, `apifetch.js`); nötig sind Kopien von `visibility.js` und
+`astro.js` (beide ohne weitere Abhängigkeiten). **Eingebaut am 2026-11-08**
+(IDSSE-METOC `e5ccd70`, Hülle `docs/levelVisibility.js`), ohne Rückfall
+auf das DWD-Feld; als erster Testfall vor GRAMET und Dronecast. Bei
+Änderungen an `src/visibility.js` die Kopie dort nachziehen.
 
 **IDSSE** (Branch `main`, Druckflächen der öffentlichen Instanz): nicht
 sinnvoll umsetzbar. Die öffentliche Instanz hat weder Wolkenwasser noch
