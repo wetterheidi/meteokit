@@ -224,44 +224,6 @@ ein reguläres Gitter interpoliert, und die Interpolation einer stark
 nichtlinearen Größe wie der Sicht passt nicht zur Sicht aus interpolierten
 Eingangsfeldern, besonders bei kleinräumigem Nebel.
 
-### 1.7 Temperaturabhängigkeit des Subgrid-Ersatzes
-
-Aufgeteilt nach der Temperatur auf k0 zeigt sich bei rein subskaligem Wasser
-(clc > 0, gitterskaliges qc = 0; D2, trocken) ein Trend, Median
-ln(calc/ICON):
-
-| T an k0 | Median | ≤ 30 % |
-|---|---|---|
-| −5…0 °C (n = 61) | +0,18 | 61 % |
-| 0…5 °C (n = 662) | +0,06 | 83 % |
-| > 5 °C (n = 1170) | −0,02 | 90 % |
-
-Bei Kälte dämpft ICON stärker, als ein zu qsat proportionaler Ansatz
-liefert. Ob das an Eis im subskaligen Kondensat liegt (Eis-Extinktion
-327,8·C gegenüber 144,7·C^0,88) oder schlicht an der Skalierung mit qsat,
-lässt sich mit den wenigen Frostfällen nicht trennen. Gitterskaliges Eis
-(`cloud_ice`) war in den trockenen Stunden bisher nie vorhanden.
-
-Einfachster Ansatz: Exponent c auf qsat, q* = 5 g/kg · (qsat/5 g/kg)^c.
-Gittersuche über a, b, c (`--subgrid a,b,c`): D2 optimal c = 0,25–0,5,
-EU ohne klare Präferenz. Gewählt für beide: **a = 0,012, b = 2, c = 0,5**
-(`SUBGRID_FIT` in `src/visibility.js`). Anteil ≤ 10 % / ≤ 30 %, mit
-Regenanteil (1.6):
-
-| | a = 0,01, b = 2, c = 1 | a = 0,012, b = 2, c = 0,5 |
-|---|---|---|
-| D2 trocken | 89,9 / 97,9 % | 90,3 / 98,9 % |
-| D2 trocken 1–5 km | 35,8 / 83,8 % | 39,7 / 94,1 % |
-| D2 trocken < 1 km | 50,7 / 91,1 % | 51,9 / 93,0 % |
-| D2 trocken, T < 0 °C (n = 260) | – / 85,4 % | – / 95,4 % |
-| D2 Niederschlag | 73,6 / 89,1 % | 74,3 / 90,1 % |
-| EU trocken | 73,1 / 85,6 % | 73,0 / 85,9 % |
-| EU trocken 1–5 km | 17,1 / 41,0 % | 18,2 / 45,2 % |
-| EU Niederschlag | 61,5 / 81,7 % | 61,7 / 81,8 % |
-
-Die Frostfälle sind bisher wenige (Oktober/Anfang November). Mit den Daten
-bis 30.11. erneut prüfen.
-
 ### 1.6 Ersatz für Regen und Schnee aus Bodenraten
 
 **Welche Raten:** ICON hat qr/qs/qg nur für gitterskaligen Niederschlag;
@@ -301,32 +263,121 @@ gibt es bis 07.11. kaum gitterskaligen Schnee (D2: 1 Stunde, EU: 6).
 Kalibrieren bzw. prüfen, sobald Fälle vorliegen, und v_s mit einer Quelle
 belegen.
 
-## 2. Was wir davon nachbauen können
+### 1.7 Temperaturabhängigkeit des Subgrid-Ersatzes
 
-| ICON-Eingang | über Open-Meteo verfügbar? |
-|---|---|
-| T, p, qv untere Flächen | ja (`temperature_`, `pressure_`, `specific_humidity_level{N}`) |
-| qc, qi untere drei Flächen | ja (`cloud_water_`, `cloud_ice_level{N}`); **offen:** Gesamt- oder gitterskaliges Feld, und mit oder ohne beigemischten Niederschlag |
-| qr, qs, qg | **nein** (auf dem Server getestet 2026-11-08) – nur Raten am Boden (`rain`, `showers`, `snowfall`, `precipitation`, Stundensummen) |
-| u, v auf nlev und nlev−2 | ja (`wind_u/v_component_level{N}`, km/h) |
-| θv auf k950 | ja, aus T, p, qv der entsprechenden Fläche |
-| ρ | ja, aus p, T, qv |
-| cos Sonnenzenit | berechenbar aus Ort und Zeit |
+Aufgeteilt nach der Temperatur auf k0 zeigt sich bei rein subskaligem Wasser
+(clc > 0, gitterskaliges qc = 0; D2, trocken) ein Trend, Median
+ln(calc/ICON):
 
-Daraus ergibt sich der Plan:
+| T an k0 | Median | ≤ 30 % |
+|---|---|---|
+| −5…0 °C (n = 61) | +0,18 | 61 % |
+| 0…5 °C (n = 662) | +0,06 | 83 % |
+| > 5 °C (n = 1170) | −0,02 | 90 % |
 
-1. Feuchteterm, Scherung, Inversionsfaktor, Wolkenwasser/-eis und Tag/Nacht
-   **wie ICON** rechnen.
-2. Für Regen und Schnee die Massenkonzentration aus der gitterskaligen
-   Bodenrate schätzen (umgesetzt, s. 1.6; Schnee noch ungeprüft).
-3. Gegen das Archiv prüfen: zuerst nur die Stunden ohne Niederschlag (dort
-   sollte die Nachrechnung fast exakt stimmen, sonst stimmt eine Annahme zu
-   qc/qi oder der Variante nicht), danach die Niederschlagsstunden.
+Bei Kälte dämpft ICON stärker, als ein zu qsat proportionaler Ansatz
+liefert. Ob das an Eis im subskaligen Kondensat liegt (Eis-Extinktion
+327,8·C gegenüber 144,7·C^0,88) oder schlicht an der Skalierung mit qsat,
+lässt sich mit den wenigen Frostfällen nicht trennen. Gitterskaliges Eis
+(`cloud_ice`) war in den trockenen Stunden bisher nie vorhanden.
 
-Diese Variante hat den Vorteil, dass sie auch für ICON Global funktioniert,
-soweit dort die Modellflächen-Felder vorliegen.
+Einfachster Ansatz: Exponent c auf qsat, q* = 5 g/kg · (qsat/5 g/kg)^c.
+Gittersuche über a, b, c (`--subgrid a,b,c`): D2 optimal c = 0,25–0,5,
+EU ohne klare Präferenz. Gewählt für beide: **a = 0,012, b = 2, c = 0,5**
+(`SUBGRID_FIT` in `src/visibility.js`). Anteil ≤ 10 % / ≤ 30 %, mit
+Regenanteil (1.6):
 
-## 3. Offene Punkte
+| | a = 0,01, b = 2, c = 1 | a = 0,012, b = 2, c = 0,5 |
+|---|---|---|
+| D2 trocken | 89,9 / 97,9 % | 90,3 / 98,9 % |
+| D2 trocken 1–5 km | 35,8 / 83,8 % | 39,7 / 94,1 % |
+| D2 trocken < 1 km | 50,7 / 91,1 % | 51,9 / 93,0 % |
+| D2 trocken, T < 0 °C (n = 260) | – / 85,4 % | – / 95,4 % |
+| D2 Niederschlag | 73,6 / 89,1 % | 74,3 / 90,1 % |
+| EU trocken | 73,1 / 85,6 % | 73,0 / 85,9 % |
+| EU trocken 1–5 km | 17,1 / 41,0 % | 18,2 / 45,2 % |
+| EU Niederschlag | 61,5 / 81,7 % | 61,7 / 81,8 % |
+
+Die Frostfälle sind bisher wenige (Oktober/Anfang November). Mit den Daten
+bis 30.11. erneut prüfen.
+
+## 2. Anwendung
+
+`src/visibility.js` (`meteokit/visibility`):
+
+- `visibilitySeries(col, { rain, snowfall }, { lat, lon })` – Sicht je Stunde
+  (m) für eine Säule im Format von `fetchColumn()` (column.js). Wendet
+  Variante 3, den Subgrid-Ersatz (`SUBGRID_FIT`) und den Niederschlags-
+  ersatz an; die Rate zur Zeit i ist min(`rain[i]`, `rain[i+1]`). Gibt außer
+  `vis` auch `visRh`, `visHydro` und `limitedBy` zurück. NaN, wo Eingänge
+  fehlen.
+- `visibilityRequestVars(nLevels)` und `columnFromHourly(hourly, nLevels)` für
+  Apps, die Modellflächen selbst abrufen: liefern die 117 nötigen
+  Variablennamen (13 unterste Flächen × 9 Felder; dazu `rain`, `snowfall`)
+  bzw. bauen daraus die Säule.
+- `iconVisibility()` – die nackte Routine für eine Stunde, für Auswertungen.
+
+Benötigt werden die untersten 13 Modellflächen (bis über 540 m über Grund
+auch über Bergen) vom eigenen Server; die öffentliche Open-Meteo-Instanz hat
+keine Modellflächen.
+
+Güte gegen die ICON-Sicht, alle Stunden 05.10.–07.11.2026 ohne 10.–12.10.
+(gemessen mit `visibilitySeries()` selbst), Anteil in derselben Sichtklasse:
+
+| | < 1 km | 1–5 km | 5–10 km | ≥ 10 km | ≤ 30 % Abweichung |
+|---|---|---|---|---|---|
+| ICON-D2 (n = 17 664) | 97 % | 93 % | 85 % | 100 % | 97,9 % |
+| ICON-EU (n = 17 616) | 77 % | 75 % | 48 % | 99 % | 85,2 % |
+
+**Grenzen:**
+
+- Die Werte gelten für die Modell-Gitterzelle (Abruf mit `elevation=nan`).
+- Die Einschätzung des DWD-Flugwetterdienstes, dass die ICON-Sichtfelder
+  nicht geeignet sind, Sichtweiten nach VFR/SERA vorherzusagen, gilt für
+  diese Nachbildung genauso. Sie bildet das Modellverhalten nach, nicht die
+  wahre Sicht.
+- ICON-EU trifft schlechter (vermutete Ursache s. 1.5).
+- Schnee ist noch ungeprüft (Platzhalter v_s = 1 m/s), Frostfälle sind
+  wenige (1.6, 1.7).
+- ICON Global: nicht kalibriert (lieferte nie VIS). Die Routine ist dieselbe,
+  ob ICON Global sie auch so rechnet, ist offen.
+
+Tests: `npm test` (`test/visibility.test.mjs`, u. a. der Brocken-Fall als
+feste Testdaten in `test/fixtures/vis-brocken-d2.json`).
+
+### 2.1 IDSSEML und IDSSE
+
+**IDSSEML** (Repo `IDSSE-METOC`, Branch `feature/michael-datasource`):
+holt Oberflächenfelder und Modellflächen (Wolkenbedeckung, Höhe) schon
+vom eigenen Server, für viele Punkte je Anfrage. Für die Sicht kommt ein
+weiterer Abruf mit `visibilityRequestVars()` dazu (wie der bestehende
+Wolken-Abruf), dann `columnFromHourly()` + `visibilitySeries()` je Punkt.
+IDSSE-METOC hat keinen Bundler und bindet meteokit-Module als Kopien ein
+(wie `clouds.js`, `apifetch.js`); nötig wären Kopien von `visibility.js` und
+`astro.js` (beide ohne weitere Abhängigkeiten). Umsetzbar.
+
+**IDSSE** (Branch `main`, Druckflächen der öffentlichen Instanz): nicht
+sinnvoll umsetzbar. Die öffentliche Instanz hat weder Wolkenwasser noch
+Wolkenbedeckung in Bodennähe; Nebel und Dunst unter 5 km hängen aber genau
+daran. Gemessen am Archiv mit nur Feuchte, Wind und Regen (Wolkenwasser und
+-bedeckung auf null gesetzt), Anteil in derselben Sichtklasse wie ICON:
+< 1 km **0 %** (D2 und EU), 1–5 km 26 % bzw. 22 % (mit Modellflächen: 97 %
+und 93 % bzw. 77 % und 76 %). Empfehlung (2026-11-08): Sicht in IDSSE nach
+dem 30.11. entfallen lassen bzw. den Branch aufgeben.
+
+## 3. Verfügbarkeit der ICON-Eingänge über Open-Meteo
+
+| ICON-Eingang | verfügbar? | Umsetzung |
+|---|---|---|
+| T, p, qv untere Flächen | ja (`temperature_`, `pressure_`, `specific_humidity_level{N}`) | direkt |
+| qc, qi untere drei Flächen | nur gitterskalig (`cloud_water_`, `cloud_ice_level{N}`) | subskaliger Anteil empirisch aus `cloud_cover_level{N}` (1.5, 1.7) |
+| qr, qs, qg | nein (Server, geprüft 2026-11-08) | aus gitterskaligen Bodenraten `rain`, `snowfall` (1.6) |
+| u, v auf nlev und nlev−2 | ja (`wind_u/v_component_level{N}`, km/h) | direkt |
+| θv auf k950 | aus T, p, qv | direkt |
+| ρ | aus p, T, qv | direkt |
+| cos Sonnenzenit | aus Ort und Zeit | `sunAltitude()` (astro.js) |
+
+## 4. Offene Punkte
 
 - ~~Operationelle Einstellung von `itune_vis_diag`~~: Variante 3 für D2 und
   EU (1.4).

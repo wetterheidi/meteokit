@@ -4,6 +4,9 @@
   "type": "module",
   "license": "UNLICENSED",
   "description": "Wiederverwendbare Wetter-Webkomponenten und -Kernmodule (ICON-Modelllevel, Open-Meteo)",
+  "scripts": {
+    "test": "node --test test/"
+  },
   "files": [
     "src"
   ],

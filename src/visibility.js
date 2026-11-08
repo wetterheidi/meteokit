@@ -219,3 +219,118 @@ export function iconVisibility(col, { variant = 3, subgrid = null } = {}) {
     rhmax, invfac, shearFac, beta,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Anwendungsschicht: Sicht-Zeitreihe aus einer Modellflächen-Säule.
+// ---------------------------------------------------------------------------
+
+/** So viele unterste Modellflächen braucht die Diagnose: k950 (oberste Fläche
+ *  unter 540 m) liegt über Bergen in ICON-D2 bei ≈ k11 (Brocken), daher 13. */
+export const VIS_N_LEVELS = 13;
+
+const VIS_LEVEL_API = [
+  "height_agl", "pressure", "temperature", "specific_humidity",
+  "cloud_water", "cloud_ice", "cloud_cover", "wind_u_component", "wind_v_component",
+];
+
+/**
+ * Open-Meteo-Variablennamen (hourly) der untersten `VIS_N_LEVELS` Flächen
+ * für `visibilitySeries()`, z. B. für Apps, die Modellflächen selbst abrufen
+ * (IDSSEML). Dazu kommen die Oberflächenfelder `rain` und `snowfall`.
+ * @param {number} nLevels Flächenzahl des Modells (D2 65, EU 74, Global 120)
+ */
+export function visibilityRequestVars(nLevels) {
+  const vars = [];
+  for (let k = 0; k < VIS_N_LEVELS; k++) {
+    for (const v of VIS_LEVEL_API) vars.push(`${v}_level${nLevels - k}`);
+  }
+  return vars;
+}
+
+/**
+ * Säule im Format von `fetchColumn()` (column.js) aus einer Open-Meteo-
+ * Rohantwort (`data.hourly`), nur die untersten `VIS_N_LEVELS` Flächen.
+ * Einheiten wie column.js: h m, u/v m/s, t °C, p hPa, q/qw/qi kg/kg, clc %.
+ */
+export function columnFromHourly(hourly, nLevels) {
+  const arr = (name, f) => (hourly[name] ?? []).map((x) => (x == null ? NaN : x * f));
+  const col = { time: hourly.time, h: [], u: [], v: [], t: [], p: [], q: [], qw: [], qi: [], clc: [] };
+  for (let k = 0; k < VIS_N_LEVELS; k++) {
+    const l = nLevels - k;
+    col.h.push(arr(`height_agl_level${l}`, 1));
+    col.u.push(arr(`wind_u_component_level${l}`, 1 / 3.6));
+    col.v.push(arr(`wind_v_component_level${l}`, 1 / 3.6));
+    col.t.push(arr(`temperature_level${l}`, 1));
+    col.p.push(arr(`pressure_level${l}`, 1));
+    col.q.push(arr(`specific_humidity_level${l}`, 1e-3));
+    col.qw.push(arr(`cloud_water_level${l}`, 1e-3));
+    col.qi.push(arr(`cloud_ice_level${l}`, 1e-3));
+    col.clc.push(arr(`cloud_cover_level${l}`, 1));
+  }
+  return col;
+}
+
+/**
+ * Sichtweite je Stunde nach ICON-Diagnose (Variante 3) mit den kalibrierten
+ * Ersatzansätzen für subskaliges Wolkenwasser und Niederschlag
+ * (docs/SICHTWEITE.md). Die Werte gelten für die Modell-Gitterzelle; die
+ * Einschätzung des DWD-Flugwetterdienstes, dass ICON-Sichtfelder nicht für
+ * VFR-Sichtvorhersagen geeignet sind, gilt für diese Nachbildung genauso.
+ *
+ * @param {object} col  Säule im Format von `fetchColumn()` oder
+ *   `columnFromHourly()`: Flächen von unten, mindestens bis über 540 m.
+ * @param {object} [surface]  Oberflächenfelder, indexgleich zu `col.time`:
+ *   `rain` (mm, Summe der Vorstunde, gitterskalig = Open-Meteo `rain`) und
+ *   `snowfall` (cm, Open-Meteo `snowfall`). Fehlen sie, zählt kein
+ *   Niederschlag.
+ * @param {{ lat: number, lon: number }} pos  für den Sonnenstand
+ * @returns {{ vis: number[], visRh: number[], visHydro: number[],
+ *   limitedBy: (string|null)[] }}  Sicht in m, NaN wo Eingänge fehlen
+ */
+export function visibilitySeries(col, surface = {}, { lat, lon }) {
+  const n = col.time.length;
+  const nl = Math.min(col.t.length, VIS_N_LEVELS);
+  const out = { vis: [], visRh: [], visHydro: [], limitedBy: [] };
+  const rain = surface.rain ?? [];
+  const snow = surface.snowfall ?? [];
+  // Rate zur Zeit i: Minimum der Stundensumme bis i und ab i (= Summe bei i+1)
+  const rateAt = (a, i, f = 1) => {
+    const x = a[i], y = a[i + 1];
+    if (!Number.isFinite(x)) return 0;
+    return (Number.isFinite(y) ? Math.min(x, y) : x) * f;
+  };
+  for (let i = 0; i < n; i++) {
+    const levels = [];
+    let ok = true;
+    for (let k = 0; k < nl; k++) {
+      const lv = {
+        z: col.h[k][i], p: col.p[k][i] * 100, T: col.t[k][i] + 273.15,
+        qv: col.q[k][i], qc: col.qw?.[k]?.[i] ?? 0, qi: col.qi?.[k]?.[i] ?? 0,
+        u: col.u[k][i], v: col.v[k][i], clc: (col.clc?.[k]?.[i] ?? 0) / 100,
+      };
+      if (![lv.z, lv.p, lv.T, lv.qv, lv.u, lv.v].every(Number.isFinite)) { ok = false; break; }
+      if (!Number.isFinite(lv.qc)) lv.qc = 0;
+      if (!Number.isFinite(lv.qi)) lv.qi = 0;
+      if (!Number.isFinite(lv.clc)) lv.clc = 0;
+      levels.push(lv);
+    }
+    let r = null;
+    if (ok) {
+      try {
+        r = iconVisibility({
+          levels,
+          time: Date.parse(/Z$|[+-]\d\d:?\d\d$/.test(col.time[i]) ? col.time[i] : `${col.time[i]}Z`),
+          lat, lon,
+          hydro: hydroFromSurfaceRates({ rain: rateAt(rain, i), snow: rateAt(snow, i, 1 / 0.7) }),
+        }, { variant: 3, subgrid: SUBGRID_FIT });
+      } catch {
+        r = null; // zu wenige Flächen (k950 nicht erreicht)
+      }
+    }
+    out.vis.push(r ? r.vis : NaN);
+    out.visRh.push(r ? r.visRh : NaN);
+    out.visHydro.push(r ? r.visHydro : NaN);
+    out.limitedBy.push(r ? r.limitedBy : null);
+  }
+  return out;
+}
