@@ -380,8 +380,17 @@ meteokit-Punktfunktion an Einzelpunkten auf etwa 1 % gleich. Die
 Spezifikation der Server-Vorverarbeitung (3DWx `docs/VORVERARBEITUNG.md`)
 sieht die Berechnung ab 01.12. im `haze`-Job vor.
 
-**DZMaster:** Sicht nur im Export „Wetterbriefing“; bleibt nach dem 30.11.
-leer, keine Umstellung geplant (Entscheidung 2026-11-08).
+**DZMaster** (Repo `upper_winds_open_meteo`, `src/core/modelLevelManager.js`,
+seit 2026-11-08): Die Sicht steht in der Wettertabelle und im Export
+„Wetterbriefing“. Für ICON-D2, -EU und -Global lädt DZMaster ohnehin
+Modellflächen vom eigenen Server; ein paralleler Abruf
+(`visibilityRequestVars` + `rain`, `snowfall`, `elevation=nan`, gleiche
+Serverkette) liefert die Säule für `visibilitySeries`, `visibility` wird
+nicht mehr angefragt, ohne Rückfall. Getrennter Abruf, weil die Level-Abfrage
+Wind in m/s holt. Scheitert der Modellflächen-Pfad und DZMaster fällt auf die
+Druckflächen der öffentlichen Instanz zurück, kommt die Sicht dort für ICON ab
+01.12. leer; ebenso für `icon_seamless`. Andere Modelle (ECMWF, GFS, …)
+behalten ihre Open-Meteo-Sicht.
 
 ### 2.1 IDSSEML und IDSSE
 
@@ -438,7 +447,10 @@ dem 30.11. entfallen lassen bzw. den Branch aufgeben.
   während die Oberflächenfelder weiterlaufen. Das betrifft alle
   Modellflächen-Produkte (GRAMET, Wolken-Layer, Wind auf Höhe, Sicht). Beim
   Server-Betreiber klären. **Bis dahin D2-Archivdaten ab 08.11. 06 UTC nicht
-  zur Kalibrierung verwenden.**
+  zur Kalibrierung verwenden.** Nachtrag 08.11. ~12 UTC: Die Werte haben sich
+  wieder bewegt und passen zur ICON-VIS (EDDM 08.11. 16 UTC 19014 vs. 18980 m),
+  die Flächen laufen also wieder. Ursache offen; welcher Zeitraum im Archiv
+  betroffen ist, bei der Auswertung prüfen.
 
 - ~~Operationelle Einstellung von `itune_vis_diag`~~: Variante 3 für D2 und
   EU (1.4).
