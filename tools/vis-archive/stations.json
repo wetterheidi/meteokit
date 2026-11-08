@@ -1,0 +1,29 @@
+{
+  "_comment": "Stationen für das Sichtweiten-Archiv. Koordinaten der Flugplätze aus aviationweather.gov/api/data/stationinfo, der Bergstationen aus der DWD-CDC-Stationsliste (hourly/visibility). dwdId = DWD-Stationskennung im CDC (für den späteren Abruf der stündlichen SYNOP-Sicht), null = kein DWD-Standort. metar = false: keine METAR-Meldungen, nur SYNOP.",
+  "stations": [
+    { "id": "ETSB", "name": "Büchel",             "lat": 50.175,  "lon": 7.060,   "elev": 477,  "metar": true,  "dwdId": "00766", "character": "Eifel-Hochfläche, Mittelgebirge" },
+    { "id": "ETHA", "name": "Altenstadt",         "lat": 47.834,  "lon": 10.867,  "elev": 738,  "metar": true,  "dwdId": "00125", "character": "Alpenvorland, Lechtal" },
+    { "id": "EDDM", "name": "München",            "lat": 48.348,  "lon": 11.813,  "elev": 445,  "metar": true,  "dwdId": "01262", "character": "Erdinger Moos, Strahlungsnebel" },
+    { "id": "LOWG", "name": "Graz",               "lat": 46.997,  "lon": 15.447,  "elev": 337,  "metar": true,  "dwdId": null,    "character": "Grazer Becken, Inversion/Hochnebel" },
+    { "id": "EDXW", "name": "Westerland/Sylt",    "lat": 54.913,  "lon": 8.341,   "elev": 8,    "metar": true,  "dwdId": null,    "character": "Nordsee-Insel, Seenebel" },
+    { "id": "EDDH", "name": "Hamburg",            "lat": 53.633,  "lon": 9.988,   "elev": 8,    "metar": true,  "dwdId": "01975", "character": "Norddeutsches Tiefland, maritim" },
+    { "id": "EDDG", "name": "Münster/Osnabrück",  "lat": 52.135,  "lon": 7.697,   "elev": 46,   "metar": true,  "dwdId": "01766", "character": "Münsterland, Strahlungsnebel" },
+    { "id": "EDDB", "name": "Berlin",             "lat": 52.381,  "lon": 13.531,  "elev": 48,   "metar": true,  "dwdId": null,    "character": "Ostdeutsches Tiefland, kontinental" },
+    { "id": "EDDP", "name": "Leipzig/Halle",      "lat": 51.435,  "lon": 12.240,  "elev": 129,  "metar": true,  "dwdId": "02932", "character": "Leipziger Tieflandsbucht" },
+    { "id": "EDDC", "name": "Dresden",            "lat": 51.128,  "lon": 13.754,  "elev": 227,  "metar": true,  "dwdId": "01048", "character": "Elbtal-Rand" },
+    { "id": "EDDK", "name": "Köln/Bonn",          "lat": 50.865,  "lon": 7.157,   "elev": 92,   "metar": true,  "dwdId": "02667", "character": "Kölner Bucht" },
+    { "id": "EDDF", "name": "Frankfurt",          "lat": 50.045,  "lon": 8.598,   "elev": 113,  "metar": true,  "dwdId": "01420", "character": "Rhein-Main-Ebene" },
+    { "id": "EDDR", "name": "Saarbrücken",        "lat": 49.213,  "lon": 7.108,   "elev": 317,  "metar": true,  "dwdId": "04336", "character": "Saar-Hochfläche, Hangnebel" },
+    { "id": "EDQD", "name": "Bayreuth",           "lat": 49.984,  "lon": 11.639,  "elev": 486,  "metar": false, "dwdId": null,    "character": "Oberfranken, Mittelgebirgsrand (aviationweather.gov führt keine METARs, Stand 2026-11-08)" },
+    { "id": "EDDS", "name": "Stuttgart",          "lat": 48.690,  "lon": 9.222,   "elev": 374,  "metar": true,  "dwdId": "04931", "character": "Filderebene" },
+    { "id": "ETSN", "name": "Neuburg/Donau",      "lat": 48.710,  "lon": 11.210,  "elev": 378,  "metar": true,  "dwdId": "03484", "character": "Donautal, Talnebel" },
+    { "id": "EDNY", "name": "Friedrichshafen",    "lat": 47.671,  "lon": 9.511,   "elev": 411,  "metar": true,  "dwdId": null,    "character": "Bodensee, Seenähe/Hochnebel" },
+    { "id": "LSZH", "name": "Zürich",             "lat": 47.480,  "lon": 8.536,   "elev": 424,  "metar": true,  "dwdId": null,    "character": "Schweizer Mittelland, Hochnebel" },
+    { "id": "LOWI", "name": "Innsbruck",          "lat": 47.260,  "lon": 11.344,  "elev": 570,  "metar": true,  "dwdId": null,    "character": "Inneralpines Tal (Modellorographie geglättet)" },
+    { "id": "LOWL", "name": "Linz",               "lat": 48.233,  "lon": 14.188,  "elev": 290,  "metar": true,  "dwdId": null,    "character": "Donauraum, Hochnebel" },
+    { "id": "LOWK", "name": "Klagenfurt",         "lat": 46.648,  "lon": 14.318,  "elev": 450,  "metar": true,  "dwdId": null,    "character": "Klagenfurter Becken, Kaltluftsee" },
+    { "id": "BROCKEN",     "name": "Brocken",         "lat": 51.7986, "lon": 10.6183, "elev": 1135, "metar": false, "dwdId": "00722", "character": "Bergstation, häufig in Wolken" },
+    { "id": "FICHTELBERG", "name": "Fichtelberg",     "lat": 50.4285, "lon": 12.9534, "elev": 1213, "metar": false, "dwdId": "01358", "character": "Bergstation Erzgebirge" },
+    { "id": "HOHENPEISSENBERG", "name": "Hohenpeißenberg", "lat": 47.8009, "lon": 11.0108, "elev": 977, "metar": false, "dwdId": "02290", "character": "Bergstation Alpenvorland" }
+  ]
+}
