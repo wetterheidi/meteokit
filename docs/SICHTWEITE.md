@@ -345,6 +345,20 @@ Güte gegen die ICON-Sicht, alle Stunden 05.10.–07.11.2026 ohne 10.–12.10.
 Tests: `npm test` (`test/visibility.test.mjs`, u. a. der Brocken-Fall als
 feste Testdaten in `test/fixtures/vis-brocken-d2.json`).
 
+**GRAMET** (seit 2026-11-08): `gramet/grid.js` rechnet `surface.visibility`
+mit `gridVisibility()` aus dem fertigen Gitter (Punkt- und Pfadmodus,
+Kern `diagnoseVisibility()`), ohne Rückfall auf das DWD-Feld. Die Raten
+kommen aus dem Oberflächenabruf (`rain` neu in `SURFACE_OPTIONAL`,
+`snowfall`), je Spalte als min(Stunde bis t, Stunde ab t). Sichtzeile,
+FG/BR/HZ-Diagnose (`hazards/fog.js`) und Dunstschleier nutzen damit die
+eigene Sicht, auch für ICON Global. Probelauf live 2026-11-08 (48 h):
+EDDM D2 100 %, Brocken D2 94 %, Graz EU 67 % der Stunden innerhalb 30 % der
+ICON-Sicht.
+
+Noch auf dem DWD-Feld: `clouds.js` `classifyFog()`/`colorState()` und
+`briefing.js` (Meteogramm, Go/No-Go, Briefing; bekommen `visibility` von der
+aufrufenden App, v. a. droneforecast).
+
 ### 2.1 IDSSEML und IDSSE
 
 **IDSSEML** (Repo `IDSSE-METOC`, Branch `feature/michael-datasource`):

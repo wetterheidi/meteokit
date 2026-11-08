@@ -10,9 +10,12 @@
  *       nicht unterscheidet, s. u.)
  *   BR: 1000–5000 m UND RH ≥ 80 %
  *   HZ: 1000–5000 m UND RH < 80 %
- * `grid.surface.visibility` (Open-Meteo/ICON-Modelldiagnose, dieselbe Größe,
- * die auch im Briefing angezeigt wird) ist damit der Wahrheitsanker — nicht
- * mehr eine reine RH-Schwelle ohne Sichtbezug. Das behebt zwei Probleme der
+ * `grid.surface.visibility` ist damit der Wahrheitsanker — nicht mehr eine
+ * reine RH-Schwelle ohne Sichtbezug. Seit 2026-11-08 kommt sie nicht mehr
+ * aus dem DWD-Feld (entfällt nach dem 30.11.2026), sondern aus der eigenen
+ * Nachbildung der ICON-Sichtdiagnose aus dem Gitter selbst (`grid.js`
+ * `gridVisibility()`, meteokit/visibility, docs/SICHTWEITE.md), für alle
+ * ICON-Modelle einschließlich Global. Das behebt zwei Probleme der
  * ersten Fassung:
  *  - RH ≥ 60 % allein sagt fast nichts über Sicht aus (an einem feuchten
  *    Sommertag mit bester Sicht schnell erreicht) — führte zu BR/HZ an
@@ -47,11 +50,12 @@
  *        Flächenwert, kein Höhenprofil — die vertikale Ausdehnung für die
  *        Darstellung liefert `haze`, s. u.).
  *     b. ≤ HAZE_VIS_MAX_M → BR (RH ≥ BR_HZ_RH_SPLIT) oder HZ (sonst), beide
- *        sicher (Sicht UND RH sind reale Modellfelder, kein Fallback).
+ *        sicher (Sicht aus der ICON-Diagnose-Nachbildung, RH Modellfeld).
  *     c. sonst kein Befund — AUCH wenn RH hoch ist oder `weather_code`
  *        Nebel meldet (s. Priorität 4): die Sicht ist hier die Wahrheit.
- *  4. Sonst (keine Sichtweite verfügbar — Modelle ohne `visibility`, z. B.
- *     ICON Global):
+ *  4. Sonst (keine Sichtweite berechenbar — Modellflächen-Eingänge fehlen
+ *     oder reichen nicht bis über 540 m; bis 2026-11 auch ICON Global, das
+ *     nie ein DWD-Sichtfeld hatte):
  *     a. `weather_code` 45/48 → FG, unsicher, keine Obergrenze (`metarWeather()`-
  *        Fallback, ebenso in `classifyFog()`).
  *     b. Sicht aus T/RH am untersten Level geschätzt (`clouds.js`

@@ -271,6 +271,30 @@ export function columnFromHourly(hourly, nLevels) {
 }
 
 /**
+ * Sicht für eine Stunde mit den Standardeinstellungen der Anwendungsschicht:
+ * Variante 3, Subgrid-Ersatz `SUBGRID_FIT`, Niederschlagsersatz aus
+ * gitterskaligen Bodenraten. Gemeinsamer Kern von `visibilitySeries()` und
+ * dem GRAMET-Gitter (gramet/grid.js).
+ *
+ * @param {object[]} levels  wie bei `iconVisibility()` (von unten, SI, clc 0–1)
+ * @param {object} at  `{ time (ms), lat, lon }` oder `{ cosZenith }`, dazu
+ *   `rain` und `snow` als Raten [mm/h Wasseräquivalent] zur Zeit t
+ *   (empfohlen: min(Summe bis t, Summe ab t), s. docs/SICHTWEITE.md 1.6)
+ * @returns {ReturnType<typeof iconVisibility> | null}  null, wenn die Flächen
+ *   nicht bis über 540 m reichen
+ */
+export function diagnoseVisibility(levels, { time, lat, lon, cosZenith, rain = 0, snow = 0 } = {}) {
+  try {
+    return iconVisibility({
+      levels, time, lat, lon, cosZenith,
+      hydro: hydroFromSurfaceRates({ rain, snow }),
+    }, { variant: 3, subgrid: SUBGRID_FIT });
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Sichtweite je Stunde nach ICON-Diagnose (Variante 3) mit den kalibrierten
  * Ersatzansätzen für subskaliges Wolkenwasser und Niederschlag
  * (docs/SICHTWEITE.md). Die Werte gelten für die Modell-Gitterzelle; die
@@ -314,19 +338,10 @@ export function visibilitySeries(col, surface = {}, { lat, lon }) {
       if (!Number.isFinite(lv.clc)) lv.clc = 0;
       levels.push(lv);
     }
-    let r = null;
-    if (ok) {
-      try {
-        r = iconVisibility({
-          levels,
-          time: Date.parse(/Z$|[+-]\d\d:?\d\d$/.test(col.time[i]) ? col.time[i] : `${col.time[i]}Z`),
-          lat, lon,
-          hydro: hydroFromSurfaceRates({ rain: rateAt(rain, i), snow: rateAt(snow, i, 1 / 0.7) }),
-        }, { variant: 3, subgrid: SUBGRID_FIT });
-      } catch {
-        r = null; // zu wenige Flächen (k950 nicht erreicht)
-      }
-    }
+    const r = ok ? diagnoseVisibility(levels, {
+      time: Date.parse(/Z$|[+-]\d\d:?\d\d$/.test(col.time[i]) ? col.time[i] : `${col.time[i]}Z`),
+      lat, lon, rain: rateAt(rain, i), snow: rateAt(snow, i, 1 / 0.7),
+    }) : null;
     out.vis.push(r ? r.vis : NaN);
     out.visRh.push(r ? r.visRh : NaN);
     out.visHydro.push(r ? r.visHydro : NaN);

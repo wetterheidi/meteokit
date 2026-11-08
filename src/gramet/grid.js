@@ -19,6 +19,7 @@
 import { cloudFraction } from "../clouds.js";
 import { fetchColumn, sliceColumnAtTime, lerpAngle } from "../column.js";
 import { nearestIndex } from "../weather.js";
+import { diagnoseVisibility, VIS_N_LEVELS } from "../visibility.js";
 
 const KELVIN = 273.15;
 const P0_PA = 100000, KAPPA = 0.2857; // R_d/c_p
@@ -59,7 +60,7 @@ export function gridFromColumn(col, surface, lat, lon) {
     }
   }
 
-  return {
+  const grid = {
     meta: { lat, lon, elevation: col.elevation, model: col.model, dt: nt > 1 ? times[1] - times[0] : 3600, mode: "point" },
     times, nk,
     // X-Achsen-Positionswert getrennt von `times` (Kalenderzeit) gehalten:
@@ -75,6 +76,8 @@ export function gridFromColumn(col, surface, lat, lon) {
     surface: buildSurface(surface, times, col),
     derived: null,
   };
+  grid.surface.visibility = gridVisibility(grid);
+  return grid;
 }
 
 function buildSurface(surface, times, col) {
@@ -83,12 +86,13 @@ function buildSurface(surface, times, col) {
     ws10 = new Float32Array(nt).fill(NaN), wd10 = new Float32Array(nt).fill(NaN),
     gust = new Float32Array(nt).fill(NaN), precip = new Float32Array(nt).fill(NaN),
     snow = new Float32Array(nt).fill(NaN), cape = new Float32Array(nt).fill(NaN),
-    wcode = new Float32Array(nt).fill(NaN), visibility = new Float32Array(nt).fill(NaN);
+    wcode = new Float32Array(nt).fill(NaN), visibility = new Float32Array(nt).fill(NaN),
+    rainRate = new Float32Array(nt).fill(NaN), snowRate = new Float32Array(nt).fill(NaN);
   // pressure_msl kommt direkt aus der Säule (dieselbe Instanz/Zeitreihe wie die
   // Level-Daten, s. column.js) -- 1:1 indexiert, kein nearestIndex-Abgleich nötig.
   const pmsl = col?.pmsl ? Float32Array.from(col.pmsl) : new Float32Array(nt).fill(NaN);
   if (!surface?.time?.length) {
-    return { t2m, td2m, ws10, wd10, gust, precip, snow, cape, wcode, visibility, pmsl };
+    return { t2m, td2m, ws10, wd10, gust, precip, snow, cape, wcode, visibility, pmsl, rainRate, snowRate };
   }
 
   const V = surface.vars || {};
@@ -111,8 +115,20 @@ function buildSurface(surface, times, col) {
   pick("snowfall", snow);
   pick("cape", cape);
   pick("weather_code", wcode);
-  pick("visibility", visibility);
-  return { t2m, td2m, ws10, wd10, gust, precip, snow, cape, wcode, visibility, pmsl };
+  // Raten für die Sichtdiagnose: min(Summe bis t, Summe ab t), s.
+  // docs/SICHTWEITE.md 1.6. `visibility` selbst füllt gridVisibility().
+  const rate = (name, out, factor = 1) => {
+    const src = V[name];
+    if (!src) return;
+    for (let i = 0; i < nt; i++) {
+      const j = nearestIndex(surface.time, times[i] * 1000);
+      if (j < 0 || Math.abs(surface.time[j] - times[i]) > 1800 || src[j] == null) continue;
+      out[i] = (src[j + 1] != null ? Math.min(src[j], src[j + 1]) : src[j]) * factor;
+    }
+  };
+  rate("rain", rainRate);
+  rate("snowfall", snowRate, 1 / 0.7); // cm -> mm Wasseräquivalent (Open-Meteo: ·0,7)
+  return { t2m, td2m, ws10, wd10, gust, precip, snow, cape, wcode, visibility, pmsl, rainRate, snowRate };
 }
 
 /**
@@ -164,7 +180,7 @@ export function gridFromWaypoints(waypointColumns) {
     }
   }
 
-  return {
+  const grid = {
     meta: {
       lat: lat[0], lon: lon[0], elevation: elevation[0], model: waypointColumns[0].model,
       dt: nt > 1 ? pos[1] - pos[0] : 3600, mode: "path",
@@ -174,6 +190,8 @@ export function gridFromWaypoints(waypointColumns) {
     surface: buildSurfaceFromWaypoints(waypointColumns, times),
     derived: null,
   };
+  grid.surface.visibility = gridVisibility(grid);
+  return grid;
 }
 
 // Wie `buildSurface`, aber pro Wegpunkt aus dessen EIGENER (optionaler)
@@ -186,14 +204,15 @@ function buildSurfaceFromWaypoints(waypointColumns, times) {
     gust = new Float32Array(nt).fill(NaN), precip = new Float32Array(nt).fill(NaN),
     snow = new Float32Array(nt).fill(NaN), cape = new Float32Array(nt).fill(NaN),
     wcode = new Float32Array(nt).fill(NaN), visibility = new Float32Array(nt).fill(NaN),
-    pmsl = new Float32Array(nt).fill(NaN);
+    pmsl = new Float32Array(nt).fill(NaN),
+    rainRate = new Float32Array(nt).fill(NaN), snowRate = new Float32Array(nt).fill(NaN);
 
   const FIELDS = [
     ["temperature_2m", t2m, 1], ["dew_point_2m", td2m, 1],
     ["wind_speed_10m", ws10, 1 / 3.6], ["wind_direction_10m", wd10, 1], // km/h -> m/s
     ["wind_gusts_10m", gust, 1 / 3.6], ["precipitation", precip, 1],
     ["snowfall", snow, 1], ["cape", cape, 1],
-    ["weather_code", wcode, 1], ["visibility", visibility, 1],
+    ["weather_code", wcode, 1],
   ];
 
   for (let i = 0; i < nt; i++) {
@@ -210,8 +229,49 @@ function buildSurfaceFromWaypoints(waypointColumns, times) {
       const src = V[name];
       if (src?.[j] != null) out[i] = src[j] * factor;
     }
+    // Raten für die Sichtdiagnose wie in buildSurface (min aus Stunde bis/ab t)
+    for (const [name, out, factor] of [["rain", rainRate, 1], ["snowfall", snowRate, 1 / 0.7]]) {
+      const src = V[name];
+      if (src?.[j] != null) out[i] = (src[j + 1] != null ? Math.min(src[j], src[j + 1]) : src[j]) * factor;
+    }
   }
-  return { t2m, td2m, ws10, wd10, gust, precip, snow, cape, wcode, visibility, pmsl };
+  return { t2m, td2m, ws10, wd10, gust, precip, snow, cape, wcode, visibility, pmsl, rainRate, snowRate };
+}
+
+/**
+ * Sicht (m) je Spalte aus dem Gitter selbst: eigene Nachbildung der
+ * ICON-Diagnose (meteokit/visibility, docs/SICHTWEITE.md) statt des
+ * DWD-Feldes `visibility`, das nach dem 30.11.2026 entfällt -- bewusst ohne
+ * Rückfall darauf (Entscheidung 2026-11-08). NaN, wo Eingänge fehlen oder
+ * die Flächen nicht bis über 540 m reichen. Fehlen Wolkenwasser/-bedeckung
+ * (ältere Instanz), wird mit 0 gerechnet; Nebel ist dann nicht erkennbar.
+ */
+export function gridVisibility(grid) {
+  const nt = grid.times.length, nk = grid.nk;
+  const nl = Math.min(nk, VIS_N_LEVELS);
+  const out = new Float32Array(nt).fill(NaN);
+  const fin0 = (x) => (Number.isFinite(x) ? x : 0);
+  for (let i = 0; i < nt; i++) {
+    const levels = [];
+    let ok = true;
+    for (let k = 0; k < nl; k++) {
+      const ix = i * nk + k;
+      const lv = {
+        z: grid.z[ix], p: grid.p[ix], T: grid.T[ix], qv: grid.qv[ix],
+        qc: fin0(grid.qw[ix]), qi: fin0(grid.qi[ix]), u: grid.u[ix], v: grid.v[ix],
+        clc: fin0(grid.clc[ix]) / 100,
+      };
+      if (![lv.z, lv.p, lv.T, lv.qv, lv.u, lv.v].every(Number.isFinite)) { ok = false; break; }
+      levels.push(lv);
+    }
+    if (!ok) continue;
+    const r = diagnoseVisibility(levels, {
+      time: grid.times[i] * 1000, lat: grid.lat[i], lon: grid.lon[i],
+      rain: fin0(grid.surface.rainRate?.[i]), snow: fin0(grid.surface.snowRate?.[i]),
+    });
+    if (r) out[i] = r.vis;
+  }
+  return out;
 }
 
 export function idx(grid, t, k) { return t * grid.nk + k; }

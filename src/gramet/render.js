@@ -729,14 +729,14 @@ const FG_ALPHA = 0.92;
 /** Schleierfarbe+-stärke einer Stunde. Sicht ist jetzt das primäre Kriterium
  *  (s. `hazards/fog.js`) -- Rampe daher an der Position innerhalb des
  *  Sichtweiten-Bands (FG_VIS_MAX_M..HAZE_VIS_MAX_M) festgemacht, nicht mehr
- *  an RH. Fehlt `visM` (Modelle ohne Sichtfeld, z. B. ICON Global), dient
+ *  an RH. Fehlt `visM` (Sicht nicht berechenbar, s. `grid.js` `gridVisibility()`), dient
  *  die Feuchte-Sichtschätzung `entry.visEst` aus `fog.js`. Baseline+Rampe statt reinem
  *  0..1-Verhältnis, damit "gerade eben BR/HZ" nicht schon fast unsichtbar
  *  ist -- rein optisch gewählt, nicht kalibriert. */
 function hazeColorAlpha(entry, visM) {
   if (!entry) return null;
   if (entry.type === "FG") return { color: FG_COLOR, alpha: FG_ALPHA };
-  if (!Number.isFinite(visM)) visM = entry.visEst; // Modelle ohne Sichtfeld: Feuchteschätzung aus fog.js
+  if (!Number.isFinite(visM)) visM = entry.visEst; // Sicht nicht berechenbar: Feuchteschätzung aus fog.js
   const t = Number.isFinite(visM)
     ? clamp(1 - (visM - fog.FG_VIS_MAX_M) / (fog.HAZE_VIS_MAX_M - fog.FG_VIS_MAX_M), 0, 1)
     : 0.5;

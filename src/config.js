@@ -146,6 +146,10 @@ export let SURFACE_OPTIONAL = [
   "cape",
   "freezing_level_height",
   "snowfall", // Niederschlagsphase im GRAMET-Meteogramm (meteokit/gramet)
+  // Gitterskaliger Regen (ICON rain_gsp): Eingang der eigenen Sichtdiagnose
+  // (meteokit/visibility, docs/SICHTWEITE.md 1.6), die das ab 01.12.2026
+  // fehlende DWD-Feld `visibility` ersetzt.
+  "rain",
 ];
 
 /**
