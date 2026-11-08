@@ -429,29 +429,23 @@ dem 30.11. entfallen lassen bzw. den Branch aufgeben.
 
 ## 4. Offene Punkte
 
-- **ICON-D2 ab 08.11.2026 06 UTC:** Nachrechnung und ICON-VIS vom eigenen
-  Server passen plötzlich deutlich schlechter zusammen (24 Stationen,
-  trocken, Variante 3, ≤ 10 % Abweichung: vorher 87 %, danach 50 %; ICON-EU
-  unverändert 69 % → 66 %). Median weiter bei null, aber viel größere
-  Streuung, auch im reinen Feuchteterm (10/90 % von ln(calc/ICON): vorher
-  ±0,03, danach −0,22…+0,30). Kein Zeitversatz (beste Übereinstimmung bei
-  0 h), keine andere Variante passt besser. Der DWD liefert `vis` für den
-  06-UTC-Lauf pünktlich mit `t_2m`. Auch T/RH auf der untersten Fläche weichen
-  seitdem stärker von den 2-m-Werten ab (90 %-Wert |RH10m − RH2m| 2 → 5
-  Prozentpunkte). Stärkster Hinweis: Die aus den Modellflächen gerechnete
-  Sicht war am 08.11. vormittags und nachmittags für dieselben Termine
-  identisch (EDDM 08.11. 16 UTC 20386 m, 09.11. 00 UTC 116 m), obwohl
-  inzwischen der 09-UTC-Lauf eingespielt war und sich die ICON-VIS geändert
-  hatte (20200 → 18120 m, 120 → 60 m). Die D2-Modellflächen auf dem Server
-  werden also offenbar seit dem frühen 08.11. nicht mehr aktualisiert,
-  während die Oberflächenfelder weiterlaufen. Das betrifft alle
-  Modellflächen-Produkte (GRAMET, Wolken-Layer, Wind auf Höhe, Sicht). Beim
-  Server-Betreiber klären. **Bis dahin D2-Archivdaten ab 08.11. 06 UTC nicht
-  zur Kalibrierung verwenden.** Nachtrag 08.11. ~12 UTC: Die Werte haben sich
-  wieder bewegt und passen zur ICON-VIS (EDDM 08.11. 16 UTC 19014 vs. 18980 m),
-  die Flächen laufen also wieder. Ursache offen; welcher Zeitraum im Archiv
-  betroffen ist, bei der Auswertung prüfen.
-
+- ~~ICON-D2 ab 08.11.2026 06 UTC schlechter~~ (geklärt 08.11.): Kein
+  Datenfehler, sondern unterschiedliche Verfügbarkeit auf Open-Meteo. Die
+  Oberflächenfelder (samt `visibility`, `rain`, `snowfall`) eines neuen Laufs
+  sind früher eingespielt als die Modellflächen. Wer kurz nach einem Lauf
+  abfragt, bekommt VIS und Bodenraten aus dem neuen und die Flächen aus dem
+  alten Lauf. Im Live-Vergleich am 08.11. mit den aktuellen Stunden ergab das
+  den scheinbaren Einbruch (≤ 10 %: 87 % → 50 %) und für dieselben Termine
+  unveränderte Flächenwerte trotz neuer ICON-VIS. Später passten beide wieder
+  (EDDM 08.11. 16 UTC 19014 vs. 18980 m).
+  - **Archiv nicht betroffen:** Der Cronjob schreibt nur abgeschlossene
+    Vortage, frühestens 04:30 UTC des Folgetags, und holt jeden Tag dreimal
+    (`--past-days 3`, der spätere Abruf ersetzt den früheren). Für
+    Vergleiche also nur Stunden nehmen, deren Läufe sicher vollständig
+    eingespielt sind.
+  - **In den Apps:** Kurz nach einem neuen Lauf können Bodenregen/-schnee und
+    Modellflächen aus verschiedenen Läufen stammen. Das ist ein kleiner,
+    vorübergehender Effekt und betrifft nur den Niederschlagsanteil der Sicht.
 - ~~Operationelle Einstellung von `itune_vis_diag`~~: Variante 3 für D2 und
   EU (1.4).
 - `cloud_water_level{N}` auf dem Server ist gitterskaliges QC (1.4).
