@@ -458,10 +458,11 @@ dem 30.11. entfallen lassen bzw. den Branch aufgeben.
   lat/lon (`dwd_icon_d2`, `dwd_icon_eu`), das passt dann aber nicht mehr zu den
   nativen Flächen. Bei D2 stimmt die öffentliche VIS schon heute nicht mit der
   des eigenen Servers überein, Ursache offen (`tools/vis-archive/README.md`).
-  Die Kalibrierung stützt sich daher auf die Zeit bis zur Umstellung; danach
-  bleibt nur eine grobe Prüfung. Ob die Parameter (`SUBGRID_FIT`) auf dem
-  nativen Gitter gelten, ist ungeprüft.
-- **`qr`, `qs`, `qg` auf Modellflächen** (Angebot Michael, 08.11.): Nur für D2 auf
+  Michael lässt die lat/lon-Daten laut Absprache vom 08.11. vorerst weiterlaufen,
+  das Archiv sammelt also weiter passende Vergleichsfälle (bis längstens 30.11.).
+  Ob die Parameter (`SUBGRID_FIT`) auf dem nativen Gitter gelten, ist ungeprüft.
+- **`qr`, `qs`, `qg` auf Modellflächen** (Angebot Michael, 08.11.; Namensvorschlag
+  `rain_water_level{N}`, `snow_water_level{N}`, `graupel_water_level{N}`, g/kg): Nur für D2 auf
   DWD-Open-Data vorhanden (alle 65 Flächen, geprüft 08.11.), gebraucht werden
   die untersten drei. ICON-EU hat sie nicht. Ersetzt den Niederschlagsansatz aus
   1.6 einschließlich Schnee-Platzhalter. Das Subgrid-Wolkenwasser (1.5) bleibt
