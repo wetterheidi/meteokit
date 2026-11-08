@@ -303,6 +303,7 @@ export function diagnoseVisibility(levels, { time, lat, lon, cosZenith, rain = 0
  *
  * @param {object} col  Säule im Format von `fetchColumn()` oder
  *   `columnFromHourly()`: Flächen von unten, mindestens bis über 540 m.
+ *   `col.time` als Unix-Sekunden oder ISO-Strings (UTC).
  * @param {object} [surface]  Oberflächenfelder, indexgleich zu `col.time`:
  *   `rain` (mm, Summe der Vorstunde, gitterskalig = Open-Meteo `rain`) und
  *   `snowfall` (cm, Open-Meteo `snowfall`). Fehlen sie, zählt kein
@@ -338,8 +339,12 @@ export function visibilitySeries(col, surface = {}, { lat, lon }) {
       if (!Number.isFinite(lv.clc)) lv.clc = 0;
       levels.push(lv);
     }
+    const ti = col.time[i];
     const r = ok ? diagnoseVisibility(levels, {
-      time: Date.parse(/Z$|[+-]\d\d:?\d\d$/.test(col.time[i]) ? col.time[i] : `${col.time[i]}Z`),
+      // Zeit als Unix-Sekunden (timeformat=unixtime, wie in meteokit) oder
+      // ISO-String (Open-Meteo-Default, UTC ohne Zonenangabe)
+      time: typeof ti === "number" ? ti * 1000
+        : Date.parse(/Z$|[+-]\d\d:?\d\d$/.test(ti) ? ti : `${ti}Z`),
       lat, lon, rain: rateAt(rain, i), snow: rateAt(snow, i, 1 / 0.7),
     }) : null;
     out.vis.push(r ? r.vis : NaN);

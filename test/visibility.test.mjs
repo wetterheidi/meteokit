@@ -105,3 +105,11 @@ test("fehlende Eingänge ergeben NaN statt eines Fehlers", () => {
   assert.ok(Number.isNaN(s.vis[0]));
   assert.ok(Number.isFinite(s.vis[1]));
 });
+
+test("visibilitySeries: Unix-Sekunden und ISO-Zeit ergeben dasselbe", () => {
+  const iso = columnFromHourly(fx.hourly, fx.nLevels);
+  const unix = { ...iso, time: fx.hourly.time.map((t) => Date.parse(`${t}Z`) / 1000) };
+  const a = visibilitySeries(iso, fx.hourly, { lat: fx.lat, lon: fx.lon });
+  const b = visibilitySeries(unix, fx.hourly, { lat: fx.lat, lon: fx.lon });
+  assert.deepEqual(b.vis, a.vis);
+});

@@ -355,9 +355,19 @@ eigene Sicht, auch für ICON Global. Probelauf live 2026-11-08 (48 h):
 EDDM D2 100 %, Brocken D2 94 %, Graz EU 67 % der Stunden innerhalb 30 % der
 ICON-Sicht.
 
-Noch auf dem DWD-Feld: `clouds.js` `classifyFog()`/`colorState()` und
-`briefing.js` (Meteogramm, Go/No-Go, Briefing; bekommen `visibility` von der
-aufrufenden App, v. a. droneforecast).
+`clouds.js` `classifyFog()`/`colorState()` und `briefing.js` bekommen die
+Sicht von der aufrufenden App. **Dronecast** (droneforecast, seit
+2026-11-08) übergibt dort die eigene Sicht: Punktvorhersage über
+`fetchVisibility()` (column.js, schlanker Abruf der 13 untersten Flächen +
+`rain`, `snowfall`), Wolken-Layer/Color State über einen Zusatzabruf je
+Kartenchunk und `visibilitySeries()`; beides ohne Rückfall auf das
+DWD-Feld. Browsertest 2026-11-08 (EDDM, D2): Punktvorhersage 21 Uhr Ortszeit
+2,0 km (eigene Rechnung 1968 m, ICON 2360 m), Color-State-Fläche um EDDM
+passend YLO.
+
+Andere Apps, die `fetchSurface()` nutzen und `visibility` daraus lesen,
+bekommen bis 30.11. noch das DWD-Feld und danach nichts; sie müssen wie
+Dronecast auf `fetchVisibility()` umgestellt werden.
 
 ### 2.1 IDSSEML und IDSSE
 

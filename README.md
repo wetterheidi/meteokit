@@ -64,7 +64,7 @@ intern und darf sich jederzeit ändern — auch wenn die Datei im Repo sichtbar 
 | `meteokit/apifetch` | `fetchWithFallback`, `fetchJsonWithFallback` (Host-Fallback mit Cooldown; `init` für POST), `modelApiBases`, `getApiSources`/`onApiSourceChange` — welcher Host zuletzt geliefert hat |
 | `meteokit/timefmt` | Anzeige-Zeitzone (`setTimeZone`, `getTimeZone`, `zoneTag`) und Formatierer `fmtClock`, `fmtDate`, `fmtHHMM`, … — Ortszeit oder UTC, analog zu `units` |
 | `meteokit/units` | Einheiten-Singleton: `setUnits`, `fmtWind`, `fmtHeight`, … |
-| `meteokit/column` | `fetchColumn`, `buildField`, `sampleColumnAtHeight`, `sliceColumnRange`, … |
+| `meteokit/column` | `fetchColumn`, `fetchVisibility`, `buildField`, `sampleColumnAtHeight`, `sliceColumnRange`, … |
 | `meteokit/weather` | `fetchSurface`, `fetchModelRunInit`, `nearestIndex`, … |
 | `meteokit/clouds` | Wolken-/Nebeldiagnostik: `cloudLayers`, `cloudCeiling`, `classifyFog`, … |
 | `meteokit/visibility` | `visibilitySeries`, `visibilityRequestVars`, `columnFromHourly`, `iconVisibility` — Sicht nach ICON-Diagnose aus Modellflächen (Ersatz für das ab 01.12.2026 fehlende VIS, s. `docs/SICHTWEITE.md`) |
@@ -85,8 +85,9 @@ ICON-Open-Data-Lieferungen, damit liefert auch Open-Meteo keine `visibility`
 mehr für ICON-D2/-EU. Betroffen sind hier die Sichtzeile und die
 FG/BR/HZ-Diagnose im GRAMET (`gramet/hazards/fog.js`, `clouds.js`,
 `briefing.js`). Ersatz ist die eigene Nachbildung der ICON-Sichtdiagnose
-(`meteokit/visibility`); GRAMET nutzt sie seit 2026-11-08, Meteogramm/
-Briefing (`clouds.js`, `briefing.js`) noch nicht. Vergleichsdaten sammelt
+(`meteokit/visibility`, für Apps ohne eigene Säule `fetchVisibility()` in
+`meteokit/column`); GRAMET nutzt sie seit 2026-11-08, ebenso Dronecast für
+Punktvorhersage, Meteogramm, Go/No-Go, Briefing und Color State. Vergleichsdaten sammelt
 `tools/vis-archive/` (s. dortige README), Methodik und Stand in
 `docs/SICHTWEITE.md`.
 

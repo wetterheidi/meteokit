@@ -9,6 +9,7 @@ import { getModel } from "./config.js";
 import { fetchWithFallback, modelApiBases } from "./apifetch.js";
 import { cloudFraction } from "./clouds.js";
 import { lastFiniteIndex, horizonParams } from "./weather.js";
+import { visibilityRequestVars, columnFromHourly, visibilitySeries } from "./visibility.js";
 
 const KMH_TO_MS = 1 / 3.6;
 
@@ -169,6 +170,25 @@ export async function fetchColumn(lat, lon, modelKey, horizon, fetchImpl = fetch
     p: trimLevels(p), w: trimLevels(w), q: trimLevels(q), qw: trimLevels(qw), qi: trimLevels(qi), clc: trimLevels(clc),
     pmsl: trim(pmsl), nLevels: h.length, elevation: data.elevation, model: modelKey,
   };
+}
+
+/**
+ * Sichtweite am Punkt aus einem schlanken Modellflächen-Abruf (13 unterste
+ * Flächen + `rain`, `snowfall`, s. visibility.js) -- für Apps, die die volle
+ * Säule nicht ohnehin laden (Punktvorhersage in droneforecast). Ersatz für
+ * das DWD-Feld `visibility`, das nach dem 30.11.2026 entfällt
+ * (docs/SICHTWEITE.md).
+ * @returns {Promise<{ time: number[], vis: number[], limitedBy: (string|null)[] }>}
+ *   time in Unix-Sekunden, vis in m (NaN, wo Eingänge fehlen)
+ */
+export async function fetchVisibility(lat, lon, modelKey, horizon, fetchImpl = fetch.bind(globalThis)) {
+  const model = getModel(modelKey);
+  const vars = [...visibilityRequestVars(model.nLevels), "rain", "snowfall"];
+  const result = await fetchColumnWithRetry(lat, lon, model, horizon, vars, fetchImpl);
+  if (result.error) throw new Error(result.error);
+  const H = result.data.hourly;
+  const s = visibilitySeries(columnFromHourly(H, model.nLevels), H, { lat, lon });
+  return { time: H.time, vis: s.vis, limitedBy: s.limitedBy };
 }
 
 /**
