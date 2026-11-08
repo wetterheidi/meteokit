@@ -225,8 +225,12 @@ export function iconVisibility(col, { variant = 3, subgrid = null } = {}) {
 // ---------------------------------------------------------------------------
 
 /** So viele unterste Modellflächen braucht die Diagnose: k950 (oberste Fläche
- *  unter 540 m) liegt über Bergen in ICON-D2 bei ≈ k11 (Brocken), daher 13. */
-export const VIS_N_LEVELS = 13;
+ *  unter 540 m über Grund) plus eine darüber. Über Bergen liegen die
+ *  ICON-D2-Flächen enger: Brocken ≈ k11 (13 Flächen nötig), Alpengipfel über
+ *  2000 m bis 15 Flächen (3DWx-Gitter, geprüft 2026-11-08). Bis 2026-11-08
+ *  waren es 13. Fehlen höhere Flächen, rechnen die Funktionen mit denen bis
+ *  zur ersten Lücke und liefern nur dann NaN, wenn 540 m nicht erreicht sind. */
+export const VIS_N_LEVELS = 15;
 
 const VIS_LEVEL_API = [
   "height_agl", "pressure", "temperature", "specific_humidity",
@@ -333,7 +337,9 @@ export function visibilitySeries(col, surface = {}, { lat, lon }) {
         qv: col.q[k][i], qc: col.qw?.[k]?.[i] ?? 0, qi: col.qi?.[k]?.[i] ?? 0,
         u: col.u[k][i], v: col.v[k][i], clc: (col.clc?.[k]?.[i] ?? 0) / 100,
       };
-      if (![lv.z, lv.p, lv.T, lv.qv, lv.u, lv.v].every(Number.isFinite)) { ok = false; break; }
+      // Lücke: mit den Flächen darunter weiterrechnen (reichen sie nicht bis
+      // über 540 m, liefert diagnoseVisibility null)
+      if (![lv.z, lv.p, lv.T, lv.qv, lv.u, lv.v].every(Number.isFinite)) { ok = levels.length >= 3; break; }
       if (!Number.isFinite(lv.qc)) lv.qc = 0;
       if (!Number.isFinite(lv.qi)) lv.qi = 0;
       if (!Number.isFinite(lv.clc)) lv.clc = 0;

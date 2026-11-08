@@ -173,8 +173,8 @@ export async function fetchColumn(lat, lon, modelKey, horizon, fetchImpl = fetch
 }
 
 /**
- * Sichtweite am Punkt aus einem schlanken Modellflächen-Abruf (13 unterste
- * Flächen + `rain`, `snowfall`, s. visibility.js) -- für Apps, die die volle
+ * Sichtweite am Punkt aus einem schlanken Modellflächen-Abruf (VIS_N_LEVELS
+ * unterste Flächen + `rain`, `snowfall`, s. visibility.js) -- für Apps, die die volle
  * Säule nicht ohnehin laden (Punktvorhersage in droneforecast). Ersatz für
  * das DWD-Feld `visibility`, das nach dem 30.11.2026 entfällt
  * (docs/SICHTWEITE.md).

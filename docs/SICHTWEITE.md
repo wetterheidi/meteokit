@@ -313,12 +313,14 @@ bis 30.11. erneut prüfen.
   fehlen.
 - `visibilityRequestVars(nLevels)` und `columnFromHourly(hourly, nLevels)` für
   Apps, die Modellflächen selbst abrufen: liefern die 117 nötigen
-  Variablennamen (13 unterste Flächen × 9 Felder; dazu `rain`, `snowfall`)
+  Variablennamen (15 unterste Flächen × 9 Felder; dazu `rain`, `snowfall`)
   bzw. bauen daraus die Säule.
 - `iconVisibility()` – die nackte Routine für eine Stunde, für Auswertungen.
 
-Benötigt werden die untersten 13 Modellflächen (bis über 540 m über Grund
-auch über Bergen) vom eigenen Server; die öffentliche Open-Meteo-Instanz hat
+Benötigt werden die untersten 15 Modellflächen (bis über 540 m über Grund
+auch über den Alpengipfeln; bis 2026-11-08 waren es 13, was über Gipfeln
+über 2000 m nicht reichte; fehlen höhere Flächen, wird mit denen bis zur
+ersten Lücke gerechnet) vom eigenen Server; die öffentliche Open-Meteo-Instanz hat
 keine Modellflächen.
 
 Güte gegen die ICON-Sicht, alle Stunden 05.10.–07.11.2026 ohne 10.–12.10.
@@ -358,7 +360,7 @@ ICON-Sicht.
 `clouds.js` `classifyFog()`/`colorState()` und `briefing.js` bekommen die
 Sicht von der aufrufenden App. **Dronecast** (droneforecast, seit
 2026-11-08) übergibt dort die eigene Sicht: Punktvorhersage über
-`fetchVisibility()` (column.js, schlanker Abruf der 13 untersten Flächen +
+`fetchVisibility()` (column.js, schlanker Abruf der 15 untersten Flächen +
 `rain`, `snowfall`), Wolken-Layer/Color State über einen Zusatzabruf je
 Kartenchunk und `visibilitySeries()`; beides ohne Rückfall auf das
 DWD-Feld. Browsertest 2026-11-08 (EDDM, D2): Punktvorhersage 21 Uhr Ortszeit
@@ -368,6 +370,18 @@ passend YLO.
 Andere Apps, die `fetchSurface()` nutzen und `visibility` daraus lesen,
 bekommen bis 30.11. noch das DWD-Feld und danach nichts; sie müssen wie
 Dronecast auf `fetchVisibility()` umgestellt werden.
+
+**3DWx** (seit 2026-11-08): `src/haze.js` `visibilityAt()` rechnet die Sicht
+je Modellzelle (3321 Punkte, ~20 ms je Stunde) mit `diagnoseVisibility()`
+aus den untersten 15 Leveln; Feuchte, Wind und Wolkenfelder dieser Level
+reisen im ersten Abruf jeder Stunde mit, `rain`/`snowfall` im
+Oberflächenabruf. Ohne Rückfall auf das DWD-Feld. Gegen die
+meteokit-Punktfunktion an Einzelpunkten auf etwa 1 % gleich. Die
+Spezifikation der Server-Vorverarbeitung (3DWx `docs/VORVERARBEITUNG.md`)
+sieht die Berechnung ab 01.12. im `haze`-Job vor.
+
+**DZMaster:** Sicht nur im Export „Wetterbriefing“; bleibt nach dem 30.11.
+leer, keine Umstellung geplant (Entscheidung 2026-11-08).
 
 ### 2.1 IDSSEML und IDSSE
 
@@ -405,6 +419,20 @@ dem 30.11. entfallen lassen bzw. den Branch aufgeben.
 | cos Sonnenzenit | aus Ort und Zeit | `sunAltitude()` (astro.js) |
 
 ## 4. Offene Punkte
+
+- **ICON-D2 ab 08.11.2026 06 UTC:** Nachrechnung und ICON-VIS vom eigenen
+  Server passen plötzlich deutlich schlechter zusammen (24 Stationen,
+  trocken, Variante 3, ≤ 10 % Abweichung: vorher 87 %, danach 50 %; ICON-EU
+  unverändert 69 % → 66 %). Median weiter bei null, aber viel größere
+  Streuung, auch im reinen Feuchteterm (10/90 % von ln(calc/ICON): vorher
+  ±0,03, danach −0,22…+0,30). Kein Zeitversatz (beste Übereinstimmung bei
+  0 h), keine andere Variante passt besser. Der DWD liefert `vis` für den
+  06-UTC-Lauf pünktlich mit `t_2m`. Auch T/RH auf der untersten Fläche weichen
+  seitdem stärker von den 2-m-Werten ab (90 %-Wert |RH10m − RH2m| 2 → 5
+  Prozentpunkte). Vermutung: Auf dem Server stammen Modellflächen und
+  Oberflächenfelder für D2 seit diesem Lauf nicht mehr aus demselben Lauf
+  (Ingestion). Beim Server-Betreiber klären. **Bis dahin D2-Archivdaten ab
+  08.11. 06 UTC nicht zur Kalibrierung verwenden.**
 
 - ~~Operationelle Einstellung von `itune_vis_diag`~~: Variante 3 für D2 und
   EU (1.4).

@@ -261,7 +261,8 @@ export function gridVisibility(grid) {
         qc: fin0(grid.qw[ix]), qi: fin0(grid.qi[ix]), u: grid.u[ix], v: grid.v[ix],
         clc: fin0(grid.clc[ix]) / 100,
       };
-      if (![lv.z, lv.p, lv.T, lv.qv, lv.u, lv.v].every(Number.isFinite)) { ok = false; break; }
+      // Lücke: mit den Flächen darunter weiterrechnen (s. visibilitySeries)
+      if (![lv.z, lv.p, lv.T, lv.qv, lv.u, lv.v].every(Number.isFinite)) { ok = levels.length >= 3; break; }
       levels.push(lv);
     }
     if (!ok) continue;

@@ -92,9 +92,13 @@ test("Brocken 07.11.2026: visibilitySeries im Rahmen der Kalibrierung", () => {
 test("visibilityRequestVars / columnFromHourly passen zusammen", () => {
   const vars = visibilityRequestVars(fx.nLevels);
   assert.equal(vars.length, VIS_N_LEVELS * 9);
-  for (const v of vars) assert.ok(v in fx.hourly, v);
+  // Die Testdaten enthalten nur die untersten 13 Flächen (Archiv-Stand); die
+  // fehlenden höheren werden zu NaN und müssen die Rechnung nicht stören
+  // (s. Brocken-Tests oben, die damit laufen).
+  for (const v of vars.slice(0, 13 * 9)) assert.ok(v in fx.hourly, v);
   const col = columnFromHourly(fx.hourly, fx.nLevels);
   assert.equal(col.t.length, VIS_N_LEVELS);
+  assert.ok(col.t[VIS_N_LEVELS - 1].every(Number.isNaN));
   near(col.u[0][0], fx.hourly[`wind_u_component_level${fx.nLevels}`][0] / 3.6 || 1, 1e-9, "u km/h→m/s");
 });
 
