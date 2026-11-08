@@ -1,0 +1,169 @@
+# Sichtweite: eigene Parametrisierung (Arbeitsstand)
+
+Hintergrund: Der DWD entfernt VIS nach dem 30.11.2026 aus den
+ICON-Open-Data-Lieferungen (s. `tools/vis-archive/README.md`). Ziel ist eine
+eigene, nachvollziehbar dokumentierte Sichtdiagnose aus Feldern, die
+Open-Meteo weiter liefert, abgeglichen gegen die Original-Modellsicht, solange
+es sie gibt.
+
+Dieses Dokument hält zuerst fest, **wie ICON selbst die Sicht berechnet**,
+weil das die Referenz ist, gegen die wir abgleichen. Die eigentliche
+Parametrisierung, Kalibrierung und Verifikation folgen hier, sobald sie
+stehen.
+
+## 1. Die ICON-Sichtdiagnose
+
+**Quelle (gelesen):** ICON-Quellcode, Release icon-2026.10 (Commit
+`7de8533`, 30.10.2026), `src/atm_phy_nwp/mo_opt_nwp_diagnostics.f90`,
+Routine `compute_field_visibility`. Repository
+<https://gitlab.dkrz.de/icon/icon-model> (BSD-3-Lizenz). Die Database
+Reference des DWD (`docs/icon_database_main.pdf`) beschreibt VIS nur als
+„Near surface visibility in m“ (seit Version 2.3.1, 23.04.2024, für ICON-EU
+und ICON-D2).
+
+**Herkunft laut Code-Kommentar:** RUC-Routine CALVIS (S. Benjamin,
+NOAA/FSL, 1999–2003), aufbauend auf Stoelinga & Warner (Eta-Modell). Beim DWD
+angepasst durch T. Göcke: 03/2022 RH-Abhängigkeit nach Gultepe et al. (2009),
+03/2023 RH-Abhängigkeit per Fit an SYNOP-Daten über Deutschland (11/2021).
+Die zitierten Primärquellen (Kunkel 1984, Stoelinga & Warner, Gultepe et al.
+2009, Stallabrass 1985, Rutledge & Hobbs 1983, Kuchera) habe ich **nicht**
+gelesen; die Angaben unten stammen ausschließlich aus dem Code.
+
+Die Sicht ist das Minimum aus zwei Teilen, einem Feuchteterm und einem
+Hydrometeorterm.
+
+### 1.1 Feuchteterm (Dunst)
+
+RH wird aus qv, p, T über Wasser berechnet (auf 100 % begrenzt), auf den
+untersten drei Flächen; verwendet wird `rhmax = max(RH(nlev), RH(nlev−1))`,
+also das Maximum der **untersten zwei** Flächen.
+
+Zwei Varianten, gewählt über den Namelist-Schalter `itune_vis_diag`
+(`mo_nwp_tuning_nml.f90`: Default **1**; Kommentar in
+`mo_nwp_tuning_config.f90`: 1 = erste operationelle Fassung, 2 = optimierter
+Tag-Nacht-Faktor, 3 = (2) plus neu abgestimmte RH-Abhängigkeit):
+
+- **Variante 1 und 2** (Fit an SYNOP Deutschland 11/2021), RH in %, Sicht
+  in m:
+  - RH ≤ 40: `visrh = 88950.37 − 327.734·RH`
+  - 40 < RH ≤ 98,2: Polynom 5. Grades
+    `2.74158753e-4·RH⁵ − 8.04508715e-2·RH⁴ + 9.4148139·RH³ − 578.127237·RH² + 18268.2914·RH − 154588.988`
+  - RH > 98,2: `visrh = −1171.049·RH + 117111.725`
+- **Variante 3** (G. Zängl), RH als Bruchteil:
+  `visrh = (90 − 257.44·RH + 471.29·RH² − 301.85·RH³) · invfac` [km],
+  Stützstellen laut Kommentar 90 km bei RH 0, 40 km bei 0,6, 20 km bei 0,9,
+  2 km bei 1,0.
+  `invfac = 5 / max(5, θv(k950) − θv(nlev−2))` mindert die Sicht unter
+  Inversionen (Dunst in der Grenzschicht). k950 ist die oberste Fläche unter
+  540,3 m über Grund (`h950_standard`, `mo_nwp_phy_init.f90`).
+
+Danach in beiden Varianten:
+
+- Untergrenze 1 km (`visrh_clip`).
+- Scherungsterm: `shear = |v(nlev−2) − v(nlev)|`;
+  `shear_fac = clamp((shear − 4)/2, 0, 1)`; liegt `visrh` unter 10 km, wird
+  es um `(10 − visrh)·shear_fac` angehoben. Wind mischt Dunst also weg
+  (Begründung im Code: Kuchera).
+
+**Welche Variante der DWD in ICON-D2/-EU operationell fährt, steht nicht im
+Code** (die Namelists der operationellen Läufe sind nicht Teil des
+Repositorys). Das klären wir empirisch mit dem Archiv, beide Varianten
+lassen sich nachrechnen.
+
+### 1.2 Hydrometeorterm
+
+Massenkonzentration C = q·ρ [g/m³], jeweils das **Maximum über die untersten
+drei Flächen** (`top_lev = 3`). Extinktion β [km⁻¹]:
+
+| Spezies | Code | Herkunft laut Kommentar |
+|---|---|---|
+| Wolkenwasser | `144.7 · C^0.88` | Kunkel (1984) |
+| Wolkeneis | `327.8 · C^1.0` | Plättchen nach Rutledge & Hobbs (1983) |
+| Regen | `2.24 · C^0.75` | Marshall-Palmer, N₀ = 8·10⁶ m⁻⁴ |
+| Schnee | `a_s · C^1.0`, a_s = 10 (T ≤ −2 °C) bis 6 (T ≥ −1 °C), linear dazwischen | Stallabrass (1985) |
+| Graupel | `4.0 · C^0.75` | Schätzung Brown & Benjamin (1999) |
+
+Achtung: Der Kommentarblock im Code nennt für Schnee `10.36·C^0.7776` und
+für Graupel `8.0·C^0.75`. Gerechnet wird mit den Parametern oben, die
+Kommentare sind veraltet.
+
+Wolkenwasser und -eis: Bei Kopplung der effektiven Radien an die Strahlung
+(`icpl_rad_reff = 1`) enthalten die Gesamtfelder Regen/Schnee/Graupel mit;
+die Routine zieht diese wieder ab („qc_pure“, „qi_pure“).
+
+Koschmieder mit **2 % Kontrastschwelle**: `vis = min(90 km, −ln(0.02)/β)`
+= 3,912/β. (Nicht die 5 % der MOR-Definition.)
+
+**Tag/Nacht:** Nachts wird die Hydrometeorsicht vergrößert:
+
+- Variante 1: `vis_night = 1.69 · (vis/1.609)^0.86 · 1.609` (Rasmussen 2003)
+- Varianten 2/3: `vis_night = vis · clamp((vis/0.05)^0.25, 1.25, 2.25)`
+
+Übergang über den Kosinus des Sonnenzenitwinkels: `zen_fac = clamp(cos z, 0, 0.1)/0.1`,
+`vis = zen_fac·vis + (1 − zen_fac)·vis_night`. Voller Tagwert also erst ab
+etwa 5,7° Sonnenhöhe.
+
+**Ergebnis:** `VIS = min(vis_hydrometeore, visrh)` in m.
+
+### 1.3 Erste Nachrechnung (Brocken, ICON-D2, 07.11.2026)
+
+Am 07.11. um 12 UTC meldete ICON-D2 am Brocken 460 m Sicht, obwohl
+`cloud_water_k0 = 0` war. Der Feuchteterm kann wegen der 1-km-Untergrenze
+nicht darunter liegen, also muss es der Hydrometeorterm sein. Tatsächlich
+hat k2 (≈ 74 m über Grund) Wolkenwasser. Nachgerechnet mit
+ρ = p/(R_d·T·(1 + 0,608·qv)) und dem Maximum über k0–k2, ohne Niederschlag:
+
+| Zeit | C_max [g/m³] | Tagwert | Nacht V1 | Nacht V2/3 | ICON-VIS |
+|---|---|---|---|---|---|
+| 12 UTC (Tag) | 0,040 | **460 m** | 926 m | 800 m | 460 m |
+| 18 UTC (Nacht) | 0,200 | 111 m | 274 m | **139 m** | 140 m |
+
+Beide Werte treffen. Daraus folgt, vorläufig für zwei Stunden an einer
+Station:
+
+- `cloud_water_level{N}` vom Server ist das Feld, das die Routine verwendet
+  (zumindest ohne Niederschlag).
+- ICON-D2 läuft operationell mit **Variante 2 oder 3**, nicht mit 1. Ob 2
+  oder 3, entscheidet erst der Feuchteterm (in Stunden ohne Hydrometeore).
+- Open-Meteo speichert VIS mit 20-m-Auflösung (139 → 140 m).
+
+## 2. Was wir davon nachbauen können
+
+| ICON-Eingang | über Open-Meteo verfügbar? |
+|---|---|
+| T, p, qv untere Flächen | ja (`temperature_`, `pressure_`, `specific_humidity_level{N}`) |
+| qc, qi untere drei Flächen | ja (`cloud_water_`, `cloud_ice_level{N}`); **offen:** Gesamt- oder gitterskaliges Feld, und mit oder ohne beigemischten Niederschlag |
+| qr, qs, qg | **nein** (auf dem Server getestet 2026-11-08) – nur Raten am Boden (`rain`, `showers`, `snowfall`, `precipitation`, Stundensummen) |
+| u, v auf nlev und nlev−2 | ja (`wind_u/v_component_level{N}`, km/h) |
+| θv auf k950 | ja, aus T, p, qv der entsprechenden Fläche |
+| ρ | ja, aus p, T, qv |
+| cos Sonnenzenit | berechenbar aus Ort und Zeit |
+
+Daraus ergibt sich der Plan:
+
+1. Feuchteterm, Scherung, Inversionsfaktor, Wolkenwasser/-eis und Tag/Nacht
+   **wie ICON** rechnen.
+2. Für Regen, Schnee und Graupel die Massenkonzentration aus der Bodenrate
+   schätzen: C ≈ R / v_t (Massenfluss durch Fallgeschwindigkeit). Rate und
+   Fallgeschwindigkeit müssen noch aus Quellen belegt werden, ebenso die
+   Aufteilung Schnee = `precipitation − rain − showers` (Open-Meteo-
+   Konvention, noch zu prüfen). Zeitlicher Versatz: Die Raten sind
+   Stundensummen, ICON nutzt den Momentanwert.
+3. Gegen das Archiv prüfen: zuerst nur die Stunden ohne Niederschlag (dort
+   sollte die Nachrechnung fast exakt stimmen, sonst stimmt eine Annahme zu
+   qc/qi oder der Variante nicht), danach die Niederschlagsstunden.
+
+Diese Variante hat den Vorteil, dass sie auch für ICON Global funktioniert,
+soweit dort die Modellflächen-Felder vorliegen.
+
+## 3. Offene Punkte
+
+- Operationelle Einstellung von `itune_vis_diag`: nach 1.3 Variante 2 oder 3
+  (D2); 2 gegen 3 und ICON-EU noch offen → empirisch.
+- Bedeutung von `cloud_water_level{N}` / `cloud_ice_level{N}` auf dem Server
+  (DWD-Feld QC/QI oder TOT_QC_DIA/TOT_QI_DIA?). Ohne Niederschlag passt es
+  (1.3); für Niederschlagsstunden und für Eis noch prüfen, ggf. beim
+  Betreiber der Ingestion (Michael) erfragen.
+- Ob die Routine sich zwischen dem beim DWD laufenden Stand und icon-2026.10
+  unterscheidet. Die Release Notes von icon-2026.04 nennen eine Überarbeitung
+  der Sicht- und Ceiling-Diagnose „to better match SYNOP observations“.

@@ -84,7 +84,7 @@ ICON-Open-Data-Lieferungen, damit liefert auch Open-Meteo keine `visibility`
 mehr für ICON-D2/-EU. Betroffen sind hier die Sichtzeile und die
 FG/BR/HZ-Diagnose im GRAMET (`gramet/hazards/fog.js`, `clouds.js`,
 `briefing.js`). Eine eigene Parametrisierung ist in Arbeit; die
-Vergleichsdaten sammelt `tools/vis-archive/` (s. dortige README).
+Vergleichsdaten sammelt `tools/vis-archive/` (s. dortige README), Methodik und Stand in `docs/SICHTWEITE.md`.
 
 ## Datenquellen konfigurieren
 
