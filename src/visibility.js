@@ -46,6 +46,14 @@ const KOSCHMIEDER = -Math.log(0.02); // 2 % Kontrastschwelle
 // gleich gut). Ein Satz für beide Modelle, s. docs/SICHTWEITE.md 1.5.
 export const SUBGRID_FIT = Object.freeze({ a: 0.01, b: 2.0 });
 
+// Niederschlags-Ersatz, s. hydroFromSurfaceRates(). rainFactor 1 = reine
+// Marshall-Palmer-Ableitung, gegen die ICON-Sicht bestätigt (keine
+// Anpassung nötig, wenn als Rate das Minimum der Stundensummen vor und nach
+// t verwendet wird, s. docs/SICHTWEITE.md 1.6). vSnow/vGraupel sind
+// Platzhalter (typische Fallgeschwindigkeiten, Quelle noch zu belegen), bis
+// Schneefälle im Archiv vorliegen.
+export const PRECIP_FIT = Object.freeze({ rainFactor: 1.0, vSnow: 1.0, vGraupel: 2.0 });
+
 const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
 
 /** Sättigungsdampfdruck über Wasser [Pa], T in K (ICON `esat_water`). */
@@ -81,6 +89,39 @@ function visRhSynopFit(rh) {
       - 5.78127237e2 * rh ** 2 + 1.82682914e4 * rh - 1.54588988e5;
   } else v = -1171.04931497 * rh + 117111.72541055;
   return v / 1000;
+}
+
+/**
+ * Ersatz für die in Open-Meteo fehlenden Regen-/Schnee-/Graupelgehalte auf
+ * Modellflächen: Massenkonzentration [g/m³] aus Bodenraten [mm/h,
+ * Wasseräquivalent]. Nur gitterskaliger Niederschlag zählt, weil ICONs
+ * qr/qs/qg nur ihn enthalten (konvektiver Niederschlag ist dort ein
+ * diagnostischer Fluss ohne Gehalt in der Luft).
+ *
+ *  - Regen: Marshall-Palmer-Verteilung mit N₀ = 8·10⁶ m⁻⁴ (dieselbe Annahme
+ *    wie ICONs Regen-Extinktion) und Λ = 4,1 mm⁻¹ · R^−0,21:
+ *    W = π ρ_w N₀ / Λ⁴ = 0,089 · R^0,84. `rainFactor` skaliert das für die
+ *    Kalibrierung.
+ *  - Schnee, Graupel: C = Rate / (3,6 · v) mit einer mittleren
+ *    Fallgeschwindigkeit v [m/s] (Massenfluss = Gehalt · Fallgeschwindigkeit).
+ *    Defaults sind Platzhalter, bis Fälle im Archiv vorliegen, s.
+ *    docs/SICHTWEITE.md.
+ *
+ * Als Rate empfohlen: min(Summe der Stunde vor t, Summe der Stunde nach t),
+ * s. docs/SICHTWEITE.md 1.6.
+ *
+ * @param {{ rain?: number, snow?: number, graupel?: number }} rates mm/h
+ * @param {{ rainFactor?: number, vSnow?: number, vGraupel?: number }} [opts]
+ * @returns {{ Cr: number, Cs: number, Cg: number }} g/m³
+ */
+export function hydroFromSurfaceRates({ rain = 0, snow = 0, graupel = 0 } = {},
+  { rainFactor = PRECIP_FIT.rainFactor, vSnow = PRECIP_FIT.vSnow, vGraupel = PRECIP_FIT.vGraupel } = {}) {
+  const pos = (x) => (Number.isFinite(x) && x > 0 ? x : 0);
+  return {
+    Cr: rainFactor * 0.089 * pos(rain) ** 0.84,
+    Cs: pos(snow) / (3.6 * vSnow),
+    Cg: pos(graupel) / (3.6 * vGraupel),
+  };
 }
 
 /**

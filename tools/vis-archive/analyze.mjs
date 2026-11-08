@@ -7,12 +7,20 @@
  *   node analyze.mjs --data DIR [--model icon_d2|icon_eu] [--variants 1,2,3]
  *                    [--worst N] [--csv OUT.csv] [--exclude-days D,D]
  *                    [--subgrid a,b] [--fit-subgrid]
+ *                    [--precip] [--precip-timing now|next|mean|min] [--rain-factor F]
+ *                    [--fit-precip]
  *
  * --exclude-days  UTC-Tage, die nicht ausgewertet werden (Default: die
  *                 DWD-Störung 10.–12.10.2026, s. DEFAULT_EXCLUDE_DAYS).
  * --subgrid a,b   Ersatz für subskaliges Wolkenwasser (s. iconVisibility).
  * --fit-subgrid   a, b per Gittersuche bestimmen (Variante 3, trockene
  *                 Stunden, Ziel: größter Anteil ≤ 10 % Abweichung).
+ * --precip        Regen/Schnee aus Bodenraten (hydroFromSurfaceRates).
+ *                 Zeitbezug der Rate: now = Stunde bis t, next = Stunde ab t,
+ *                 mean = Mittel beider, min = kleinere der beiden (Default;
+ *                 Regen zur Zeit t nur, wenn er vorher und nachher fällt).
+ * --fit-precip    rainFactor und Zeitbezug per Gittersuche (Stunden mit
+ *                 gitterskaligem Regen, ohne Schnee, Subgrid-Ersatz an).
  *
  * DIR ist eine lokale Kopie von /apps/vis-archive/data (s. README).
  *
@@ -25,7 +33,7 @@
 
 import { readFile, readdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { iconVisibility } from "../../src/visibility.js";
+import { iconVisibility, hydroFromSurfaceRates, SUBGRID_FIT } from "../../src/visibility.js";
 
 // Tage mit unvollständigen DWD-Läufen: Modellflächen und Sichtfeld passen
 // dort nicht zusammen (DWD-Störung 10.–12.10.2026). Mit --exclude-days ""
@@ -34,7 +42,8 @@ const DEFAULT_EXCLUDE_DAYS = ["2026-10-10", "2026-10-11", "2026-10-12"];
 
 function parseArgs(argv) {
   const a = { data: null, model: "icon_d2", variants: [1, 2, 3], worst: 10, csv: null,
-    excludeDays: DEFAULT_EXCLUDE_DAYS, subgrid: null, fitSubgrid: false };
+    excludeDays: DEFAULT_EXCLUDE_DAYS, subgrid: null, fitSubgrid: false,
+    precip: false, precipTiming: "min", rainFactor: undefined, fitPrecip: false };
   for (let i = 2; i < argv.length; i++) {
     const k = argv[i];
     if (k === "--data") a.data = argv[++i];
@@ -45,6 +54,10 @@ function parseArgs(argv) {
     else if (k === "--exclude-days") a.excludeDays = argv[++i].split(",").filter(Boolean);
     else if (k === "--subgrid") { const [x, y] = argv[++i].split(",").map(Number); a.subgrid = { a: x, b: y }; }
     else if (k === "--fit-subgrid") a.fitSubgrid = true;
+    else if (k === "--precip") a.precip = true;
+    else if (k === "--precip-timing") a.precipTiming = argv[++i];
+    else if (k === "--rain-factor") a.rainFactor = Number(argv[++i]);
+    else if (k === "--fit-precip") a.fitPrecip = true;
     else throw new Error(`Unbekanntes Argument: ${k}`);
   }
   if (!a.data) throw new Error("--data DIR fehlt");
@@ -91,6 +104,22 @@ function columnFromRow(r, nl) {
     });
   }
   return { levels, time: Date.parse(`${r.time}:00Z`), lat: r.grid_lat, lon: r.grid_lon };
+}
+
+// Bodenraten [mm/h] für hydroFromSurfaceRates: nur gitterskalig (`rain` =
+// rain_gsp, `snowfall` = snow_gsp · 0,7 cm, s. docs/SICHTWEITE.md). Die
+// Werte sind Summen der vorangehenden Stunde; ICON nutzt Momentanwerte zur
+// Zeit t, daher wahlweise die Stunde davor, danach oder das Mittel.
+function ratesFor(r, nx, timing) {
+  const at = (x) => ({ rain: x?.rain ?? NaN, snow: (x?.snowfall ?? NaN) / 0.7 });
+  const a = at(r), b = at(nx);
+  const pick = (k) => {
+    if (timing === "now") return a[k];
+    if (timing === "next") return b[k];
+    if (!Number.isFinite(b[k])) return a[k];
+    return timing === "min" ? Math.min(a[k], b[k]) : (a[k] + b[k]) / 2;
+  };
+  return { rain: pick("rain"), snow: pick("snow") };
 }
 
 const isWet = (r) => !(r.precipitation === 0 && r.rain === 0 && r.showers === 0 && r.snowfall === 0);
@@ -145,6 +174,38 @@ function fitSubgrid(rows, nl, nextOf) {
     `≤10 % ${(100 * best.s.all).toFixed(1)} %, 1–5 km ${(100 * best.s.k15).toFixed(1)} %`);
 }
 
+/** Gittersuche für rainFactor und Zeitbezug (Variante 3, Regenstunden). */
+function fitPrecip(rows, nl, nextOf) {
+  const sel = rows.filter((r) => {
+    const nx = nextOf(r);
+    return nx && (r.rain > 0 || nx.rain > 0) && r.snowfall === 0 && nx.snowfall === 0;
+  }).map((r) => ({ r, nx: nextOf(r), col: columnFromRow(r, nl), icon: r.visibility }));
+  const score = (timing, rainFactor) => {
+    let ok = 0, ok30 = 0;
+    for (const x of sel) {
+      if (timing) x.col.hydro = hydroFromSurfaceRates(ratesFor(x.r, x.nx, timing), { rainFactor });
+      else delete x.col.hydro;
+      const e = Math.abs(iconVisibility(x.col, { variant: 3, subgrid: SUBGRID_FIT }).vis / x.icon - 1);
+      if (e <= 0.1) ok++;
+      if (e <= 0.3) ok30++;
+    }
+    return { p10: ok / sel.length, p30: ok30 / sel.length };
+  };
+  const fmt = (s) => `≤10 % ${(100 * s.p10).toFixed(1)} %, ≤30 % ${(100 * s.p30).toFixed(1)} %`;
+  console.log(`Regenstunden: n=${sel.length}; ohne Niederschlagsanteil: ${fmt(score(null))}`);
+  let best = null;
+  for (const timing of ["now", "next", "mean", "min"]) {
+    for (let i = -8; i <= 8; i++) {
+      const f = 2 ** (i / 4); // 0,25 … 4
+      const s = score(timing, f);
+      if (!best || s.p10 > best.s.p10) best = { timing, f, s };
+    }
+    const s1 = score(timing, 1);
+    console.log(`  ${timing.padEnd(4)} rainFactor 1: ${fmt(s1)}`);
+  }
+  console.log(`Bestes Gitter: ${best.timing}, rainFactor ${best.f.toFixed(2)}: ${fmt(best.s)}`);
+}
+
 async function main() {
   const args = parseArgs(process.argv);
   const rows = (await readRows(join(args.data, args.model)))
@@ -161,6 +222,7 @@ async function main() {
   };
 
   if (args.fitSubgrid) return fitSubgrid(rows, nl, nextOf);
+  if (args.fitPrecip) return fitPrecip(rows, nl, nextOf);
 
   const results = {}; // variant -> [{...}]
   for (const v of args.variants) results[v] = [];
@@ -169,6 +231,10 @@ async function main() {
     const nx = nextOf(r);
     const wet = isWet(r) || (nx ? isWet(nx) : true);
     const col = columnFromRow(r, nl);
+    if (args.precip) {
+      col.hydro = hydroFromSurfaceRates(ratesFor(r, nx, args.precipTiming),
+        args.rainFactor != null ? { rainFactor: args.rainFactor } : {});
+    }
     // Alle Varianten oder keine, damit die Ergebnislisten zeilengleich bleiben
     let outs;
     try {

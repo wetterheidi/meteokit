@@ -224,6 +224,45 @@ ein reguläres Gitter interpoliert, und die Interpolation einer stark
 nichtlinearen Größe wie der Sicht passt nicht zur Sicht aus interpolierten
 Eingangsfeldern, besonders bei kleinräumigem Nebel.
 
+### 1.6 Ersatz für Regen und Schnee aus Bodenraten
+
+**Welche Raten:** ICON hat qr/qs/qg nur für gitterskaligen Niederschlag;
+konvektiver ist ein diagnostischer Fluss ohne Gehalt in der Luft und geht in
+die Sichtdiagnose nicht ein. Open-Meteo bildet die ICON-Felder so ab
+(Quellcode `Sources/App/Icon/IconVariableDownloadable.swift` und
+`IconReader.swift`, Stand Juni 2026): `rain` = `rain_gsp`, `showers` =
+`rain_con`, `snowfall` [cm] = `snow_gsp` [mm] · 0,7. Verwendet werden daher
+nur `rain` und `snowfall / 0,7`. Graupel als Rest `precipitation − rain −
+showers − Schnee` ist im Archiv praktisch null (±0,4 mm, Rundung) und bleibt
+außen vor.
+
+**Regen:** Massenkonzentration aus der Marshall-Palmer-Verteilung mit
+derselben Annahme wie ICONs Regenkoeffizient (N₀ = 8·10⁶ m⁻⁴) und
+Λ = 4,1 mm⁻¹ · R^−0,21 (Marshall & Palmer 1948, aus dem Gedächtnis zitiert,
+nicht im Original gelesen): W = π ρ_w N₀ / Λ⁴ = 0,089 · R^0,84 g/m³
+(nachgerechnet). `hydroFromSurfaceRates()` in `src/visibility.js`.
+
+**Zeitbezug:** Die Raten sind Summen der vorangehenden Stunde, ICON nutzt
+den Gehalt zur Zeit t. Bester Bezug: **min(Summe bis t, Summe ab t)** –
+Regen liegt zur Zeit t in der Luft, wenn er vorher und nachher fällt.
+
+**Bestätigung:** In Stunden, in denen der Regen die ICON-Sicht begrenzt
+(ICON mindestens 15 % unter unserer Rechnung ohne Niederschlag), liegt der
+zurückgerechnete nötige Faktor auf W im Median bei 0,9 (D2) bzw. 1,2 (EU).
+Die Marshall-Palmer-Ableitung passt also ohne Anpassung; die Streuung ist
+groß (Quartile etwa Faktor 2 auseinander). Über alle Niederschlagsstunden
+(Variante 3, Subgrid-Ersatz an), Anteil ≤ 10 % / ≤ 30 % Abweichung:
+
+| | ohne Regenanteil | Mittel, Faktor 1 | **Minimum, Faktor 1** |
+|---|---|---|---|
+| D2 (n = 1857) | 75,9 / 85,7 % | 61,9 / 84,5 % | **73,6 / 89,1 %** |
+| EU (n = 3166) | 61,1 / 76,7 % | 58,1 / 80,4 % | **61,5 / 81,7 %** |
+
+**Schnee:** C = S / (3,6 · v_s) mit v_s = 1 m/s als Platzhalter. Im Archiv
+gibt es bis 07.11. kaum gitterskaligen Schnee (D2: 1 Stunde, EU: 6).
+Kalibrieren bzw. prüfen, sobald Fälle vorliegen, und v_s mit einer Quelle
+belegen.
+
 ## 2. Was wir davon nachbauen können
 
 | ICON-Eingang | über Open-Meteo verfügbar? |
@@ -240,12 +279,8 @@ Daraus ergibt sich der Plan:
 
 1. Feuchteterm, Scherung, Inversionsfaktor, Wolkenwasser/-eis und Tag/Nacht
    **wie ICON** rechnen.
-2. Für Regen, Schnee und Graupel die Massenkonzentration aus der Bodenrate
-   schätzen: C ≈ R / v_t (Massenfluss durch Fallgeschwindigkeit). Rate und
-   Fallgeschwindigkeit müssen noch aus Quellen belegt werden, ebenso die
-   Aufteilung Schnee = `precipitation − rain − showers` (Open-Meteo-
-   Konvention, noch zu prüfen). Zeitlicher Versatz: Die Raten sind
-   Stundensummen, ICON nutzt den Momentanwert.
+2. Für Regen und Schnee die Massenkonzentration aus der gitterskaligen
+   Bodenrate schätzen (umgesetzt, s. 1.6; Schnee noch ungeprüft).
 3. Gegen das Archiv prüfen: zuerst nur die Stunden ohne Niederschlag (dort
    sollte die Nachrechnung fast exakt stimmen, sonst stimmt eine Annahme zu
    qc/qi oder der Variante nicht), danach die Niederschlagsstunden.
