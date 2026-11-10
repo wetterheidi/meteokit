@@ -9,7 +9,7 @@ import { getModel } from "./config.js";
 import { fetchWithFallback, modelApiBases } from "./apifetch.js";
 import { cloudFraction } from "./clouds.js";
 import { lastFiniteIndex, horizonParams } from "./weather.js";
-import { visibilityRequestVars, columnFromHourly, visibilitySeries } from "./visibility.js";
+import { visibilityRequestVars, precipLevelVars, columnFromHourly, visibilitySeries } from "./visibility.js";
 
 const KMH_TO_MS = 1 / 3.6;
 
@@ -18,7 +18,10 @@ const KMH_TO_MS = 1 / 3.6;
 // 2026 auf beiden Instanzen live). Scheitert der Request mit den optionalen
 // Feldern, wird einmalig ohne sie wiederholt (Muster wie SURFACE_OPTIONAL in
 // weather.js) — der Sundqvist-Fallback in clouds.js greift dann automatisch.
-function levelVars(nLevels, includeCloudDiag) {
+// qr/qs/qg (Sichtdiagnose, nur ICON-D2, unterste drei Flächen) sind eine
+// weitere optionale Stufe: fehlen sie auf einer Instanz, zuerst ohne sie
+// wiederholen, dann erst ohne die Wolkenfelder.
+function levelVars(nLevels, includeCloudDiag, precipModelKey = null) {
   // pressure_msl (Meeresniveau, kein Level-Suffix): fürs GRAMET-Meteogramm
   // (SLP-Zeile) — kommt von derselben Instanz wie die Level-Daten, kein
   // separater Request nötig.
@@ -31,6 +34,7 @@ function levelVars(nLevels, includeCloudDiag) {
       vars.push(`cloud_water_level${l}`, `cloud_ice_level${l}`, `cloud_cover_level${l}`);
     }
   }
+  if (includeCloudDiag && precipModelKey) vars.push(...precipLevelVars(nLevels, precipModelKey));
   return vars;
 }
 
@@ -112,7 +116,13 @@ async function fetchColumnWithRetry(lat, lon, model, horizon, vars, fetchImpl) {
 export async function fetchColumn(lat, lon, modelKey, horizon, fetchImpl = fetch.bind(globalThis)) {
   const model = getModel(modelKey);
 
-  let result = await fetchColumnWithRetry(lat, lon, model, horizon, levelVars(model.nLevels, true), fetchImpl);
+  let result = { error: "", retryable: false };
+  if (precipLevelVars(model.nLevels, modelKey).length) {
+    result = await fetchColumnWithRetry(lat, lon, model, horizon, levelVars(model.nLevels, true, modelKey), fetchImpl);
+  }
+  if (!result.data && !result.retryable) {
+    result = await fetchColumnWithRetry(lat, lon, model, horizon, levelVars(model.nLevels, true), fetchImpl);
+  }
   // Ohne die optionalen Wolkenfelder nur dann erneut versuchen, wenn der
   // Fehler wirklich an den Variablen liegen kann -- eine Überlastung (s.
   // `RETRYABLE_STATUS`) hat `fetchColumnWithRetry` bereits ausgesessen, ein
@@ -131,7 +141,8 @@ export async function fetchColumn(lat, lon, modelKey, horizon, fetchImpl = fetch
   // (clouds.js). cloud_cover (CLC) bleibt in % wie relative_humidity. Alle für
   // die Wolken-Diagnose — QW/QI/CLC fehlen (NaN), wenn die Instanz sie (noch)
   // nicht führt; clouds.js fällt dann automatisch auf die RH-Heuristik zurück.
-  const h = [], u = [], v = [], t = [], rh = [], p = [], w = [], q = [], qw = [], qi = [], clc = [];
+  const h = [], u = [], v = [], t = [], rh = [], p = [], w = [], q = [], qw = [], qi = [], clc = [],
+    qr = [], qs = [], qg = [];
   for (let l = model.nLevels; l >= 1; l--) {
     h.push(toArr(H[`height_agl_level${l}`], T, 1));
     u.push(toArr(H[`wind_u_component_level${l}`], T, KMH_TO_MS));
@@ -144,6 +155,10 @@ export async function fetchColumn(lat, lon, modelKey, horizon, fetchImpl = fetch
     qw.push(toArr(H[`cloud_water_level${l}`], T, 1e-3));
     qi.push(toArr(H[`cloud_ice_level${l}`], T, 1e-3));
     clc.push(toArr(H[`cloud_cover_level${l}`], T, 1));
+    // qr/qs/qg nur auf den untersten drei Flächen abgefragt (sonst NaN)
+    qr.push(toArr(H[`rain_water_level${l}`], T, 1e-3));
+    qs.push(toArr(H[`snow_water_level${l}`], T, 1e-3));
+    qg.push(toArr(H[`graupel_water_level${l}`], T, 1e-3));
   }
   const pmsl = toArr(H.pressure_msl, T, 1);
 
@@ -168,6 +183,7 @@ export async function fetchColumn(lat, lon, modelKey, horizon, fetchImpl = fetch
     time: trim(time),
     h: trimLevels(h), u: trimLevels(u), v: trimLevels(v), t: trimLevels(t), rh: trimLevels(rh),
     p: trimLevels(p), w: trimLevels(w), q: trimLevels(q), qw: trimLevels(qw), qi: trimLevels(qi), clc: trimLevels(clc),
+    qr: trimLevels(qr), qs: trimLevels(qs), qg: trimLevels(qg),
     pmsl: trim(pmsl), nLevels: h.length, elevation: data.elevation, model: modelKey,
   };
 }
@@ -183,8 +199,12 @@ export async function fetchColumn(lat, lon, modelKey, horizon, fetchImpl = fetch
  */
 export async function fetchVisibility(lat, lon, modelKey, horizon, fetchImpl = fetch.bind(globalThis)) {
   const model = getModel(modelKey);
-  const vars = [...visibilityRequestVars(model.nLevels), "rain", "snowfall"];
-  const result = await fetchColumnWithRetry(lat, lon, model, horizon, vars, fetchImpl);
+  const base = [...visibilityRequestVars(model.nLevels), "rain", "snowfall"];
+  const extra = precipLevelVars(model.nLevels, modelKey);
+  let result = { error: "", retryable: false };
+  if (extra.length) result = await fetchColumnWithRetry(lat, lon, model, horizon, [...base, ...extra], fetchImpl);
+  // Instanz ohne qr/qs/qg (Fallback-Server): ohne sie, Bodenraten-Ersatz
+  if (!result.data && !result.retryable) result = await fetchColumnWithRetry(lat, lon, model, horizon, base, fetchImpl);
   if (result.error) throw new Error(result.error);
   const H = result.data.hourly;
   const s = visibilitySeries(columnFromHourly(H, model.nLevels), H, { lat, lon });
@@ -318,6 +338,7 @@ export function sliceColumnAtTime(col, tTargetSec) {
   return {
     h: pick(col.h), u: pick(col.u), v: pick(col.v), t: pick(col.t), rh: pick(col.rh),
     p: pick(col.p), w: pick(col.w), q: pick(col.q), qw: pick(col.qw), qi: pick(col.qi), clc: pick(col.clc),
+    qr: pick(col.qr), qs: pick(col.qs), qg: pick(col.qg),
   };
 }
 

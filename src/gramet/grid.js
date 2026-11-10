@@ -41,7 +41,9 @@ export function gridFromColumn(col, surface, lat, lon) {
     w = new Float32Array(nt * nk), qv = new Float32Array(nt * nk),
     qw = new Float32Array(nt * nk), qi = new Float32Array(nt * nk),
     clc = new Float32Array(nt * nk), rh = new Float32Array(nt * nk),
-    p = new Float32Array(nt * nk);
+    p = new Float32Array(nt * nk),
+    // qr/qs/qg (kg/kg) für die Sichtdiagnose, nur ICON-D2 k0–k2, sonst NaN
+    qr = new Float32Array(nt * nk), qs = new Float32Array(nt * nk), qg = new Float32Array(nt * nk);
 
   for (let i = 0; i < nt; i++) {
     for (let k = 0; k < nk; k++) {
@@ -57,6 +59,9 @@ export function gridFromColumn(col, surface, lat, lon) {
       clc[ix] = col.clc ? col.clc[k][i] : NaN;
       rh[ix] = col.rh ? col.rh[k][i] : NaN;
       p[ix] = col.p ? col.p[k][i] * 100 : NaN; // hPa -> Pa
+      qr[ix] = col.qr ? col.qr[k][i] : NaN;
+      qs[ix] = col.qs ? col.qs[k][i] : NaN;
+      qg[ix] = col.qg ? col.qg[k][i] : NaN;
     }
   }
 
@@ -72,7 +77,7 @@ export function gridFromColumn(col, surface, lat, lon) {
     lat: new Float64Array(nt).fill(lat),
     lon: new Float64Array(nt).fill(lon),
     elevation: new Float32Array(nt).fill(col.elevation),
-    z, T, u, v, w, qv, qw, qi, clc, rh, p,
+    z, T, u, v, w, qv, qw, qi, clc, rh, p, qr, qs, qg,
     surface: buildSurface(surface, times, col),
     derived: null,
   };
@@ -154,7 +159,9 @@ export function gridFromWaypoints(waypointColumns) {
     w = new Float32Array(nt * nk), qv = new Float32Array(nt * nk),
     qw = new Float32Array(nt * nk), qi = new Float32Array(nt * nk),
     clc = new Float32Array(nt * nk), rh = new Float32Array(nt * nk),
-    p = new Float32Array(nt * nk);
+    p = new Float32Array(nt * nk),
+    // qr/qs/qg (kg/kg) für die Sichtdiagnose, nur ICON-D2 k0–k2, sonst NaN
+    qr = new Float32Array(nt * nk), qs = new Float32Array(nt * nk), qg = new Float32Array(nt * nk);
 
   const times = new Float64Array(nt), pos = new Float64Array(nt),
     lat = new Float64Array(nt), lon = new Float64Array(nt), elevation = new Float32Array(nt);
@@ -177,6 +184,9 @@ export function gridFromWaypoints(waypointColumns) {
       clc[ix] = slice.clc ? slice.clc[k] : NaN;
       rh[ix] = slice.rh ? slice.rh[k] : NaN;
       p[ix] = slice.p ? slice.p[k] * 100 : NaN; // hPa -> Pa
+      qr[ix] = slice.qr ? slice.qr[k] : NaN;
+      qs[ix] = slice.qs ? slice.qs[k] : NaN;
+      qg[ix] = slice.qg ? slice.qg[k] : NaN;
     }
   }
 
@@ -186,7 +196,7 @@ export function gridFromWaypoints(waypointColumns) {
       dt: nt > 1 ? pos[1] - pos[0] : 3600, mode: "path",
     },
     times, nk, pos, lat, lon, elevation,
-    z, T, u, v, w, qv, qw, qi, clc, rh, p,
+    z, T, u, v, w, qv, qw, qi, clc, rh, p, qr, qs, qg,
     surface: buildSurfaceFromWaypoints(waypointColumns, times),
     derived: null,
   };
@@ -245,6 +255,8 @@ function buildSurfaceFromWaypoints(waypointColumns, times) {
  * Rückfall darauf (Entscheidung 2026-11-08). NaN, wo Eingänge fehlen oder
  * die Flächen nicht bis über 540 m reichen. Fehlen Wolkenwasser/-bedeckung
  * (ältere Instanz), wird mit 0 gerechnet; Nebel ist dann nicht erkennbar.
+ * Regen/Schnee/Graupel aus qr/qs/qg der Flächen (ICON-D2), sonst aus den
+ * Bodenraten (`surface.rainRate`/`snowRate`).
  */
 export function gridVisibility(grid) {
   const nt = grid.times.length, nk = grid.nk;
@@ -260,6 +272,7 @@ export function gridVisibility(grid) {
         z: grid.z[ix], p: grid.p[ix], T: grid.T[ix], qv: grid.qv[ix],
         qc: fin0(grid.qw[ix]), qi: fin0(grid.qi[ix]), u: grid.u[ix], v: grid.v[ix],
         clc: fin0(grid.clc[ix]) / 100,
+        qr: grid.qr?.[ix] ?? NaN, qs: grid.qs?.[ix] ?? NaN, qg: grid.qg?.[ix] ?? NaN,
       };
       // Lücke: mit den Flächen darunter weiterrechnen (s. visibilitySeries)
       if (![lv.z, lv.p, lv.T, lv.qv, lv.u, lv.v].every(Number.isFinite)) { ok = levels.length >= 3; break; }

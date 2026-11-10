@@ -10,6 +10,8 @@
  *                    [--precip] [--precip-timing now|next|mean|min] [--rain-factor F]
  *                    [--fit-precip]
  *
+ * --no-level-precip  qr/qs/qg der Flächen ignorieren (Vergleich mit dem
+ *                 Bodenraten-Ersatz); Default: nutzen, wo vorhanden.
  * --vis-source    Herkunft der Referenz-Sicht: own (Default), public oder all.
  *                 Dateien ohne die Spalte zählen als own. `public` passt nach
  *                 Stand 2026-11-08 nicht sicher zu den Flächen (README).
@@ -54,6 +56,7 @@ function parseArgs(argv) {
     else if (k === "--variants") a.variants = argv[++i].split(",").map(Number);
     else if (k === "--worst") a.worst = Number(argv[++i]);
     else if (k === "--csv") a.csv = argv[++i];
+    else if (k === "--no-level-precip") a.noLevelPrecip = true;
     else if (k === "--vis-source") a.visSource = argv[++i];
     else if (k === "--exclude-days") a.excludeDays = argv[++i].split(",").filter(Boolean);
     else if (k === "--subgrid") { const [x, y, z] = argv[++i].split(",").map(Number); a.subgrid = { a: x, b: y, ...(Number.isFinite(z) ? { c: z } : {}) }; }
@@ -92,6 +95,7 @@ function nLevels(row) {
   return n;
 }
 
+let useLevelPrecip = true;
 function columnFromRow(r, nl) {
   const levels = [];
   for (let k = 0; k < nl; k++) {
@@ -105,6 +109,10 @@ function columnFromRow(r, nl) {
       u: r[`wind_u_component_k${k}`] / 3.6,
       v: r[`wind_v_component_k${k}`] / 3.6,
       clc: r[`cloud_cover_k${k}`] / 100,
+      // qr/qs/qg (ICON-D2 ab 2026-11-09), NaN -> Bodenraten-Ersatz bzw. 0
+      ...(useLevelPrecip ? {
+        qr: r[`rain_water_k${k}`] / 1000, qs: r[`snow_water_k${k}`] / 1000, qg: r[`graupel_water_k${k}`] / 1000,
+      } : {}),
     });
   }
   return { levels, time: Date.parse(`${r.time}:00Z`), lat: r.grid_lat, lon: r.grid_lon };
@@ -212,6 +220,7 @@ function fitPrecip(rows, nl, nextOf) {
 
 async function main() {
   const args = parseArgs(process.argv);
+  useLevelPrecip = !args.noLevelPrecip;
   const rows = (await readRows(join(args.data, args.model)))
     .filter((r) => Number.isFinite(r.visibility) && Number.isFinite(r.temperature_k0))
     .filter((r) => !args.excludeDays.includes(r.time.slice(0, 10)))

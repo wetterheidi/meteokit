@@ -49,8 +49,12 @@ stündlich, eine CSV pro Modell und UTC-Tag (`data/<modell>/YYYY-MM-DD.csv`):
   `docs/SICHTWEITE.md`. Die erste Fassung vom 08.11. hatte nur fünf Flächen
   ohne Wind, dann elf; weil über Bergen (Brocken, Fichtelberg) k10 noch unter
   540 m liegt, sind es seit dem 08.11. 13. Der Bestand ab 05.10. wurde jeweils
-  neu geholt. Regen-, Schnee- und Graupelgehalt auf Modellflächen liefert der
-  Server nicht.
+  neu geholt.
+- `rain_water_k0…k2`, `snow_water_k0…k2`, `graupel_water_k0…k2` (qr/qs/qg,
+  g/kg): nur ICON-D2, auf dem Server seit 2026-11-09 15 UTC; bei EU und davor
+  leer. Fehlen sie auf dem Server, holt das Skript ohne sie. `analyze.mjs`
+  nutzt sie, wo vorhanden (`--no-level-precip` zum Vergleich mit dem
+  Bodenraten-Ersatz).
 - **Referenz-Sicht** (seit 2026-11-08): `visibility` kommt bevorzugt vom eigenen
   Server, sonst von `api.open-meteo.com` (Spalte `vis_source` = `own`/`public`).
   `visibility_public` und `vis_public_grid_lat/lon` werden immer mitgesichert.

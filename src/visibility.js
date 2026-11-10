@@ -133,11 +133,13 @@ export function hydroFromSurfaceRates({ rain = 0, snow = 0, graupel = 0 } = {},
  * @param {object[]} col.levels  Modellflächen von unten (k0 = unterste), je
  *   `{ z, p, T, qv, qc, qi, u, v, clc }`: z m über Grund, p Pa, T K, q in
  *   kg/kg, u/v m/s, clc Wolkenbedeckung 0–1 (nur mit `opts.subgrid`). Für
- *   Variante 3 bis über 540 m nötig, sonst mindestens 3.
+ *   Variante 3 bis über 540 m nötig, sonst mindestens 3. Optional `qr`, `qs`,
+ *   `qg` [kg/kg] auf k0–k2 (ICON-D2): haben Vorrang vor `col.hydro`.
  * @param {number} [col.cosZenith]  Kosinus des Sonnenzenitwinkels; ersatzweise
  *   aus `time` (ms), `lat`, `lon` berechnet.
  * @param {object} [col.hydro]  Massenkonzentrationen [g/m³] von Regen, Schnee,
- *   Graupel `{ Cr, Cs, Cg }` (Ersatz für fehlende qr/qs/qg); Default 0.
+ *   Graupel `{ Cr, Cs, Cg }` (Ersatz für fehlende qr/qs/qg, je Spezies nur
+ *   genutzt, wenn die Flächen sie nicht haben); Default 0.
  * @param {object} [opts]
  * @param {1|2|3} [opts.variant=3]  `itune_vis_diag`
  * @param {{a: number, b: number, c?: number}} [opts.subgrid]  Ersatz für
@@ -178,6 +180,18 @@ export function iconVisibility(col, { variant = 3, subgrid = null } = {}) {
 
   // II) Hydrometeore
   let Cc = 0, Ci = 0;
+  // Regen/Schnee/Graupel: aus den Flächen (qr/qs/qg, nur ICON-D2), wo sie
+  // vorliegen -- wie ICON das Maximum über die untersten drei --, sonst der
+  // Ersatz `col.hydro` aus den Bodenraten.
+  const lvC = { qr: null, qs: null, qg: null };
+  for (const key of Object.keys(lvC)) {
+    if (!L.slice(0, TOP_LEV).some((lv) => Number.isFinite(lv[key]))) continue;
+    lvC[key] = 0;
+    for (let k = 0; k < TOP_LEV; k++) {
+      const q = L[k][key];
+      if (Number.isFinite(q) && q > 0) lvC[key] = Math.max(lvC[key], q * density(L[k]) * 1000);
+    }
+  }
   for (let k = 0; k < TOP_LEV; k++) {
     const rho = density(L[k]);
     let qc = L[k].qc ?? 0;
@@ -190,7 +204,8 @@ export function iconVisibility(col, { variant = 3, subgrid = null } = {}) {
     Cc = Math.max(Cc, qc * rho * 1000);
     Ci = Math.max(Ci, (L[k].qi ?? 0) * rho * 1000);
   }
-  const { Cr = 0, Cs = 0, Cg = 0 } = col.hydro ?? {};
+  const sfc = col.hydro ?? {};
+  const Cr = lvC.qr ?? sfc.Cr ?? 0, Cs = lvC.qs ?? sfc.Cs ?? 0, Cg = lvC.qg ?? sfc.Cg ?? 0;
   const tempFac = clamp(L[0].T - 271.15, 0, 1);
   const aS = A_S_DRY * (1 - tempFac) + A_S_WET * tempFac;
   const beta = {
@@ -238,18 +253,42 @@ const VIS_LEVEL_API = [
   "cloud_water", "cloud_ice", "cloud_cover", "wind_u_component", "wind_v_component",
 ];
 
+// Regen-, Schnee-, Graupelgehalt (qr, qs, qg) auf Modellflächen: eigener
+// Server seit 2026-11-09, nur ICON-D2 (beim DWD hat ICON-EU sie nicht auf
+// Flächen). Gebraucht nur auf den untersten drei Flächen. g/kg.
+export const PRECIP_LEVEL_MODELS = Object.freeze(["icon_d2"]);
+const PRECIP_LEVEL_API = { qr: "rain_water", qs: "snow_water", qg: "graupel_water" };
+
+/**
+ * Variablennamen für qr/qs/qg der untersten drei Flächen, leer für Modelle
+ * ohne diese Felder. Getrennt abrufbar, damit Apps bei einem Server ohne die
+ * Felder (Fallback-Instanz) ohne sie wiederholen können.
+ * @param {number} nLevels
+ * @param {string} [modelKey]  z. B. "icon_d2"
+ */
+export function precipLevelVars(nLevels, modelKey) {
+  if (!PRECIP_LEVEL_MODELS.includes(modelKey)) return [];
+  const vars = [];
+  for (let k = 0; k < TOP_LEV; k++) {
+    for (const v of Object.values(PRECIP_LEVEL_API)) vars.push(`${v}_level${nLevels - k}`);
+  }
+  return vars;
+}
+
 /**
  * Open-Meteo-Variablennamen (hourly) der untersten `VIS_N_LEVELS` Flächen
  * für `visibilitySeries()`, z. B. für Apps, die Modellflächen selbst abrufen
  * (IDSSEML). Dazu kommen die Oberflächenfelder `rain` und `snowfall`.
  * @param {number} nLevels Flächenzahl des Modells (D2 65, EU 74, Global 120)
+ * @param {string} [modelKey]  mit Modell: für ICON-D2 zusätzlich qr/qs/qg
+ *   (`precipLevelVars`)
  */
-export function visibilityRequestVars(nLevels) {
+export function visibilityRequestVars(nLevels, modelKey) {
   const vars = [];
   for (let k = 0; k < VIS_N_LEVELS; k++) {
     for (const v of VIS_LEVEL_API) vars.push(`${v}_level${nLevels - k}`);
   }
-  return vars;
+  return [...vars, ...precipLevelVars(nLevels, modelKey)];
 }
 
 /**
@@ -259,7 +298,7 @@ export function visibilityRequestVars(nLevels) {
  */
 export function columnFromHourly(hourly, nLevels) {
   const arr = (name, f) => (hourly[name] ?? []).map((x) => (x == null ? NaN : x * f));
-  const col = { time: hourly.time, h: [], u: [], v: [], t: [], p: [], q: [], qw: [], qi: [], clc: [] };
+  const col = { time: hourly.time, h: [], u: [], v: [], t: [], p: [], q: [], qw: [], qi: [], clc: [], qr: [], qs: [], qg: [] };
   for (let k = 0; k < VIS_N_LEVELS; k++) {
     const l = nLevels - k;
     col.h.push(arr(`height_agl_level${l}`, 1));
@@ -271,6 +310,8 @@ export function columnFromHourly(hourly, nLevels) {
     col.qw.push(arr(`cloud_water_level${l}`, 1e-3));
     col.qi.push(arr(`cloud_ice_level${l}`, 1e-3));
     col.clc.push(arr(`cloud_cover_level${l}`, 1));
+    // qr/qs/qg (g/kg -> kg/kg); NaN, wo nicht abgefragt -> Bodenraten-Ersatz
+    for (const [key, v] of Object.entries(PRECIP_LEVEL_API)) col[key].push(arr(`${v}_level${l}`, 1e-3));
   }
   return col;
 }
@@ -337,6 +378,7 @@ export function visibilitySeries(col, surface = {}, { lat, lon }) {
         z: col.h[k][i], p: col.p[k][i] * 100, T: col.t[k][i] + 273.15,
         qv: col.q[k][i], qc: col.qw?.[k]?.[i] ?? 0, qi: col.qi?.[k]?.[i] ?? 0,
         u: col.u[k][i], v: col.v[k][i], clc: (col.clc?.[k]?.[i] ?? 0) / 100,
+        qr: col.qr?.[k]?.[i] ?? NaN, qs: col.qs?.[k]?.[i] ?? NaN, qg: col.qg?.[k]?.[i] ?? NaN,
       };
       // Lücke: mit den Flächen darunter weiterrechnen (reichen sie nicht bis
       // über 540 m, liefert diagnoseVisibility null)

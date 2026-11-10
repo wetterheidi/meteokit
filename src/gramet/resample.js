@@ -34,6 +34,7 @@ function blendSlices(a, b, f) {
     h: blendArr(a.h, b.h, f), u: blendArr(a.u, b.u, f), v: blendArr(a.v, b.v, f), t: blendArr(a.t, b.t, f),
     rh: blendArr(a.rh, b.rh, f), p: blendArr(a.p, b.p, f), w: blendArr(a.w, b.w, f), q: blendArr(a.q, b.q, f),
     qw: blendArr(a.qw, b.qw, f), qi: blendArr(a.qi, b.qi, f), clc: blendArr(a.clc, b.clc, f),
+    qr: blendArr(a.qr, b.qr, f), qs: blendArr(a.qs, b.qs, f), qg: blendArr(a.qg, b.qg, f),
   };
 }
 

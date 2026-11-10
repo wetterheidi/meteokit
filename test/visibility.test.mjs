@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
   iconVisibility, hydroFromSurfaceRates, esatWater, rhIcon,
-  visibilityRequestVars, columnFromHourly, visibilitySeries, VIS_N_LEVELS,
+  visibilityRequestVars, columnFromHourly, visibilitySeries, VIS_N_LEVELS, precipLevelVars,
 } from "../src/visibility.js";
 
 const fx = JSON.parse(readFileSync(new URL("./fixtures/vis-brocken-d2.json", import.meta.url)));
@@ -116,4 +116,31 @@ test("visibilitySeries: Unix-Sekunden und ISO-Zeit ergeben dasselbe", () => {
   const a = visibilitySeries(iso, fx.hourly, { lat: fx.lat, lon: fx.lon });
   const b = visibilitySeries(unix, fx.hourly, { lat: fx.lat, lon: fx.lon });
   assert.deepEqual(b.vis, a.vis);
+});
+
+test("qr auf den Flächen hat Vorrang vor dem Bodenraten-Ersatz", () => {
+  const c = simpleColumn({ rh: 50 });
+  const rho = c.levels[1].p / (287.04 * c.levels[1].T * (1 + (461.51 / 287.04 - 1) * c.levels[1].qv));
+  c.levels[1].qr = 0.2e-3; // nur k1, Maximum über k0–k2
+  const viaLevels = iconVisibility({ ...c, hydro: { Cr: 5 } });
+  near(viaLevels.beta.r, 2.24 * (0.2e-3 * rho * 1000) ** 0.75, 1e-6, "beta_r aus qr");
+  // Ohne qr auf den Flächen greift der Ersatz
+  const viaSurface = iconVisibility({ ...simpleColumn({ rh: 50 }), hydro: { Cr: 0.1 } });
+  near(viaSurface.beta.r, 2.24 * 0.1 ** 0.75, 1e-9, "beta_r aus hydro");
+  // qr = 0 auf den Flächen heißt: kein Regen, auch wenn der Ersatz welchen hätte
+  const c0 = simpleColumn({ rh: 50 });
+  for (const lv of c0.levels.slice(0, 3)) lv.qr = 0;
+  assert.equal(iconVisibility({ ...c0, hydro: { Cr: 1 } }).beta.r, 0);
+});
+
+test("precipLevelVars nur für ICON-D2, unterste drei Flächen", () => {
+  assert.deepEqual(precipLevelVars(74, "icon_eu"), []);
+  const v = precipLevelVars(65, "icon_d2");
+  assert.equal(v.length, 9);
+  assert.ok(v.includes("rain_water_level65") && v.includes("graupel_water_level63"));
+  assert.ok(!v.includes("snow_water_level62"));
+  assert.equal(visibilityRequestVars(65, "icon_d2").length, VIS_N_LEVELS * 9 + 9);
+  const col = columnFromHourly({ time: ["2026-11-10T00:00"], rain_water_level65: [0.1] }, 65);
+  near(col.qr[0][0], 1e-4, 1e-9, "g/kg -> kg/kg");
+  assert.ok(!Number.isFinite(col.qs[0][0])); // nicht abgefragt -> Ersatz
 });

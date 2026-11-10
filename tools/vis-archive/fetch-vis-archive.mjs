@@ -63,6 +63,12 @@ const SURFACE_VARS = [
   "pressure_msl", "surface_pressure",
   "snowfall_height", "freezing_level_height",
 ];
+// qr/qs/qg (g/kg) auf den untersten drei Flächen, nur ICON-D2 (eigener Server
+// seit 2026-11-09; ICON-EU hat sie beim DWD nicht auf Modellflächen). Spalten
+// gibt es für beide Modelle, bei EU bleiben sie leer.
+const PRECIP_LEVEL_VARS = ["rain_water", "snow_water", "graupel_water"];
+const N_PRECIP_LEVELS = 3;
+const PRECIP_MODELS = ["icon_d2"];
 const LEVEL_VARS = [
   "height_agl", "pressure", "temperature", "relative_humidity",
   "specific_humidity", "cloud_water", "cloud_ice", "cloud_cover",
@@ -129,6 +135,7 @@ function utcDay(d) { return d.toISOString().slice(0, 10); }
 function levelColumns() {
   const cols = [];
   for (const v of LEVEL_VARS) for (let k = 0; k < N_LOW_LEVELS; k++) cols.push(`${v}_k${k}`);
+  for (const v of PRECIP_LEVEL_VARS) for (let k = 0; k < N_PRECIP_LEVELS; k++) cols.push(`${v}_k${k}`);
   return cols;
 }
 
@@ -169,20 +176,36 @@ async function fetchModelStation(model, st, pastDays) {
       levelMap[api] = `${v}_k${k}`;
     }
   }
+  const precipApi = [];
+  if (PRECIP_MODELS.includes(model)) {
+    for (const v of PRECIP_LEVEL_VARS) {
+      for (let k = 0; k < N_PRECIP_LEVELS; k++) {
+        const api = `${v}_level${nLevels - k}`;
+        precipApi.push(api);
+        levelMap[api] = `${v}_k${k}`;
+      }
+    }
+  }
   const params = new URLSearchParams({
     latitude: String(st.lat),
     longitude: String(st.lon),
     // Keine Höhenkorrektur: Werte der Modell-Gitterzelle, damit T/RH zu der
     // Gitterzelle passen, für die auch die Modellsicht gilt.
     elevation: "nan",
-    hourly: [...SURFACE_VARS, ...levelApi].join(","),
+    hourly: [...SURFACE_VARS, ...levelApi, ...precipApi].join(","),
     models: model,
     past_days: String(pastDays),
     forecast_days: "1",
     timezone: "UTC",
   });
   const [d, visOwn, visPublic] = await Promise.all([
-    fetchJson(`${API_BASE}/v1/forecast?${params}`),
+    // Ohne qr/qs/qg wiederholen, falls der Server sie (wieder) nicht führt
+    fetchJson(`${API_BASE}/v1/forecast?${params}`).catch((e) => {
+      if (!precipApi.length) throw e;
+      log(`${model} ${st.id}: ohne qr/qs/qg wiederholt (${e.message.slice(0, 80)})`);
+      params.set("hourly", [...SURFACE_VARS, ...levelApi].join(","));
+      return fetchJson(`${API_BASE}/v1/forecast?${params}`);
+    }),
     fetchVisibilityFrom(API_BASE, model, st, pastDays),
     fetchVisibilityFrom(VIS_REF_BASE, model, st, pastDays),
   ]);
@@ -190,7 +213,7 @@ async function fetchModelStation(model, st, pastDays) {
   const rows = h.time.map((time, i) => {
     const r = { time };
     for (const v of SURFACE_VARS) r[v] = h[v]?.[i];
-    for (const api of levelApi) r[levelMap[api]] = h[api]?.[i];
+    for (const api of [...levelApi, ...precipApi]) r[levelMap[api]] = h[api]?.[i];
     // `visibility` = Referenz für die Auswertung: bevorzugt vom eigenen Server
     // (dasselbe Gitter wie die Modellflächen), sonst von der öffentlichen Instanz.
     const own = visOwn?.byTime.get(time);

@@ -224,7 +224,30 @@ ein reguläres Gitter interpoliert, und die Interpolation einer stark
 nichtlinearen Größe wie der Sicht passt nicht zur Sicht aus interpolierten
 Eingangsfeldern, besonders bei kleinräumigem Nebel.
 
-### 1.6 Ersatz für Regen und Schnee aus Bodenraten
+### 1.6 Regen, Schnee, Graupel: qr/qs/qg (D2) und Ersatz aus Bodenraten
+
+**ICON-D2 seit 2026-11-09: qr, qs, qg direkt.** Der eigene Server führt
+`rain_water_level{N}`, `snow_water_level{N}`, `graupel_water_level{N}` (g/kg,
+unterste drei Flächen genutzt). `iconVisibility()` nimmt sie wie ICON als
+Maximum von q·ρ über k0–k2 und hat dafür Vorrang vor dem Ersatz unten; fehlen
+sie (EU, Fallback-Server, Zeiten davor), greift je Spezies der Ersatz.
+Erster Test (24 Stationen, 09.11. 15 UTC bis Vorhersageende, n = 1344),
+Anteil innerhalb 30 % der ICON-Sicht:
+
+| Stunden | n | ohne Niederschlag | Bodenraten | qr/qs/qg |
+|---|---|---|---|---|
+| Regen bestimmt die Sicht, keine Wolke k0–k2 | 19 | 42 % | 58 % | **100 %** (95 % auf 2 %) |
+| Regen bestimmt die Sicht, alle | 60 | 62 % | 68 % | **85 %** |
+| qr/qs/qg > 0 | 529 | 90 % | 86 % | **92 %** |
+| trocken | 812 | 95 % | 95 % | 95 % |
+
+Wo nur Regen die Sicht mindert, ist die Nachrechnung damit exakt; ICON nutzt
+also genau diese Felder. Der verbleibende Fehler in Niederschlagsstunden ist
+der Subgrid-Ersatz (1.5). Schnee und Graupel kamen im Test kaum vor (Graupel
+20 Stunden am Brocken); mit Schneefällen im Archiv prüfen
+(`analyze.mjs --precip` mit und ohne `--no-level-precip`).
+
+**ICON-EU und alles ohne qr/qs/qg:** Ersatz aus Bodenraten wie folgt.
 
 **Welche Raten:** ICON hat qr/qs/qg nur für gitterskaligen Niederschlag;
 konvektiver ist ein diagnostischer Fluss ohne Gehalt in der Luft und geht in
@@ -333,10 +356,13 @@ bis 30.11. erneut prüfen.
   ersatz an; die Rate zur Zeit i ist min(`rain[i]`, `rain[i+1]`). Gibt außer
   `vis` auch `visRh`, `visHydro` und `limitedBy` zurück. NaN, wo Eingänge
   fehlen.
-- `visibilityRequestVars(nLevels)` und `columnFromHourly(hourly, nLevels)` für
-  Apps, die Modellflächen selbst abrufen: liefern die 117 nötigen
-  Variablennamen (15 unterste Flächen × 9 Felder; dazu `rain`, `snowfall`)
-  bzw. bauen daraus die Säule.
+- `visibilityRequestVars(nLevels, modelKey)` und `columnFromHourly(hourly,
+  nLevels)` für Apps, die Modellflächen selbst abrufen: liefern die nötigen
+  Variablennamen (15 unterste Flächen × 9 Felder, für ICON-D2 dazu 9 für
+  qr/qs/qg; außerdem `rain`, `snowfall` abfragen) bzw. bauen daraus die Säule.
+  `precipLevelVars(nLevels, modelKey)` liefert nur die qr/qs/qg-Namen, damit
+  Apps bei einem Server ohne diese Felder ohne sie wiederholen können
+  (`fetchColumn`, `fetchVisibility` tun das selbst).
 - `iconVisibility()` – die nackte Routine für eine Stunde, für Auswertungen.
 
 Benötigt werden die untersten 15 Modellflächen (bis über 540 m über Grund
@@ -443,7 +469,7 @@ dem 30.11. entfallen lassen bzw. den Branch aufgeben.
 |---|---|---|
 | T, p, qv untere Flächen | ja (`temperature_`, `pressure_`, `specific_humidity_level{N}`) | direkt |
 | qc, qi untere drei Flächen | nur gitterskalig (`cloud_water_`, `cloud_ice_level{N}`) | subskaliger Anteil empirisch aus `cloud_cover_level{N}` (1.5, 1.7) |
-| qr, qs, qg | nein (Server, geprüft 2026-11-08) | aus gitterskaligen Bodenraten `rain`, `snowfall` (1.6) |
+| qr, qs, qg | ICON-D2 ja seit 2026-11-09 (`rain_water_`, `snow_water_`, `graupel_water_level{N}`, g/kg); ICON-EU nein | D2 direkt, sonst aus Bodenraten `rain`, `snowfall` (1.6) |
 | u, v auf nlev und nlev−2 | ja (`wind_u/v_component_level{N}`, km/h) | direkt |
 | θv auf k950 | aus T, p, qv | direkt |
 | ρ | aus p, T, qv | direkt |
@@ -461,13 +487,10 @@ dem 30.11. entfallen lassen bzw. den Branch aufgeben.
   Michael lässt die lat/lon-Daten laut Absprache vom 08.11. vorerst weiterlaufen,
   das Archiv sammelt also weiter passende Vergleichsfälle (bis längstens 30.11.).
   Ob die Parameter (`SUBGRID_FIT`) auf dem nativen Gitter gelten, ist ungeprüft.
-- **`qr`, `qs`, `qg` auf Modellflächen** (Angebot Michael, 08.11.; Namensvorschlag
-  `rain_water_level{N}`, `snow_water_level{N}`, `graupel_water_level{N}`, g/kg): Nur für D2 auf
-  DWD-Open-Data vorhanden (alle 65 Flächen, geprüft 08.11.), gebraucht werden
-  die untersten drei. ICON-EU hat sie nicht. Ersetzt den Niederschlagsansatz aus
-  1.6 einschließlich Schnee-Platzhalter. Das Subgrid-Wolkenwasser (1.5) bleibt
-  ein Ersatz, `qc_dia`/`qi_dia` auf Flächen gibt es in den Open-Data nicht; ein
-  exakter Nachbau ist daher auch damit nicht möglich.
+- ~~`qr`, `qs`, `qg` auf Modellflächen~~ (seit 2026-11-09 für D2, s. 1.6).
+  Offen: Prüfung bei Schnee. Das Subgrid-Wolkenwasser (1.5) bleibt ein Ersatz,
+  `qc_dia`/`qi_dia` auf Flächen gibt es in den Open-Data nicht; ein exakter
+  Nachbau ist daher auch damit nicht möglich.
 
 - ~~ICON-D2 ab 08.11.2026 06 UTC schlechter~~ (geklärt 08.11.): Kein
   Datenfehler, sondern unterschiedliche Verfügbarkeit auf Open-Meteo. Die
@@ -492,12 +515,9 @@ dem 30.11. entfallen lassen bzw. den Branch aufgeben.
   Subskaliges Wolkenwasser: empirischer Ersatz aus der Wolkenbedeckung (1.5),
   mit abgeschwächter qsat-Abhängigkeit für Frost (1.7). Mit den Daten bis
   30.11. (mehr Frost, ggf. Schnee) erneut prüfen.
-- `qr`, `qs`, `qg`: Für ICON-D2 gäbe es sie in den DWD-Open-Data, sie werden
-  aber bewusst **nicht** zusätzlich geholt (Entscheidung 2026-11-08): Für
-  ICON-EU muss ohnehin aus Bodenraten geschätzt werden, ein Verfahren für
-  beide Modelle ist einfacher zu pflegen und zu dokumentieren, und Regen
-  dämpft die Sicht nur schwach (Schnee stärker). Neu bewerten, falls die
-  Schätzung bei Schnee schlecht abschneidet.
+- `qr`, `qs`, `qg`: zunächst bewusst nicht geholt (Entscheidung 2026-11-08,
+  ein Verfahren für beide Modelle), am 09.11. dann doch für D2 aufgenommen,
+  nachdem Michael sie anbot; s. 1.6.
 - Ob die Routine sich zwischen dem beim DWD laufenden Stand und icon-2026.10
   unterscheidet. Die Release Notes von icon-2026.04 nennen eine Überarbeitung
   der Sicht- und Ceiling-Diagnose „to better match SYNOP observations“.
