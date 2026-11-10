@@ -247,6 +247,12 @@ der Subgrid-Ersatz (1.5). Schnee und Graupel kamen im Test kaum vor (Graupel
 20 Stunden am Brocken); mit Schneefällen im Archiv prüfen
 (`analyze.mjs --precip` mit und ohne `--no-level-precip`).
 
+Eingebaut am 2026-11-10 in GRAMET (`fetchColumn`, Gitter), Dronecast
+(Punktvorhersage über `fetchVisibility`, Karten-Overlay), IDSSEML, 3DWx und
+DZMaster; alle wiederholen ohne die Felder, falls eine Instanz sie nicht
+führt. 3DWx-Gitter (3321 Punkte, Stunde mit Regen an 1794 Punkten): 99,8 %
+innerhalb 30 % der ICON-Sicht, mit Bodenraten 99,0 %.
+
 **ICON-EU und alles ohne qr/qs/qg:** Ersatz aus Bodenraten wie folgt.
 
 **Welche Raten:** ICON hat qr/qs/qg nur für gitterskaligen Niederschlag;
