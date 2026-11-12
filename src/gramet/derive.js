@@ -128,6 +128,30 @@ export function deriveView(grid) {
   };
 }
 
+/**
+ * Nur die Konvektions-Spalten, ohne Isolinien, Gefahren und Niederschlag --
+ * für Abnehmer, die viele Gitterpunkte als „Zeiten“ übergeben (3DWx: alle
+ * Modellzellen eines Gebiets je Stunde) und `deriveView` dafür zu teuer wäre.
+ * Dieselbe Entscheidung wie im GRAMET (`cbColumns`), nicht nachgebaut.
+ * @returns {{cb, conv, cloudBase: Float32Array, tropopause: Float32Array}}
+ *   cb: je Zeit `null` oder `{base, top, kind}` (s. `cbColumns`),
+ *   conv: je Zeit die Parcel-Größen aus `hazards/convection.js` oder `null`,
+ *   cloudBase/tropopause: m AGL je Zeit (NaN = keine).
+ */
+export function convectionColumns(grid) {
+  const d = deriveGrid(grid);
+  const nt = grid.times.length;
+  const cloudBase = new Float32Array(nt);
+  for (let i = 0; i < nt; i++) cloudBase[i] = cloudBaseAt(grid, d.cloudFrac, i);
+  const tropopauseLine = tropopause(grid);
+  const fogCols = fog.computeColumns(grid, d.cloudFrac);
+  const conv = convection.computeColumns(grid);
+  const cb = cbColumns(grid, d.cloudFrac, cloudBase, tropopauseLine, fogCols, conv);
+  const trop = new Float32Array(nt);
+  for (let i = 0; i < nt; i++) trop[i] = tropAt(tropopauseLine, grid.pos[i]);
+  return { cb, conv, cloudBase, tropopause: trop };
+}
+
 // --- Isothermen (spaltenweise Kreuzungssuche, s. Plan) ----------------------
 
 function isothermPolylines(grid, thresholdC) {
@@ -649,9 +673,8 @@ function phaseHeights(label, hasWx, twZ, freezingZ) {
  * dem die Rechnung nicht mal Towering zugesteht, unterschlagen wäre der
  * größere Fehler) — aber eben ohne Symbol, wenn die Physik es nicht deckt.
  */
-function cbColumns(grid, cloudFrac, cloudBase, tropopauseLine, fogCols) {
+function cbColumns(grid, cloudFrac, cloudBase, tropopauseLine, fogCols, conv = convection.computeColumns(grid)) {
   const { nk, times, pos, surface } = grid;
-  const conv = convection.computeColumns(grid);
   const out = [];
   for (let i = 0; i < times.length; i++) {
     const tropZ = tropAt(tropopauseLine, pos[i]);

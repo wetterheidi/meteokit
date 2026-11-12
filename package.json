@@ -18,6 +18,7 @@
     "./gramet": "./src/gramet/index.js",
     "./gramet/hazards": "./src/gramet/hazards/index.js",
     "./gramet/hazards/fog": "./src/gramet/hazards/fog.js",
+    "./gramet/derive": "./src/gramet/derive.js",
     "./gramet/render": "./src/gramet/render.js",
     "./airspace": "./src/airspace/index.js",
     "./config": "./src/config.js",

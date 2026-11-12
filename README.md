@@ -58,6 +58,7 @@ intern und darf sich jederzeit ändern — auch wenn die Datei im Repo sichtbar 
 | `meteokit/gramet` | `fetchGridForPath`, `retimeGridForPath`, `posOfPath`, `gridFromColumn`, `gridFromWaypoints`, `sampleAt`, `derive`, `idx`, `fetchGrid` |
 | `meteokit/gramet/hazards` | `ipiAt`/`tfiAt` + Kategorisierung (Icing, Turbulenz) |
 | `meteokit/gramet/hazards/fog` | Boden-Nebel/Dunst je Spalte: `classifyColumn`, `hazeLayer`, `computeColumns`, Schwellen `FG_VIS_MAX_M` usw. Erwartet das flache `grid`-Format (Index `i·nk + k`, k = 0 unten); 3DWx setzt dafür Gitterpunkte als „Zeiten“ ein. |
+| `meteokit/gramet/derive` | `convectionColumns` — nur die TCU/Cb-Spalten des GRAMET (`{cb, conv, cloudBase, tropopause}` je „Zeit“), ohne Isolinien und Gefahren. 3DWx nutzt sie mit allen Gitterpunkten als „Zeiten“ für die Wolkengattungen. `deriveView` steht ebenfalls dort. |
 | `meteokit/gramet/render` | `renderGramet`, `exportPng` — Low-Level-Zeichnen auf ein eigenes Canvas. Nur für Sonderfälle (z. B. Debug-Seiten); der empfohlene Weg ist `<gramet-panel>`. |
 | `meteokit/config` | `configure`, `getModel`, `MODELS`, `API_BASE`, `SURFACE_*` |
 | `meteokit/modelpick` | `pickModel`, `candidateModels` — bestes Modell am Punkt (feinstes zuerst, Bbox + echte Datenabdeckung geprüft) |
