@@ -765,7 +765,13 @@ function cbColumns(grid, cloudFrac, cloudBase, tropopauseLine, fogCols, conv = c
     const base = [c?.cclZ, cloudBase[i], 0].find((b) => Number.isFinite(b) && b < top) ?? 0;
     // Zusätzlich Mächtigkeit gefordert -- ein flaches Cu-Feld ist noch keine
     // TCU. Mit SH/TS im weather_code entfällt beides (s. u.).
-    const thermalSignal = triggered && top - base >= TCU_MIN_DEPTH_M;
+    // Und Auftrieb: ohne verdünntes EL steigt das Paket nicht. Bei Nebel am
+    // Boden liegt das CCL bei 10 m, TA = T_2m, die Auslösung ist trivial
+    // erfüllt -- unter einer Inversion (09.11.2026, Lechfeld: 5 -> 9 °C,
+    // CAPE 0, kein EL) nahm `top` dann die Modellwolke bis 8 km, aus Nebel
+    // wurde eine TCU-Spalte.
+    const buoyant = Number.isFinite(c?.elZDiluted);
+    const thermalSignal = triggered && buoyant && top - base >= TCU_MIN_DEPTH_M;
 
     if (!wxThunder && !wxShower && !thermalSignal && !capeSignal && !updraftSignal) {
       out.push(null); continue;
