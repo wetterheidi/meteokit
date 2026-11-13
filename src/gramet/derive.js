@@ -34,11 +34,20 @@ const ISENTROPE_MAX_Z_M = 20000;
 // Konvektions-Spalten (TCU/Cb): primär Parcel-Theorie aus `hazards/
 // convection.js` (CCL als Basis, Auslösetemperatur als Trigger, EL als
 // Obergrenze) plus `weather_code` als hartes Modellsignal -- TS => Cb,
-// SH/+SH => mindestens TCU. Die folgenden CAPE-/Updraft-Schwellen sind nur
+// SH/+SH => mindestens TCU (SH nur mit CAPE oder Aufwind, s. SH_UPDRAFT_MIN_MS).
+// Die folgenden CAPE-/Updraft-Schwellen sind nur
 // noch Auffangpfad, falls beides nichts liefert (z. B. CCL nicht bestimmbar);
 // sie sind wie bisher NICHT kalibriert.
 const CB_CAPE_MIN_JKG = 300;
 const CB_UPDRAFT_MIN_MS = 3;
+// Schauer im weather_code (SH) ohne jeden physikalischen Beleg -- CAPE 0 und
+// kein Aufwind ab dieser Stärke unterhalb der Tropopause -- gelten nicht als
+// Konvektion. ICON-D2 meldet SH auch in skaligem Frontregen, wenn die
+// parametrisierte flache Konvektion etwas beisteuert (Warmfront 23.10.2026
+// über Norddeutschland: über 3000 Punkt-Stunden Code 80 bei CAPE 0 und
+// höchstens 0,3 m/s Aufwind); daraus wurden TCU-Spalten in der Ns-Decke.
+// Fehlen CAPE oder w (NaN, andere Modelle), bleibt SH ein Signal.
+const SH_UPDRAFT_MIN_MS = 1;
 // Ersatz-Oberrand, wenn weder ein EL noch ein vergletschertes Wolkenniveau
 // noch überhaupt eine Wolkenspur im Profil gefunden wird (z. B. Gewitter nur
 // via weather_code gemeldet) -- NICHT der Modelldeckel, s. PRECIP_FALLBACK_TOP_M.
@@ -641,6 +650,8 @@ function phaseHeights(label, hasWx, twZ, freezingZ) {
  *   1. `weather_code` — TS (Gewitter) oder SH/+SH (Schauer) sind direkte
  *      Modellaussagen über konvektiven Charakter und damit das verlässlichste
  *      Signal; sie gelten unabhängig davon, ob unsere Parcel-Rechnung auslöst.
+ *      Ausnahme: SH bei CAPE 0 und ohne Aufwind ab SH_UPDRAFT_MIN_MS zählt
+ *      nicht (ICON-D2 meldet SH auch in skaligem Frontregen).
  *   2. Thermische Auslösung aus `hazards/convection.js` (T_2m >= TA) mit
  *      hinreichender Mächtigkeit CCL->EL.
  *   3. Auffangpfad mit den alten, unkalibrierten CAPE-/Updraft-Schwellen, wenn
@@ -691,7 +702,7 @@ function cbColumns(grid, cloudFrac, cloudBase, tropopauseLine, fogCols, conv = c
     // diesem Oberrand gespiegelt, aus demselben Grund (s. dort).
     const cloudTopAnchor = [c?.cclZ, cloudBase[i]].find((b) => Number.isFinite(b));
     const anyTop = Number.isFinite(cloudTopAnchor) ? cloudTopAt(grid, cloudFrac, i, cloudTopAnchor) : NaN;
-    let maxAbsW = 0, deepTop = NaN;
+    let maxAbsW = 0, hasW = false, deepTop = NaN;
     for (let k = 0; k < nk; k++) {
       const ix = i * nk + k;
       const z = grid.z[ix], w = grid.w[ix];
@@ -700,6 +711,7 @@ function cbColumns(grid, cloudFrac, cloudBase, tropopauseLine, fogCols, conv = c
       // besonders an Hochflanken (s. Feedback: TCU auf stabiler Hochflanke, weil
       // maxAbsW ungefiltert bis zum Gitterdeckel scannte).
       const belowTrop = !Number.isFinite(tropZ) || z < tropZ;
+      if (Number.isFinite(w)) hasW = true;
       if (Number.isFinite(w) && belowTrop && Math.abs(w) > maxAbsW) maxAbsW = Math.abs(w);
       // Vereistes BKN+-Level zählt nur INNERHALB der zusammenhängenden Wolke
       // (z <= anyTop, s. o.) als Oberrand -- sonst zieht ein isolierter,
@@ -715,8 +727,10 @@ function cbColumns(grid, cloudFrac, cloudBase, tropopauseLine, fogCols, conv = c
     const label = Number.isFinite(surface?.wcode?.[i])
       ? metarWeather(surface.wcode[i], fog.toPhenomenon(fogCols[i])) : "N/A";
     const wxThunder = label.includes("TS");
-    const wxShower = label.includes("SH");
     const cape = surface?.cape ? surface.cape[i] : NaN;
+    // s. SH_UPDRAFT_MIN_MS: Schauer nur mit CAPE oder Aufwind als Beleg
+    const shUnsupported = Number.isFinite(cape) && cape <= 0 && hasW && maxAbsW < SH_UPDRAFT_MIN_MS;
+    const wxShower = label.includes("SH") && !shUnsupported;
     const capeSignal = Number.isFinite(cape) && cape >= CB_CAPE_MIN_JKG && Number.isFinite(deepTop);
     // Aufwind allein ist kein Konvektionsbeleg -- ein w-Ausschlag in trockener,
     // wolkenloser Luft ist Wellenbewegung, kein Thermikaufwind (der kondensiert
