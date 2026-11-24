@@ -350,7 +350,52 @@ Regenanteil (1.6):
 | EU Niederschlag | 61,5 / 81,7 % | 61,7 / 81,8 % |
 
 Die Frostfälle sind bisher wenige (Oktober/Anfang November). Mit den Daten
-bis 30.11. erneut prüfen.
+bis 30.11. erneut prüfen (Zwischenstand 23.11.: bestätigt, s. 1.8).
+
+### 1.8 Zwischenstand 23.11.2026
+
+Archiv 05.10.–22.11.2026 (ohne 10.–12.10.), Variante 3, `SUBGRID_FIT`,
+Niederschlag (`analyze.mjs --variants 3 --subgrid 0.012,2,0.5 --precip`).
+Anteil ≤ 10 % / ≤ 30 % Abweichung von der ICON-Sicht:
+
+| | ICON-D2 | ICON-EU |
+|---|---|---|
+| trocken (n = 21 994 / 19 776) | 89,2 / 98,8 % | 70,6 / 84,7 % |
+| Niederschlag (n = 4310 / 6480) | 81,2 / 94,5 % | 60,1 / 80,6 % |
+| Niederschlag ab 08.11. (D2 mit qr/qs/qg) | 86,0 / 95,8 % | 57,6 / 77,4 % |
+| trocken < 1 km | 55,6 / 93,9 % | 15,5 / 39,6 % |
+| trocken 1–5 km | 37,4 / 93,9 % | 16,9 / 47,1 % |
+
+- **Frost bestätigt:** D2, trocken, nur subskaliges Wasser (qc = 0, clc > 0),
+  T an k0 < 0 °C: n = 294, Median ln(calc/ICON) +0,005, 85 % ≤ 30 %. Der
+  Exponent c = 0,5 (1.7) passt.
+- **Schneeterm mit qs exakt:** D2, qs > 0 ohne Wolke auf k0–k2 (n = 6): alle
+  ≤ 3 %.
+- **Schnee mit Wolke (D2, qs > 0 und clc > 0, n = 114):** nur 61 % ≤ 30 %,
+  Median ln(calc/ICON) +0,17, Quartile calc/ICON 1,01 / 1,18 / 1,61. Fast alle
+  Fälle sind hydro-begrenzt mit gitterskaligem qc ≈ 0, clc 0,4–0,7 und T um
+  0 °C (13.–22.11., Mittelgebirge und Osten). ICON braucht dort etwa doppelt
+  so viel Extinktion, wie der Subgrid-Ersatz liefert; der Anteil des Schnees
+  selbst ist klein. In trockenen Stunden mit gleicher clc tritt das nicht auf
+  (Median ±0,04). Ursache offen.
+- **Getestet und verworfen: subskaliges Kondensat als Eis.** Eisanteil
+  linear von 0 bei t0 auf 1 bei t1 (t0 = 0/−2/−5 °C, t1 = −5…−40 °C,
+  Eismasse × 0,5/1, c = 0,5/0,75/1), Eisteil mit 327,8·C statt 144,7·C^0,88.
+  Bester Satz (t0 = 0, t1 = −40, f = 1): Median bei Schnee mit Wolke +0,17 →
+  +0,11, Anteil ≤ 30 % unverändert 61 %, trocken unverändert. Erklärt den
+  Fehler nicht, daher nicht übernommen.
+- **Neuanpassung a, b, c** über das ganze Archiv: bestes Gitter a = 0,012,
+  b = 2, c = 0,25 (D2 trocken ≤ 10 %: 88,6 → 89,0 %; Schnee mit Wolke
+  unverändert). Zu wenig Gewinn, `SUBGRID_FIT` bleibt.
+- **EU:** Schwachpunkt bleibt gitterskaliges qc (wir rechnen zu viel Nebel,
+  Median −0,1 bis −0,2, 35–46 % ≤ 30 %), s. 1.5.
+- Eigene und öffentliche D2-Sicht liegen seit 15.11. näher beieinander
+  (Median |ln| 0,09, 52 % ≤ 10 %; am 08.11. ≈ 0,4). EU ist auf beiden gleich.
+
+**Für die Anwendung:** Bei D2 mit Schneefall und tiefer, durchbrochener
+Bewölkung ist die berechnete Sicht eher zu hoch (typisch 1,2-fach, im
+oberen Quartil 1,6-fach). Ohne qs (EU, Schnee aus Bodenraten) streut
+sie stark (n = 51, nur 18 % ≤ 30 %), eine klare Richtung gibt es nicht.
 
 ## 2. Anwendung
 
@@ -494,7 +539,9 @@ dem 30.11. entfallen lassen bzw. den Branch aufgeben.
   das Archiv sammelt also weiter passende Vergleichsfälle (bis längstens 30.11.).
   Ob die Parameter (`SUBGRID_FIT`) auf dem nativen Gitter gelten, ist ungeprüft.
 - ~~`qr`, `qs`, `qg` auf Modellflächen~~ (seit 2026-11-09 für D2, s. 1.6).
-  Offen: Prüfung bei Schnee. Das Subgrid-Wolkenwasser (1.5) bleibt ein Ersatz,
+  Schnee geprüft (1.8): Schneeterm exakt, bei Schnee mit tiefer,
+  durchbrochener Bewölkung bleibt D2 etwa 1,2-fach zu hoch (Subgrid-Ersatz,
+  Ursache offen; Eis als Erklärung getestet und verworfen). Das Subgrid-Wolkenwasser (1.5) bleibt ein Ersatz,
   `qc_dia`/`qi_dia` auf Flächen gibt es in den Open-Data nicht; ein exakter
   Nachbau ist daher auch damit nicht möglich.
 
@@ -519,8 +566,9 @@ dem 30.11. entfallen lassen bzw. den Branch aufgeben.
   EU (1.4).
 - `cloud_water_level{N}` auf dem Server ist gitterskaliges QC (1.4).
   Subskaliges Wolkenwasser: empirischer Ersatz aus der Wolkenbedeckung (1.5),
-  mit abgeschwächter qsat-Abhängigkeit für Frost (1.7). Mit den Daten bis
-  30.11. (mehr Frost, ggf. Schnee) erneut prüfen.
+  mit abgeschwächter qsat-Abhängigkeit für Frost (1.7). Zwischenstand
+  23.11. (1.8): Frost bestätigt, Schwäche bei Schnee mit mittlerer clc.
+  Schlussauswertung mit den Daten bis 30.11.
 - `qr`, `qs`, `qg`: zunächst bewusst nicht geholt (Entscheidung 2026-11-08,
   ein Verfahren für beide Modelle), am 09.11. dann doch für D2 aufgenommen,
   nachdem Michael sie anbot; s. 1.6.
